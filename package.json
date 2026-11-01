@@ -1,7 +1,7 @@
 {
   "name": "super-orbital-simulator",
-  "version": "0.1.0",
-  "description": "Super Orbital Simulator - build and run a Super Earth space fort (unofficial fan project, prototype)",
+  "version": "0.2.0",
+  "description": "Super Orbital Simulator - build and run a Super Earth space station (unofficial fan project, prototype)",
   "type": "module",
   "private": true,
   "license": "UNLICENSED",
@@ -10,10 +10,12 @@
     "sim": "node test/headless.mjs 12 near 1",
     "sim:far": "node test/headless.mjs 12 far 1",
     "ui": "node test/ui.mjs",
+    "vendor": "node tools/vendor.mjs",
     "bundle": "node tools/bundle.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.28.2",
-    "playwright": "^1.63.0"
+    "playwright": "^1.63.0",
+    "three": "^0.187.0"
   }
 }

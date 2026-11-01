@@ -1,256 +1,330 @@
-// Boot, the main loop, input and the HUD. The simulation lives in sim.js and never touches the page.
+// Boot, the main loop, input and the HUD. The simulation (sim.js) never touches the page; the view (view.js) draws it.
 import { C } from './config.js';
 import { Station } from './sim.js';
-import { Renderer } from './render.js';
+import { View } from './view.js';
+import { partIcon } from './parts.js';
 import { Audio } from './audio.js';
 
 const $ = (id) => document.getElementById(id);
 const qs = new URLSearchParams(location.search);
-const st = new Station(Number(qs.get('seed')) || (Date.now() % 100000));
-const R = new Renderer($('view'));
+const HOTKEYS = ['q', 'w', 'e', 't', 'y', 'a', 's', 'd', 'f', 'g', 'z', 'c', 'v', 'b', 'n'];
 const audio = new Audio();
-const ui = { tool: null, hover: null, paused: false, speed: 1, painting: false, lastPaint: -1, started: false };
-window.__st = st; window.__ui = ui; window.__R = R;   // for the browser tests
+const ui = { started: false, tool: null, rot: 0, hot: null, sel: null, paused: false, speed: 1, view: 'blueprint', cut: false };
 
-// ---------------------------------------------------------------- palette
-const pal = $('palette');
-for (const t of C.palette) {
-  const d = C.mods[t], b = document.createElement('button');
-  b.className = 'pb'; b.type = 'button'; b.dataset.t = t;
-  b.innerHTML = `<kbd>${d.key}</kbd><span class="pn">${d.name.toUpperCase()}</span><span class="pc">${d.cost} CR</span>`;
-  b.onclick = () => { audio.unlock(); setTool(ui.tool === t ? null : t); };
-  pal.appendChild(b);
+// ---------------------------------------------------------------- the title backdrop: an original example station, turning slowly
+function demoStation() {
+  const s = new Station(3, 'sandbox');
+  const b = (t, h, p, r = 0) => s.build(t, h, p, r).id;
+  const c1 = b('core', 1, 1), re = b('reactor', c1, 1); b('spire', re, 1);
+  b('solar', c1, 2); b('solar', c1, 3);
+  const ring = b('ring', 1, 0), c2 = b('core', ring, 1), big = b('bigring', c2, 1), c3 = b('core', big, 1); b('spire', c3, 1);
+  for (const p of [2, 3, 4, 5]) b('dockport', ring, p);
+  for (const p of [2, 4, 6]) b('pylon', big, p);
+  b('cargo', 1, 2); b('hab', 1, 3); b('hab', 1, 4); b('cargo', 1, 5);
+  for (let i = 0; i < 40; i++) s.step(0.5);
+  return s;
 }
-function setTool(t) {
-  if (t && t !== 'demolish' && C.mods[t].locked && !st.unlocked.has(C.mods[t].locked)) { audio.play('deny'); say('That module needs the Garrison Permit.', 'warn'); return; }
-  ui.tool = t; audio.play('click');
-  for (const b of pal.children) b.classList.toggle('on', b.dataset.t === t);
-  $('btn-demo').classList.toggle('on', t === 'demolish');
-  R.cv.style.cursor = t ? 'crosshair' : 'default';
+let st = demoStation();
+const view = new View($('view'), st);
+window.__view = view;
+view.setMode('hull');
+view.controls.autoRotate = true; view.controls.autoRotateSpeed = 0.6;
+view.camera.position.set(30, 14, 34);
+
+// ---------------------------------------------------------------- start
+function start(mode) {
+  audio.unlock();
+  st = new Station(Number(qs.get('seed')) || (Date.now() % 100000), mode);
+  window.__st = st; window.__ui = ui;
+  view.setStation(st);
+  view.controls.autoRotate = false;
+  view.frame();
+  ui.started = true; ui.tool = null; ui.sel = null; ui.hot = null;
+  setView('blueprint'); setCut(false);
+  $('s-title').classList.remove('on'); $('hud').classList.remove('hidden');
+  msgs.length = 0;
+  say(mode === 'sandbox' ? 'Sandbox: every part, no costs. Build anything.' : 'The Ministry welcomes you, Station Master. Start with a Docking Port on Station Command.', 'gold');
+  buildGrid(); hud(); info();
 }
-function paletteState() {
-  for (const b of pal.children) {
-    const d = C.mods[b.dataset.t], locked = d.locked && !st.unlocked.has(d.locked);
+$('b-run').onclick = () => start('run');
+$('b-sandbox').onclick = () => start('sandbox');
+$('b-restart').onclick = () => { $('s-menu').classList.remove('on'); ui.started = false; $('hud').classList.add('hidden'); $('s-title').classList.add('on'); st = demoStation(); view.setStation(st); view.setMode('hull'); view.setCutaway(false); view.controls.autoRotate = true; };
+
+// ---------------------------------------------------------------- command grid
+function buildGrid() {
+  const g = $('cmd'); g.innerHTML = '';
+  C.grid.forEach((t, i) => {
+    const b = document.createElement('button');
+    b.className = 'cb'; b.type = 'button'; b.dataset.t = t;
+    b.innerHTML = `${partIcon(t)}<kbd>${HOTKEYS[i].toUpperCase()}</kbd>`;
+    b.title = `${C.parts[t].name} · ${C.parts[t].cost} CR`;
+    b.onclick = () => { audio.unlock(); setTool(ui.tool === t ? null : t); };
+    b.onpointerenter = () => { if (!ui.tool) info(t); };
+    b.onpointerleave = () => { if (!ui.tool) info(); };
+    g.appendChild(b);
+  });
+}
+function gridState() {
+  for (const b of $('cmd').children) {
+    const d = C.parts[b.dataset.t], locked = d.locked && !st.unlocked.has(d.locked);
     b.classList.toggle('locked', !!locked);
     b.classList.toggle('poor', !locked && st.credits < d.cost);
-    b.querySelector('.pc').textContent = locked ? 'GARRISON' : `${d.cost} CR`;
+    b.classList.toggle('on', ui.tool === b.dataset.t);
   }
 }
-
-// ---------------------------------------------------------------- input
-function pointerCell(e) {
-  const r = R.cv.getBoundingClientRect(), h = R.cellAt(e.clientX - r.left, e.clientY - r.top);
-  return { ...h, mod: st.modAt(h.c, h.r), px: e.clientX, py: e.clientY };
+function setTool(t) {
+  if (t && C.parts[t].locked && !st.unlocked.has(C.parts[t].locked)) { audio.play('deny'); say(`${C.parts[t].name} needs the Garrison Permit.`, 'warn'); return; }
+  ui.tool = t; ui.hot = null; audio.play('click'); $('tip').classList.add('hidden');
+  if (t) select(null);
+  view.showPorts(t, ui.rot); view.setGhost(null, null, 0);
+  gridState(); info();
 }
-function act(h, fromDrag) {
-  if (!ui.tool) return;
-  if (ui.tool === 'demolish') {
-    if (h.mod && st.demolish(h.c, h.r)) audio.play('place'); else if (!fromDrag) audio.play('deny');
+function select(id) { ui.sel = id; view.select(id); info(); }
+
+// ---------------------------------------------------------------- views
+function setView(v) {
+  ui.view = v; view.setMode(v);
+  for (const b of document.querySelectorAll('.vb')) if (b.dataset.v !== 'cut') b.classList.toggle('on', b.dataset.v === v);
+}
+function setCut(on) { ui.cut = on; view.setCutaway(on); document.querySelector('.vb[data-v="cut"]').classList.toggle('on', on); }
+for (const b of document.querySelectorAll('.vb')) b.onclick = () => { audio.play('click'); if (b.dataset.v === 'cut') setCut(!ui.cut); else setView(b.dataset.v); };
+
+// ---------------------------------------------------------------- pointer: a short press is a click, anything longer orbits
+const cv = $('view');
+let down = null;
+cv.addEventListener('pointerdown', (e) => { audio.unlock(); down = { x: e.clientX, y: e.clientY, t: performance.now(), b: e.button }; });
+cv.addEventListener('pointerup', (e) => {
+  if (!down || !ui.started) { down = null; return; }
+  const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y), quick = performance.now() - down.t < 600, b = down.b;
+  down = null;
+  if (moved > 7 || !quick) return;
+  if (b === 2) { setTool(null); select(null); return; }
+  click(e.clientX, e.clientY);
+});
+cv.addEventListener('contextmenu', (e) => e.preventDefault());
+cv.addEventListener('pointermove', (e) => { if (ui.started && e.buttons === 0) hover(e.clientX, e.clientY); });
+cv.addEventListener('pointerleave', () => { $('tip').classList.add('hidden'); });
+
+function click(x, y) {
+  if (ui.tool) {
+    const p = view.pickPort(x, y);
+    if (!p) return;
+    const r = st.build(ui.tool, p.part, p.i, ui.rot);
+    if (r.ok) { audio.play('place'); ui.hot = null; view.setGhost(null, null, 0); view.showPorts(ui.tool, ui.rot); $('tip').classList.add('hidden'); }
+    else { audio.play('deny'); say(r.why, 'warn'); }
     return;
   }
-  const res = st.build(ui.tool, h.c, h.r);
-  if (res.ok) audio.play('place');
-  else if (!fromDrag) { audio.play('deny'); say(res.why, 'warn'); }
+  const id = view.pickPart(x, y);
+  select(id || null);
+  if (id) audio.play('click');
 }
-R.cv.addEventListener('pointermove', (e) => {
-  ui.hover = pointerCell(e);
-  if (ui.painting && ['corridor', 'lift', 'demolish'].includes(ui.tool)) {
-    const k = ui.hover.r * 1000 + ui.hover.c;
-    if (k !== ui.lastPaint) { ui.lastPaint = k; act(ui.hover, true); }
+function hover(x, y) {
+  const tip = $('tip');
+  if (ui.tool) {
+    const p = view.pickPort(x, y);
+    const same = p && ui.hot && p.part === ui.hot.part && p.i === ui.hot.i;
+    if (!same) { ui.hot = p; view.showPorts(ui.tool, ui.rot, p); view.setGhost(ui.tool, p, ui.rot); }
+    if (p) {
+      const chk = st.canBuild(ui.tool, p.part, p.i, ui.rot);
+      tip.innerHTML = `<b>${C.parts[ui.tool].name}</b> on ${st.name(st.parts.get(p.part))}<br>${chk.ok ? 'Click to build · R turns it' : `<span class="down">${chk.why}</span>`}`;
+      showTip(x, y);
+    } else tip.classList.add('hidden');
+    return;
   }
-  tip();
-});
-R.cv.addEventListener('pointerdown', (e) => {
-  audio.unlock();
-  if (e.button === 2) { setTool(null); return; }
-  ui.hover = pointerCell(e);
-  ui.painting = true; ui.lastPaint = ui.hover.r * 1000 + ui.hover.c;
-  act(ui.hover, false);
-  tip();
-});
-addEventListener('pointerup', () => { ui.painting = false; });
-R.cv.addEventListener('pointerleave', () => { ui.hover = null; tip(); });
-R.cv.addEventListener('contextmenu', (e) => e.preventDefault());
+  const id = view.pickPart(x, y);
+  if (id) { const p = st.parts.get(id); tip.innerHTML = `<b>${st.name(p)}</b>${p.state !== 'active' ? ` · ${p.state === 'building' ? 'building' : 'coming down'}` : ''}`; showTip(x, y); }
+  else tip.classList.add('hidden');
+}
+function showTip(x, y) {
+  const tip = $('tip'); tip.classList.remove('hidden');
+  tip.style.left = `${Math.min(innerWidth - tip.offsetWidth - 8, x + 16)}px`; tip.style.top = `${Math.max(48, y - tip.offsetHeight - 12)}px`;
+}
+
+// ---------------------------------------------------------------- keys
 addEventListener('keydown', (e) => {
-  if (!ui.started) return;
-  const k = e.key.toLowerCase();
-  const t = C.palette.find((p) => C.mods[p].key === k);
-  if (t) { setTool(ui.tool === t ? null : t); return; }
-  if (k === 'x') setTool(ui.tool === 'demolish' ? null : 'demolish');
-  else if (k === 'b') toggleBudget();
-  else if (k === ' ') { e.preventDefault(); togglePause(); }
-  else if (k === 'escape') { if ($('s-budget').classList.contains('on')) toggleBudget(false); else setTool(null); }
+  if (!ui.started || e.target.tagName === 'INPUT') return;
+  const k = e.key.toLowerCase(), gi = HOTKEYS.indexOf(k);
+  if (gi >= 0 && gi < C.grid.length) { const t = C.grid[gi]; setTool(ui.tool === t ? null : t); return; }
+  if (k === 'r') { ui.rot = (ui.rot + 1) % 8; audio.play('click'); if (ui.tool) { view.showPorts(ui.tool, ui.rot, ui.hot); view.ghostKey = ''; view.setGhost(ui.tool, ui.hot, ui.rot); } info(); }
+  else if (k === 'x') demolishSel();
+  else if (k === 'f' && ui.sel) view.focus(ui.sel);
+  else if (k === 'escape') { if ($('s-menu').classList.contains('on')) menu(false); else { setTool(null); select(null); } }
+  else if (k === ' ') { e.preventDefault(); pause(); }
+  else if (k === '1') setView('blueprint'); else if (k === '2') setView('hull'); else if (k === '3') setView('life'); else if (k === '4') setCut(!ui.cut);
+  else if (k === 'm') menu();
 });
-addEventListener('resize', () => R.resize());
-
-$('btn-demo').onclick = () => setTool(ui.tool === 'demolish' ? null : 'demolish');
-$('btn-budget').onclick = () => toggleBudget();
-$('btn-budget-close').onclick = () => toggleBudget(false);
-$('btn-pause').onclick = () => togglePause();
-$('btn-speed').onclick = () => { ui.speed = ui.speed === 1 ? 2 : ui.speed === 2 ? 4 : 1; $('btn-speed').textContent = `${ui.speed}×`; audio.play('click'); };
-$('btn-mute').onclick = () => { audio.unlock(); audio.mute(!audio.muted); $('btn-mute').classList.toggle('on', audio.muted); };
-function togglePause(on = !ui.paused) { ui.paused = on; $('btn-pause').textContent = on ? '▶' : 'II'; $('btn-pause').classList.toggle('on', on); audio.play('click'); }
-$('btn-begin').onclick = () => begin();
-function begin() {
-  audio.unlock();
-  ui.started = true;
-  $('s-title').classList.remove('on'); $('hud').classList.remove('hidden');
-  $('hullname').textContent = C.hull.name.toUpperCase();
-  say('The Ministry welcomes you, Station Master. Start with a Docking Bay on the top or bottom deck.', 'gold');
-  R.resize();
+function demolishSel() {
+  if (!ui.sel) return;
+  const r = st.demolish(ui.sel);
+  if (r.ok) { audio.play('place'); select(null); } else { audio.play('deny'); say(r.why, 'warn'); }
 }
+function pause(on = !ui.paused) { ui.paused = on; $('b-pause').textContent = on ? '▶' : 'II'; $('b-pause').classList.toggle('on', on); audio.play('click'); }
+$('b-pause').onclick = () => pause();
+$('b-speed').onclick = () => { ui.speed = ui.speed === 1 ? 2 : ui.speed === 2 ? 4 : 1; $('b-speed').textContent = `${ui.speed}×`; audio.play('click'); };
 
-// ---------------------------------------------------------------- budget
-const DIVS = ['logistics', 'engineering', 'security'];
-function toggleBudget(on = !$('s-budget').classList.contains('on')) {
-  $('s-budget').classList.toggle('on', on); audio.play('click');
-  if (on) { $('in-tax').value = st.tax; for (const k of DIVS) $(`in-${k}`).value = st.budget[k]; budgetText(); }
-}
-$('in-tax').oninput = (e) => { st.setTax(+e.target.value); budgetText(); };
-for (const k of DIVS) $(`in-${k}`).oninput = (e) => { st.setBudget(k, +e.target.value); budgetText(); };
-const WHO = { logistics: 'haulers', engineering: 'engineers', security: 'officers' };
-const NEED = { logistics: 'a Cargo Hold', engineering: 'an Engineering Bay', security: 'a Security Post' };
-const HOME = { logistics: 'Station Command (3) and each Cargo Hold (2)', engineering: 'each Engineering Bay (3)', security: 'each Security Post (3)' };
-function budgetText() {
+// ---------------------------------------------------------------- menu
+function menu(on = !$('s-menu').classList.contains('on')) { $('s-menu').classList.toggle('on', on); audio.play('click'); if (on) { $('in-tax').value = st.tax; menuText(); } }
+$('b-menu').onclick = () => menu(); $('b-close').onclick = () => menu(false);
+$('b-mute').onclick = () => { audio.unlock(); audio.mute(!audio.muted); $('b-mute').textContent = audio.muted ? 'SOUND OFF' : 'SOUND ON'; };
+$('in-tax').oninput = (e) => { st.setTax(+e.target.value); menuText(); };
+function menuText() {
   const p = st.moraleParts();
   $('bv-tax').textContent = `${st.tax}%`;
   $('bn-tax').textContent = `+${Math.round(st.taxPerMin())} CR/min from ${st.residents()} residents · morale ${p.tax >= 0 ? '+' : ''}${Math.round(p.tax)}`;
-  for (const k of DIVS) {
-    const d = C.div[k], funded = Math.floor(st.budget[k] / d.wage);
-    $(`bv-${k}`).textContent = `${st.budget[k]} CR/min`;
-    $(`bn-${k}`).textContent = st.cap[k]
-      ? `Funds ${funded} ${WHO[k]} at ${d.wage} CR/min each · ${st.staff[k]} working (places: ${st.cap[k]}, from ${HOME[k]})`
-      : `No places for ${WHO[k]} yet: build ${NEED[k]}.`;
-  }
   const net = st.netPerMin();
   $('ledger').innerHTML = `<span>Tax</span><span class="up">+${Math.round(st.taxPerMin())} /min</span>`
-    + `<span>Wages</span><span class="down">−${Math.round(st.wages())} /min</span>`
     + `<span>Upkeep</span><span class="down">−${Math.round(st.upkeep())} /min</span>`
-    + `<span>Trade so far</span><span class="up">+${Math.round(st.totals.trade + st.totals.fines)}</span>`
-    + `<span><b>Net, last minute</b></span><span class="${net >= 0 ? 'up' : 'down'}"><b>${net >= 0 ? '+' : '−'}${Math.abs(Math.round(net))} /min</b></span>`;
+    + `<span>Trade so far</span><span class="up">+${Math.round(st.totals.trade)}</span>`
+    + `<span><b>Running profit, last minute</b></span><span class="${net >= 0 ? 'up' : 'down'}"><b>${net >= 0 ? '+' : '−'}${Math.abs(Math.round(net))} /min</b></span>`;
 }
 
-// ---------------------------------------------------------------- ticker and events
-const lines = [];
+// ---------------------------------------------------------------- messages
+const msgs = [];
 function say(text, cls = 'info') {
-  lines.push({ text, cls, t: performance.now() });
-  while (lines.length > 3) lines.shift();
-  $('ticker').innerHTML = lines.map((l, i) => `<div class="${l.cls}${i < lines.length - 1 ? ' old' : ''}">${l.text}</div>`).join('');
+  msgs.push({ text, cls, t: performance.now() });
+  while (msgs.length > 5) msgs.shift();
+  drawMsgs();
+}
+function drawMsgs() {
+  const now = performance.now();
+  $('msgs').innerHTML = msgs.filter((m) => now - m.t < 16000).map((m, i, a) => `<div class="m-${m.cls}${i < a.length - 1 ? ' old' : ''}">${m.text}</div>`).join('');
 }
 let bannerT = 0;
-function banner(title, sub) { const b = $('banner'); b.innerHTML = `${title}<small>${sub}</small>`; b.classList.add('show'); bannerT = 5; }
 function drain() {
   for (const e of st.events) {
+    if (!ui.started) continue;
     switch (e.type) {
-      case 'built': if (e.mod.type !== 'corridor') audio.play('built'); break;
-      case 'crate': audio.play('crate'); R.float(e.x, e.y, `+${C.econ.crateFee}`, '#ffe600'); break;
+      case 'built': audio.play('built'); break;
+      case 'crate': audio.play('crate'); break;
       case 'dock': audio.play('dock'); say(e.text); break;
-      case 'fault': audio.play('fault'); say(e.text, 'warn'); break;
-      case 'fixed': audio.play('fixed'); say(e.text, 'info'); break;
-      case 'caught': audio.play('caught'); say(e.text, 'gold'); R.float(e.mod.col + 1, e.mod.row, `+${C.econ.fine}`, '#ffe600'); break;
-      case 'contraband': audio.play('contraband'); say(e.text, 'bad'); break;
       case 'lost': audio.play('lost'); say(e.text, 'bad'); break;
       case 'left': say(e.text, 'warn'); break;
-      case 'milestone': audio.play('milestone'); say(e.text, 'gold'); banner('GARRISON PERMIT GRANTED', 'The whole hull is yours. Canteen and Security Post unlocked.'); break;
+      case 'milestone': audio.play('milestone'); say(e.text, 'gold'); $('banner').innerHTML = 'GARRISON PERMIT GRANTED<small>The build zone grows. Rings, promenades, drums and pylons unlocked.</small>'; $('banner').classList.add('show'); bannerT = 5; break;
       case 'talk': say(e.text, 'dim'); break;
     }
   }
   st.events.length = 0;
 }
 
-// ---------------------------------------------------------------- HUD text
-function hudText() {
+// ---------------------------------------------------------------- HUD
+function hud() {
   const net = st.netPerMin();
-  $('cr').textContent = Math.round(st.credits).toLocaleString('en-US');
-  $('net').textContent = `${net >= 0 ? '+' : '−'}${Math.abs(Math.round(net))}/min`;
-  $('net').className = net >= 0 ? 'up' : 'down';
-  const mo = Math.round(st.morale), moCol = mo >= 55 ? 'var(--g)' : mo >= 35 ? 'var(--amber)' : 'var(--red)';
-  const waiting = st.ships.filter((s) => s.state === 'hold').length;
-  $('stats').innerHTML = `<span>RESIDENTS</span><span>${st.residents()} / ${st.beds()}</span>`
-    + `<span>MORALE</span><span><i class="bar"><u style="width:${mo}%;background:${moCol}"></u></i>${mo}</span>`
-    + `<span>POWER</span><span style="color:${st.eff < 1 ? 'var(--red)' : '#fff'}">${st.demand} / ${st.supply}</span>`
-    + `<span>SHIPS</span><span>${st.stats.ships} served · ${st.stats.lost} lost</span>`
-    + `<span>WAITING</span><span style="color:${waiting ? 'var(--yellow)' : '#fff'}">${waiting}</span>`
-    + `<span>TAX</span><span>${st.tax}%</span>`;
+  $('r-cr').textContent = st.sandbox ? '∞' : Math.round(st.credits).toLocaleString('en-US');
+  $('r-net').textContent = st.sandbox ? '' : `${net >= 0 ? '+' : '−'}${Math.abs(Math.round(net))}/min`; $('r-net').className = net >= 0 ? 'up' : 'down';
+  $('r-pw').textContent = `${st.demand}/${st.supply}`; $('r-pw').style.color = st.eff < 1 ? 'var(--red)' : '';
+  $('r-pop').textContent = `${st.residents()}/${st.beds()}`;
+  const mo = Math.round(st.morale); $('r-mo').textContent = mo; $('r-mo').style.color = mo >= 55 ? '' : mo >= 35 ? 'var(--amber)' : 'var(--red)';
+  $('r-sh').textContent = `${st.stats.ships} · ${st.stats.lost}`;
   const m = st.milestone();
-  $('ms').classList.toggle('done', m.done);
-  $('ms').innerHTML = m.done
-    ? `<div class="ph">MILESTONE</div><div class="mn">${m.name} ✓</div><div class="un">The whole hull is open. More milestones come after this test.</div>`
-    : `<div class="ph">NEXT MILESTONE</div><div class="mn">${m.name}</div><ul>${m.items.map((i) => `<li class="${i.ok ? 'ok' : ''}">${i.label} ${Math.min(i.have, i.need)}/${i.need}</li>`).join('')}</ul><div class="un">Unlocks: ${m.unlocks}</div>`;
-  const anyDock = [...st.mods.values()].some((x) => x.type === 'dock');
-  const orders = [
-    ['Build a Docking Bay on the top or bottom deck', anyDock],
-    ['Connect it to Command with lifts and corridors', st.count('dock') > 0],
-    ['Build a Cargo Hold, connected too', st.count('cargo') > 0],
-    ['Build Quarters for colonists', st.beds() > 0],
-    ['Build a Reactor before the power runs out', st.count('reactor') > 0],
-    ['Build an Engineering Bay for repairs', st.count('engineering') > 0],
-  ];
-  const first = orders.findIndex((o) => !o[1]);
-  $('orders').classList.toggle('hidden', first < 0);
-  $('orders-list').innerHTML = orders.map((o, i) => `<li class="${o[1] ? 'ok' : i === first ? 'now' : ''}">${o[0]}</li>`).join('');
-  paletteState();
-  if ($('s-budget').classList.contains('on')) budgetText();
+  $('tier').textContent = st.sandbox ? 'SANDBOX' : m.done ? 'GARRISON' : 'OUTPOST';
+  $('tier-next').textContent = st.sandbox ? 'every part unlocked' : m.done ? 'more milestones after this test' : `next: ${m.name} · ${m.items.filter((i) => i.ok).length}/${m.items.length}`;
+  gridState();
+  if (!ui.tool) info();
+  if ($('s-menu').classList.contains('on')) menuText();
+}
+let infoHTML = '';
+function setInfo(html, bind) { if (html === infoHTML) return; infoHTML = html; $('info').innerHTML = html; if (bind) bind(); }
+function stat(label, value, cls = '') { return `<span class="${cls}"><i>${label}</i>${value}</span>`; }
+function info(peek) {
+  const t = ui.tool || peek;
+  if (t) {
+    const d = C.parts[t];
+    setInfo(`<div class="in">${d.name.toUpperCase()}</div><div class="ia">${d.about}</div>`
+      + `<div class="st">${stat('COST', `${d.cost} CR`, st.credits < d.cost && !st.sandbox ? 'bad' : '')}${stat('POWER', d.pw < 0 ? `+${-d.pw}` : `−${d.pw}`)}${stat('UPKEEP', `${d.up}/min`)}${d.beds ? stat('BEDS', d.beds) : ''}${d.crates ? stat('CRATES', d.crates) : ''}</div>`
+      + (ui.tool ? `<div class="ia">Click a glowing port to attach it. <b>R</b> turns it (${ui.rot * 45}°). Right-click or Esc puts it down.</div>` : ''));
+    return;
+  }
+  const p = ui.sel && st.parts.get(ui.sel);
+  if (p) {
+    const d = C.parts[p.type];
+    const state = p.state === 'building' ? `<span class="warn">Building ${Math.round(p.prog * 100)}%</span>` : p.state === 'demolish' ? '<span class="bad">Coming down</span>' : '<span class="ok">Running</span>';
+    let extra = '';
+    if (d.beds) extra += stat('RESIDENTS', `${st.agents.filter((a) => a.role === 'resident' && a.home === p.id).length}/${d.beds}`);
+    if (d.berth) { const s = st.ships.find((x) => x.dock === p.id); extra += stat('BERTH', s ? `${s.name}${s.state === 'docked' && s.kind === 'freighter' ? `, ${s.crates} crates` : s.state === 'approach' ? ', approaching' : ''}` : 'empty'); }
+    const cd = st.canDemolish(p.id);
+    setInfo(`<div class="in">${st.name(p).toUpperCase()}</div><div class="ia">${d.about}</div>`
+      + `<div class="st">${stat('STATUS', state)}${stat('POWER', d.pw < 0 ? `+${-d.pw}` : `−${d.pw}`)}${extra}</div>`
+      + `<div class="acts"><button class="btn" id="a-focus" type="button">FOCUS <small>F</small></button>${p.type !== 'command' ? `<button class="btn" id="a-demo" type="button" ${cd.ok ? '' : 'disabled'} title="${cd.why}">DEMOLISH <small>X</small> ${cd.ok ? `+${Math.round(d.cost * C.demolish.refund)} CR` : ''}</button>` : ''}</div>`, () => {
+      $('a-focus').onclick = () => view.focus(p.id);
+      if ($('a-demo')) $('a-demo').onclick = () => demolishSel();
+    });
+    return;
+  }
+  const m = st.milestone();
+  setInfo(`<div class="in">${st.sandbox ? 'SANDBOX' : 'STATION OVERVIEW'}</div>`
+    + `<div class="ia">Pick a part from the grid, then click a glowing port. Click a part to select it. Drag to orbit, right-drag to pan, scroll to zoom.</div>`
+    + (st.sandbox || m.done ? '' : `<ul class="ms">${m.items.map((i) => `<li class="${i.ok ? 'ok' : ''}">${i.label} ${Math.min(i.have, i.need)}/${i.need}</li>`).join('')}<li class="ok" style="color:var(--g-dim)">Unlocks: ${m.unlocks}</li></ul>`));
 }
 
-const ABOUT = {
-  corridor: 'A walkway. Cheap, and every route needs them.',
-  lift: 'The only way between decks. Stack lifts to make a shaft.',
-  dock: 'A berth for one ship. Freighters bring 6 crates; shuttles bring colonists.',
-  cargo: `Haulers carry crates here: +${C.econ.crateFee} CR each. Also makes room for 2 haulers.`,
-  quarters: `Beds for ${C.mods.quarters.beds} residents, who pay the Liberty Contribution.`,
-  reactor: `Supplies ${-C.mods.reactor.pw} power.`,
-  engineering: 'Home of up to 3 engineers, who walk out and fix faults.',
-  canteen: `Residents whose quarters are within ${C.morale.canteenReach} cells' walk are happier.`,
-  security: `Democracy Officers inspect smugglers at bays within ${C.securityReach} cells' walk.`,
-  command: 'The heart of the station. Everything must connect to it. Home of 3 haulers.',
-};
-function tip() {
-  const el = $('tip'), h = ui.hover;
-  if (!h || !ui.started) { el.classList.add('hidden'); return; }
-  let html = '';
-  if (ui.tool && ui.tool !== 'demolish') {
-    const d = C.mods[ui.tool], chk = st.canPlace(ui.tool, h.c, h.r);
-    html = `<div class="tn">${d.name.toUpperCase()} · ${d.cost} CR</div><div>${ABOUT[ui.tool]}</div>`
-      + `<div class="${chk.ok ? 'good' : 'bad'}">${chk.ok ? `Click to build. Upkeep ${d.up} CR/min, power ${d.pw > 0 ? d.pw : '+' + -d.pw}.` : chk.why}</div>`;
-  } else if (h.mod) {
-    const m = h.mod, d = C.mods[m.type];
-    let state = '<span class="good">Running</span>';
-    if (m.state === 'building') state = `<span class="warn">Building ${Math.round(m.prog * 100)}%</span>`;
-    else if (m.state === 'demolish') state = '<span class="bad">Being torn down</span>';
-    else if (m.fault) state = `<span class="warn">FAULT: ${m.fixer ? 'an engineer is on it' : st.staff.engineering ? 'waiting for an engineer' : 'no engineers funded'}</span>`;
-    else if (!m.connected) state = '<span class="warn">No access: connect it to Station Command</span>';
-    else if (st.eff < 1 && d.pw > 0) state = '<span class="warn">Low power: build a Reactor</span>';
-    let extra = '';
-    if (m.type === 'dock') { const s = st.ships.find((x) => x.dock === m.id); extra = s ? `${s.name}: ${s.state === 'docked' ? (s.kind === 'freighter' ? `${s.crates} crates aboard` : 'colonists disembarking') : 'on approach'}` : 'Empty'; }
-    if (m.type === 'quarters') extra = `${st.agents.filter((a) => a.role === 'resident' && a.home === m.id).length} / ${d.beds} residents`;
-    if (m.type === 'security') extra = `${st.agents.filter((a) => a.role === 'security' && a.home === m.id).length} officers`;
-    if (m.type === 'engineering') extra = `${st.agents.filter((a) => a.role === 'engineering' && a.home === m.id).length} engineers`;
-    html = `<div class="tn">${st.name(m).toUpperCase()}</div><div>${ABOUT[m.type]}</div><div>${state}</div>${extra ? `<div>${extra}</div>` : ''}`
-      + (ui.tool === 'demolish' && !m.fixed ? `<div class="bad">Click to tear down: refunds ${Math.round(d.cost * C.demolish.refund)} CR</div>` : '');
-  } else { el.classList.add('hidden'); return; }
-  el.innerHTML = html; el.classList.remove('hidden');
-  const w = el.offsetWidth, hh = el.offsetHeight;
-  el.style.left = `${Math.min(innerWidth - w - 8, h.px + 16)}px`;
-  el.style.top = `${Math.max(8, h.py - hh - 14)}px`;
+// ---------------------------------------------------------------- minimap: the station from above
+const mini = $('mini'), mx = mini.getContext('2d');
+function drawMini() {
+  const W = mini.width, H = mini.height, R = W / 2 - 6, span = Math.max(20, st.radius) * 1.05, k = R / span;
+  mx.clearRect(0, 0, W, H);
+  mx.save(); mx.translate(W / 2, H / 2);
+  mx.strokeStyle = 'rgba(157,255,184,0.12)'; mx.lineWidth = 1;
+  for (let i = 1; i <= 4; i++) { mx.beginPath(); mx.arc(0, 0, R * i / 4, 0, 6.283); mx.stroke(); }
+  mx.beginPath(); mx.moveTo(-R, 0); mx.lineTo(R, 0); mx.moveTo(0, -R); mx.lineTo(0, R); mx.stroke();
+  mx.setLineDash([4, 4]); mx.strokeStyle = 'rgba(255,230,0,0.6)'; mx.beginPath(); mx.arc(0, 0, st.radius * k, 0, 6.283); mx.stroke(); mx.setLineDash([]);
+  for (const p of st.parts.values()) {
+    const c = st.center(p), x = c[0] * k, y = c[2] * k, sel = p.id === ui.sel;
+    mx.strokeStyle = sel ? '#ffe600' : p.state === 'active' ? 'rgba(157,255,184,0.9)' : 'rgba(255,230,0,0.6)'; mx.fillStyle = mx.strokeStyle;
+    if (p.type === 'ring' || p.type === 'bigring' || p.type === 'disc' || p.type === 'drum') { mx.beginPath(); mx.arc(x, y, ({ ring: 7, bigring: 12, disc: 5.6, drum: 4.7 })[p.type] * k, 0, 6.283); mx.stroke(); }
+    else if (C.parts[p.type].ports[0][6] === 'L') { const b0 = st.port(p, 0).pos; mx.beginPath(); mx.moveTo(b0[0] * k, b0[2] * k); mx.lineTo(x + (x - b0[0] * k), y + (y - b0[2] * k)); mx.lineWidth = 2; mx.stroke(); mx.lineWidth = 1; }
+    else { mx.fillRect(x - 2, y - 2, 4, 4); }
+  }
+  for (const s of st.ships) {
+    const o = view.shipObjs.get(s.id); if (!o) continue;
+    const x = o.position.x * k, y = o.position.z * k;
+    if (Math.hypot(x, y) > R) continue;
+    mx.fillStyle = s.state === 'hold' ? '#ffe600' : '#4db8ff'; mx.fillRect(x - 2, y - 2, 4, 4);
+  }
+  // The camera's view, as a wedge.
+  const cam = view.camera.position, tg = view.controls.target, a = Math.atan2(tg.z - cam.z, tg.x - cam.x), cx = cam.x * k, cy = cam.z * k;
+  const d = Math.min(R * 0.9, Math.hypot(cam.x, cam.z) * k);
+  mx.fillStyle = 'rgba(255,255,255,0.08)'; mx.strokeStyle = 'rgba(255,255,255,0.5)';
+  mx.beginPath(); mx.moveTo(Math.max(-R, Math.min(R, cx)), Math.max(-R, Math.min(R, cy)));
+  mx.arc(Math.max(-R, Math.min(R, cx)), Math.max(-R, Math.min(R, cy)), d * 0.5 + 10, a - 0.35, a + 0.35); mx.closePath(); mx.fill(); mx.stroke();
+  mx.restore();
 }
+mini.addEventListener('click', (e) => {   // click the minimap to look there
+  const r = mini.getBoundingClientRect(), R = r.width / 2 - 6 * r.width / mini.width, span = Math.max(20, st.radius) * 1.05;
+  const x = (e.clientX - r.left - r.width / 2) / R * span, z = (e.clientY - r.top - r.height / 2) / R * span;
+  const d = view.camera.position.clone().sub(view.controls.target);
+  view.controls.target.set(x, view.controls.target.y, z); view.camera.position.copy(view.controls.target).add(d);
+});
+
+// ---------------------------------------------------------------- scanlines, vignette and corner marks over everything (as in Orbital Fury)
+function fx() {
+  const c = $('fx'), dpr = Math.min(devicePixelRatio || 1, 2), W = c.width = Math.round(innerWidth * dpr), H = c.height = Math.round(innerHeight * dpr), g = c.getContext('2d');
+  g.fillStyle = 'rgba(0,0,0,0.16)'; const gap = Math.max(3, Math.round(3 * dpr));
+  for (let y = 0; y < H; y += gap) g.fillRect(0, y, W, Math.max(1, Math.round(dpr)));
+  const v = g.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.4, W / 2, H / 2, Math.hypot(W, H) * 0.6);
+  v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,0.6)'); g.fillStyle = v; g.fillRect(0, 0, W, H);
+}
+addEventListener('resize', () => { view.resize(); fx(); });
+fx();
 
 // ---------------------------------------------------------------- loop
 const STEP = 1 / 30;
-let last = performance.now(), acc = 0, hudT = 0;
-function frame(now) {
-  const dt = Math.min(0.1, (now - last) / 1000); last = now;
-  if (ui.started && !ui.paused) {
-    acc += dt * ui.speed;
+let last = performance.now(), acc = 0, hudT = 0, miniT = 0;
+function frame(nowMs) {
+  const now = nowMs / 1000, dt = Math.min(0.1, (nowMs - last) / 1000); last = nowMs;
+  if (!ui.paused) {
+    acc += dt * (ui.started ? ui.speed : 1);
     let n = 0;
     while (acc >= STEP && n++ < 12) { st.step(STEP); acc -= STEP; }
     if (n >= 12) acc = 0;
   }
   drain();
-  R.draw(st, ui, now / 1000, ui.paused ? 0 : dt);
-  if ((hudT -= dt) <= 0 && ui.started) { hudT = 0.25; hudText(); if (ui.hover) tip(); }
-  if (bannerT > 0 && (bannerT -= dt) <= 0) $('banner').classList.remove('show');
+  view.sync(now);
+  view.render(now);
+  if (ui.started) {
+    if ((hudT -= dt) <= 0) { hudT = 0.25; hud(); drawMsgs(); if (ui.tool) view.showPorts(ui.tool, ui.rot, ui.hot); }
+    if ((miniT -= dt) <= 0) { miniT = 0.1; drawMini(); }
+    if (bannerT > 0 && (bannerT -= dt) <= 0) $('banner').classList.remove('show');
+  }
   requestAnimationFrame(frame);
 }
-if (qs.has('skip')) begin();
+if (qs.has('run')) start('run'); else if (qs.has('sandbox')) start('sandbox');
 requestAnimationFrame(frame);

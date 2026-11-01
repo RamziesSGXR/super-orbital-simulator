@@ -4,80 +4,95 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#030805">
-<meta name="description" content="Super Orbital Simulator: build and run a Super Earth space fort. A fan-made prototype for the Super Earth Special Forces community.">
+<meta name="description" content="Super Orbital Simulator: build and run a Super Earth space station. A fan-made prototype for the Super Earth Special Forces community.">
 <title>Super Orbital Simulator</title>
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
 <div id="app">
   <canvas id="view"></canvas>
+  <canvas id="fx" class="ovfx"></canvas>
 
   <div id="hud" class="hidden">
-    <div class="hud-l">
-      <div class="bigcr" title="Credits, and the change over the last minute"><b id="cr">0</b><span>CR</span><i id="net"></i></div>
-      <div id="orders" class="panel orders"><div class="ph">FIRST ORDERS</div><ul id="orders-list"></ul></div>
-    </div>
-    <div class="hud-c"><div class="eyebrow">Super Orbital Simulator · prototype 0.1</div><div id="hullname" class="hn"></div></div>
-    <div class="hud-r">
-      <div id="stats" class="panel stats"></div>
-      <div id="ms" class="panel ms"></div>
-    </div>
+    <!-- Top bar, the Age of Empires way: resources on the left, the age in the middle, the menu on the right. -->
+    <header id="top">
+      <div class="res">
+        <span class="ri cr" title="Credits, and the running profit over the last minute"><i>CR</i><b id="r-cr">0</b><em id="r-net"></em></span>
+        <span class="ri" title="Power used / supplied"><i>PWR</i><b id="r-pw"></b></span>
+        <span class="ri" title="Residents / beds"><i>POP</i><b id="r-pop"></b></span>
+        <span class="ri" title="Morale"><i>MRL</i><b id="r-mo"></b></span>
+        <span class="ri" title="Ships served · lost"><i>SHIPS</i><b id="r-sh"></b></span>
+      </div>
+      <div class="age"><b id="tier">OUTPOST</b><span id="tier-next"></span></div>
+      <div class="menu">
+        <button id="b-pause" class="btn icon" type="button" title="Pause (Space)">II</button>
+        <button id="b-speed" class="btn icon" type="button" title="Game speed">1×</button>
+        <button id="b-menu" class="btn" type="button" title="Tax, sound and help (M)">MENU</button>
+      </div>
+    </header>
+    <div id="msgs"></div>
     <div id="tip" class="tip hidden"></div>
     <div id="banner" class="banner"></div>
-    <div class="hud-b">
-      <div id="ticker" class="ticker"></div>
-      <div class="dock-row">
-        <div id="palette" class="palette"></div>
-        <div class="ctrl">
-          <button id="btn-demo" class="btn" type="button" title="Tear a module down (X). Refunds a quarter of its cost.">DEMOLISH <kbd>X</kbd></button>
-          <button id="btn-budget" class="btn" type="button" title="Tax and division budgets (B)">BUDGET <kbd>B</kbd></button>
-          <button id="btn-pause" class="btn icon" type="button" title="Pause (Space)">II</button>
-          <button id="btn-speed" class="btn icon" type="button" title="Game speed">1×</button>
-          <button id="btn-mute" class="btn icon" type="button" title="Sound on or off">♪</button>
+
+    <!-- Bottom panel: command grid on the left, the selection in the middle, the minimap on the right. -->
+    <footer id="panel">
+      <div id="cmd" class="cmd"></div>
+      <div id="info" class="info"></div>
+      <div class="mm">
+        <div class="views">
+          <button class="btn vb on" data-v="blueprint" type="button" title="Blueprint (1)">BLUEPRINT</button>
+          <button class="btn vb" data-v="hull" type="button" title="Hull (2)">HULL</button>
+          <button class="btn vb" data-v="life" type="button" title="Life signs (3)">LIFE SIGNS</button>
+          <button class="btn vb" data-v="cut" type="button" title="Cutaway (4)">CUTAWAY</button>
         </div>
+        <canvas id="mini" width="300" height="300"></canvas>
       </div>
-    </div>
+    </footer>
   </div>
 
   <section id="s-title" class="screen on">
     <div class="card">
       <div class="eyebrow">Super Earth Ministry of Orbital Affairs</div>
       <h1>SUPER ORBITAL SIMULATOR</h1>
-      <p class="tag">Build and run a space fort for the war effort.</p>
+      <p class="tag">Build and run a space station for the war effort.</p>
       <div class="brief">
-        <p>Your assignment: <b>the hulk of the SES Patient Fury</b>. The Ministry has permitted its middle section. Fill it, connect it, and make it pay.</p>
         <ol>
-          <li>Pick a module at the bottom, then click inside the yellow <b>permitted section</b>. Drag to lay corridors and lifts.</li>
-          <li><b>Docking bays</b> must touch open space: the top deck, the bottom deck, or the hull's ends.</li>
-          <li>Everything must connect to <b>Station Command</b>. People walk along decks and only change deck in a <b>lift</b>.</li>
-          <li>Ships dock, haulers carry the crates to a <b>cargo hold</b>, and every crate pays. Residents pay the Liberty Contribution.</li>
-          <li>In <b>BUDGET</b> you fund the divisions. You set the money; the simulation decides the people.</li>
+          <li>Pick a part from the grid at the bottom left, then click one of the glowing <b>ports</b> to attach it. <b>R</b> turns it.</li>
+          <li>Drag to orbit, right-drag to pan, scroll or pinch to zoom.</li>
+          <li><b>Docking ports</b> bring ships. Haulers carry their crates to a <b>cargo module</b>, and every crate pays. <b>Habs</b> and <b>rings</b> house colonists, who pay tax.</li>
+          <li>Switch views at the bottom right: <b>Blueprint</b>, <b>Hull</b>, <b>Life Signs</b>, and a <b>Cutaway</b> that opens the station up.</li>
         </ol>
       </div>
-      <div class="legend">
-        <span><i style="background:#d8ffe4"></i>Residents</span><span><i style="background:#4db8ff"></i>Haulers</span>
-        <span><i style="background:#ffc340"></i>Engineers</span><span><i style="background:#ff5a4a"></i>Democracy Officers</span>
+      <div class="btns">
+        <button id="b-run" class="btn primary big" type="button">RUN A STATION</button>
+        <button id="b-sandbox" class="btn big" type="button">SANDBOX</button>
       </div>
-      <div class="btns"><button id="btn-begin" class="btn primary big" type="button">BEGIN</button></div>
-      <p class="fine">Prototype 0.1: a test of the look and the smallest loop. There is no game over and nothing is saved yet.<br>
+      <p class="fine">Run a station: start with Station Command and 2,000 CR, and earn the Garrison Permit for the big parts.
+        Sandbox: every part, no money, a big build zone. Prototype 0.2, nothing is saved yet.<br>
         An unofficial fan project for the Super Earth Special Forces community, by Robert Troumbley. Not affiliated with or endorsed by Arrowhead Game Studios or Sony Interactive Entertainment.</p>
     </div>
   </section>
 
-  <section id="s-budget" class="screen overlay">
+  <section id="s-menu" class="screen overlay">
     <div class="card">
       <div class="eyebrow">The station keeps running while this is open</div>
-      <h2>BUDGET</h2>
+      <h2>MENU</h2>
       <div class="brow"><span class="bl">LIBERTY CONTRIBUTION (TAX)</span><span class="bv" id="bv-tax"></span>
         <input id="in-tax" type="range" min="0" max="30" step="1"><span class="bn" id="bn-tax"></span></div>
-      <div class="brow"><span class="bl">MINISTRY OF SUPPLY · HAULERS</span><span class="bv" id="bv-logistics"></span>
-        <input id="in-logistics" type="range" min="0" max="100" step="2"><span class="bn" id="bn-logistics"></span></div>
-      <div class="brow"><span class="bl">PATRIOTIC MAINTENANCE · ENGINEERS</span><span class="bv" id="bv-engineering"></span>
-        <input id="in-engineering" type="range" min="0" max="100" step="2"><span class="bn" id="bn-engineering"></span></div>
-      <div class="brow"><span class="bl">DEMOCRACY OFFICERS · SECURITY</span><span class="bv" id="bv-security"></span>
-        <input id="in-security" type="range" min="0" max="100" step="2"><span class="bn" id="bn-security"></span></div>
       <div class="ledger" id="ledger"></div>
-      <div class="btns"><button id="btn-budget-close" class="btn primary" type="button">CLOSE</button></div>
+      <div class="keys">
+        <span>Parts</span><span>Q W E T Y · A S D F G · Z C V B N</span>
+        <span>Turn part</span><span>R</span>
+        <span>Demolish selected</span><span>X</span>
+        <span>Focus selected</span><span>F</span>
+        <span>Views</span><span>1 Blueprint · 2 Hull · 3 Life signs · 4 Cutaway</span>
+        <span>Pause</span><span>Space</span>
+      </div>
+      <div class="btns">
+        <button id="b-close" class="btn primary" type="button">BACK TO THE STATION</button>
+        <button id="b-mute" class="btn" type="button">SOUND ON</button>
+        <button id="b-restart" class="btn" type="button">TITLE SCREEN</button>
+      </div>
     </div>
   </section>
 </div>
