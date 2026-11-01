@@ -6,9 +6,13 @@ Build and run a space station for the war effort. A browser game for the **Super
 
 It's Cities: Skylines for a Helldivers space station, with an Age of Empires 2 upgrade path. You start with Station Command in an empty 3D blueprint space, snap parts onto it, and run it at a profit while the war flows past the airlocks. Rings, cores, pylons, discs, drums, trusses, nodes, modules and solar wings are all in the kit, so you can build the station you have in your head.
 
-## Play
+## ▶ [Play Super Orbital Simulator](https://ramziessgxr.github.io/super-orbital-simulator/)
 
-Run a local web server in this folder (`npm start`, then open <http://localhost:8080>), or play the hosted copy once GitHub Pages is on. Opening `index.html` straight from disk won't work, because browsers block ES modules on `file://`.
+It runs in your browser on a computer, or on a phone or tablet held sideways. There is nothing to install. Turn the sound on.
+
+**Quick start:** press **RUN A STATION**, press `F` (or the Docking Port button in the grid), and click one of the glowing yellow ports on Station Command. Add a Cargo Module (`V`) and a Hab Module (`B`) the same way, and the first ships and colonists arrive within a minute. Want to just build? Press **SANDBOX** instead.
+
+## How to play
 
 - **RUN A STATION** starts you with Station Command and 2,000 CR. **SANDBOX** gives you every part, no costs and a big build zone.
 - **Build:** pick a part from the grid at the bottom left (or its hotkey), and the free ports glow yellow. Hover one to see the part in place, then click to build it. `R` turns it 45°. Right-click or `Esc` puts the part down.
@@ -66,9 +70,15 @@ tools/vendor.mjs    rebuilds js/vendor/three.js
 tools/bundle.mjs    builds dist/super-orbital-simulator.html, the whole game in one file
 ```
 
+**Running your own copy.** Serve this folder with any local web server (`npm start`, then open <http://localhost:8080>). Opening `index.html` straight from disk won't work, because browsers block ES modules on `file://`.
+
 Tests: `npm run sim` needs only Node. For the browser test, `npm install`, `npm start` in one terminal and `npm run ui` in another. `?seed=N` fixes the random seed, and `?run` or `?sandbox` skips the title.
 
 Prototype 0.1, the flat cross-section version, is the first commit in the history.
+
+## Give feedback
+
+This is an early prototype, and feedback is how it gets better. Join the **[SESF Helldivers Discord](https://discord.com/invite/qruRY4nkEz)** and tell us what you played on, what you built, what was fun, and what was confusing or broken. Screenshots of your stations are very welcome.
 
 ## Credits and disclaimer
 
