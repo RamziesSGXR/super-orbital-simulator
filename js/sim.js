@@ -34,6 +34,8 @@ export class Station {
     this.agents = []; this.ships = []; this.events = [];
     this.morale = C.morale.base; this.eff = 1; this.supply = 0; this.demand = 0;
     this.stats = { crates: 0, ships: 0, lost: 0, colonists: 0, left: 0 };
+    this.traffic = true;                     // ships arrive on their own (free play can switch this off)
+    this.crateTimes = []; this.berthTimes = [];
     this.totals = { trade: 0, tax: 0, upkeep: 0, build: 0 };
     this.buckets = Array.from({ length: 60 }, () => ({ s: -1, v: 0 }));
     this.timers = { freighter: 5, shuttle: 10, leave: C.morale.leaveSec, talk: 45 };
@@ -368,15 +370,32 @@ export class Station {
       if (s) s.reserved = Math.max(0, s.reserved - 1);
     } else if (what === 'drop') {
       a.carry = false; a.task = null;
-      this._money(C.econ.crateFee, 'trade'); this.stats.crates++;
+      this._money(C.econ.crateFee, 'trade'); this.stats.crates++; this.crateTimes.push(this.t);
       this.events.push({ type: 'crate', part: a.at });
     }
   }
 
+  // ---------------------------------------------------------------- test tools (free play)
+  spawnShip(kind) { if (!this.berths().length) return false; this._arrive2(kind); return true; }
+  addColonists(n) {
+    const beds = this.freeBeds(), k = Math.min(n, beds.length);
+    for (let i = 0; i < k; i++) { const a = this._spawn('resident', this.root, beds[i].id); a.task = 'back'; a.wait = i * 0.2; }
+    this.stats.colonists += k;
+    return k;
+  }
+  clearShips() {
+    this.ships.length = 0;
+    for (const a of this.agents) if (a.task === 'pick') { a.task = null; a.path = []; a.s = 0; }
+  }
+  // Readings for the test panel.
+  cratesPerMin() { while (this.crateTimes.length && this.crateTimes[0] < this.t - 60) this.crateTimes.shift(); return this.crateTimes.length * 60 / Math.min(60, Math.max(1, this.t)); }
+  avgBerth() { const b = this.berthTimes; return b.length ? b.reduce((x, y) => x + y, 0) / b.length : null; }
+  haulersBusy() { const h = this.agents.filter((a) => a.role === 'hauler'); return { busy: h.filter((a) => a.carry || a.task === 'pick' || a.task === 'drop').length, all: h.length }; }
+
   // ---------------------------------------------------------------- ships
   _ships(dt) {
     const S = C.ships, berths = this.berths();
-    if (berths.length) {
+    if (berths.length && this.traffic) {
       const spires = Math.min(2, this.list((d) => d.traffic).length);
       if ((this.timers.freighter -= dt) <= 0) {
         this.timers.freighter = S.freighterSec / (1 + 0.5 * (berths.length - 1)) / (1 + 0.2 * spires) * this.rng.range(0.75, 1.25);
@@ -411,7 +430,7 @@ export class Station {
   _docked(s) {
     const p = this.parts.get(s.dock);
     if (!p) { this._depart(s, true); return; }
-    s.state = 'docked'; s.t = 0; s.lastDock = p.id;
+    s.state = 'docked'; s.t = 0; s.lastDock = p.id; s.dockedAt = this.t;
     this._money(C.econ.dockFee, 'trade');
     if (s.kind === 'shuttle') {
       const beds = this.freeBeds(), n = Math.min(C.ships.colonists, beds.length);
@@ -424,6 +443,7 @@ export class Station {
     this.events.push({ type: 'dock', ship: s, text: `${s.name} docked at ${this.name(p)} with ${s.crates} crates. Commerce is patriotism.` });
   }
   _depart(s, lost) {
+    if (!lost && s.dockedAt != null) { this.berthTimes.push(this.t - s.dockedAt); if (this.berthTimes.length > 20) this.berthTimes.shift(); }
     if (!lost) this.stats.ships++;
     else if (s.state === 'docked' && s.crates > 0) this.stats.lost++;
     s.lastDock = s.dock || s.lastDock; s.state = 'depart'; s.t = 0; s.dock = 0; s.crates = 0; s.reserved = 0;

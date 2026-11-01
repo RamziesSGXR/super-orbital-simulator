@@ -43,12 +43,16 @@ function start(mode) {
   setView('blueprint'); setCut(false);
   $('s-title').classList.remove('on'); $('hud').classList.remove('hidden');
   msgs.length = 0;
-  say(mode === 'sandbox' ? 'Sandbox: every part, no costs. Build anything.' : 'The Ministry welcomes you, Station Master. Start with a Docking Port on Station Command.', 'gold');
+  const free = mode === 'sandbox';
+  ui.speed = 1; $('b-speed').textContent = '1×';
+  $('b-sim').classList.toggle('hidden', !free); $('simpanel').classList.toggle('hidden', !free); $('b-sim').classList.toggle('on', free);
+  $('t-traffic').classList.add('on'); $('t-traffic').textContent = 'TRAFFIC ON';
+  say(free ? 'Free play: every part, no costs. Test tools are under SIM (K). Build anything.' : 'The Ministry welcomes you, Station Master. Start with a Docking Port on Station Command.', 'gold');
   buildGrid(); hud(); info();
 }
-$('b-run').onclick = () => start('run');
-$('b-sandbox').onclick = () => start('sandbox');
-$('b-restart').onclick = () => { $('s-menu').classList.remove('on'); ui.started = false; $('hud').classList.add('hidden'); $('s-title').classList.add('on'); st = demoStation(); view.setStation(st); view.setMode('hull'); view.setCutaway(false); view.controls.autoRotate = true; };
+$('b-economy').onclick = () => start('run');
+$('b-free').onclick = () => start('sandbox');
+$('b-restart').onclick = () => { $('s-menu').classList.remove('on'); $('simpanel').classList.add('hidden'); $('b-sim').classList.add('hidden'); ui.started = false; $('hud').classList.add('hidden'); $('s-title').classList.add('on'); st = demoStation(); view.setStation(st); view.setMode('hull'); view.setCutaway(false); view.controls.autoRotate = true; };
 
 // ---------------------------------------------------------------- command grid
 function buildGrid() {
@@ -152,6 +156,7 @@ addEventListener('keydown', (e) => {
   else if (k === ' ') { e.preventDefault(); pause(); }
   else if (k === '1') setView('blueprint'); else if (k === '2') setView('hull'); else if (k === '3') setView('life'); else if (k === '4') setCut(!ui.cut);
   else if (k === 'm') menu();
+  else if (k === 'k') simPanel();
 });
 function demolishSel() {
   if (!ui.sel) return;
@@ -160,7 +165,37 @@ function demolishSel() {
 }
 function pause(on = !ui.paused) { ui.paused = on; $('b-pause').textContent = on ? '▶' : 'II'; $('b-pause').classList.toggle('on', on); audio.play('click'); }
 $('b-pause').onclick = () => pause();
-$('b-speed').onclick = () => { ui.speed = ui.speed === 1 ? 2 : ui.speed === 2 ? 4 : 1; $('b-speed').textContent = `${ui.speed}×`; audio.play('click'); };
+$('b-speed').onclick = () => {
+  const steps = st.sandbox ? [1, 2, 4, 8, 16] : [1, 2, 4];   // free play runs faster, for testing
+  ui.speed = steps[(steps.indexOf(ui.speed) + 1) % steps.length] || 1; $('b-speed').textContent = `${ui.speed}×`; audio.play('click');
+};
+
+// ---------------------------------------------------------------- free play test tools
+function simPanel(on = $('simpanel').classList.contains('hidden')) { if (!st.sandbox) return; $('simpanel').classList.toggle('hidden', !on); $('b-sim').classList.toggle('on', on); audio.play('click'); }
+$('b-sim').onclick = () => simPanel();
+$('t-freighter').onclick = () => { if (st.spawnShip('freighter')) { audio.play('click'); say('Test: a freighter is on its way.', 'dim'); } else { audio.play('deny'); say('Build a Docking Port or Pylon first.', 'warn'); } };
+$('t-shuttle').onclick = () => { if (st.spawnShip('shuttle')) { audio.play('click'); say('Test: a shuttle is on its way.', 'dim'); } else { audio.play('deny'); say('Build a Docking Port or Pylon first.', 'warn'); } };
+$('t-colonists').onclick = () => { const n = st.addColonists(10); if (n) { audio.play('click'); say(`Test: ${n} colonists moved in at Station Command.`, 'dim'); } else { audio.play('deny'); say('No free beds: build Habs, Rings or Drums first.', 'warn'); } };
+$('t-clear').onclick = () => { st.clearShips(); audio.play('click'); say('Test: every ship cleared.', 'dim'); };
+$('t-traffic').onclick = () => { st.traffic = !st.traffic; $('t-traffic').classList.toggle('on', st.traffic); $('t-traffic').textContent = st.traffic ? 'TRAFFIC ON' : 'TRAFFIC OFF'; audio.play('click'); };
+function simStats() {
+  const p = st.moraleParts(), h = st.haulersBusy(), ab = st.avgBerth(), by = (k) => st.ships.filter((x) => x.state === k).length;
+  const sgn = (x) => `${x >= 0 ? '+' : '−'}${Math.abs(Math.round(x))}`;
+  const mm = Math.floor(st.t / 60), ss = String(Math.floor(st.t % 60)).padStart(2, '0');
+  $('t-stats').innerHTML = [
+    ['Sim time', `${mm}:${ss} at ${ui.speed}×`],
+    ['Crates / min', st.cratesPerMin().toFixed(1)],
+    ['Ships wait · in · docked', `${by('hold')} · ${by('approach')} · ${by('docked')}`],
+    ['Avg time at berth', ab == null ? '—' : `${ab.toFixed(1)} s`],
+    ['Haulers busy', `${h.busy} / ${h.all}`],
+    ['Berths', st.berths().length],
+    ['Pop / beds', `${st.residents()} / ${st.beds()}`],
+    ['Power use / supply', `${st.demand} / ${st.supply} (${Math.round(st.eff * 100)}%)`],
+    ['Crates · ships · lost', `${st.stats.crates} · ${st.stats.ships} · ${st.stats.lost}`],
+    ['Morale', `${Math.round(st.morale)}`],
+  ].map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join('')
+    + `<span class="wide">${p.base} base ${sgn(p.tax)} tax ${sgn(p.promenade + p.garden)} leisure ${sgn(p.power)} power${p.broke ? ` ${sgn(p.broke)} broke` : ''}</span>`;
+}
 
 // ---------------------------------------------------------------- menu
 function menu(on = !$('s-menu').classList.contains('on')) { $('s-menu').classList.toggle('on', on); audio.play('click'); if (on) { $('in-tax').value = st.tax; menuText(); } }
@@ -216,11 +251,12 @@ function hud() {
   const mo = Math.round(st.morale); $('r-mo').textContent = mo; $('r-mo').style.color = mo >= 55 ? '' : mo >= 35 ? 'var(--amber)' : 'var(--red)';
   $('r-sh').textContent = `${st.stats.ships} · ${st.stats.lost}`;
   const m = st.milestone();
-  $('tier').textContent = st.sandbox ? 'SANDBOX' : m.done ? 'GARRISON' : 'OUTPOST';
-  $('tier-next').textContent = st.sandbox ? 'every part unlocked' : m.done ? 'more milestones after this test' : `next: ${m.name} · ${m.items.filter((i) => i.ok).length}/${m.items.length}`;
+  $('tier').textContent = st.sandbox ? 'FREE PLAY' : m.done ? 'GARRISON' : 'OUTPOST';
+  $('tier-next').textContent = st.sandbox ? 'every part, no costs · test tools under SIM' : m.done ? 'more milestones after this test' : `next: ${m.name} · ${m.items.filter((i) => i.ok).length}/${m.items.length}`;
   gridState();
   if (!ui.tool) info();
   if ($('s-menu').classList.contains('on')) menuText();
+  if (st.sandbox && !$('simpanel').classList.contains('hidden')) simStats();
 }
 let infoHTML = '';
 function setInfo(html, bind) { if (html === infoHTML) return; infoHTML = html; $('info').innerHTML = html; if (bind) bind(); }
@@ -251,7 +287,7 @@ function info(peek) {
     return;
   }
   const m = st.milestone();
-  setInfo(`<div class="in">${st.sandbox ? 'SANDBOX' : 'STATION OVERVIEW'}</div>`
+  setInfo(`<div class="in">${st.sandbox ? 'FREE PLAY' : 'STATION OVERVIEW'}</div>`
     + `<div class="ia">Pick a part from the grid, then click a glowing port. Click a part to select it. Drag to orbit, right-drag to pan, scroll to zoom.</div>`
     + (st.sandbox || m.done ? '' : `<ul class="ms">${m.items.map((i) => `<li class="${i.ok ? 'ok' : ''}">${i.label} ${Math.min(i.have, i.need)}/${i.need}</li>`).join('')}<li class="ok" style="color:var(--g-dim)">Unlocks: ${m.unlocks}</li></ul>`));
 }
@@ -326,5 +362,5 @@ function frame(nowMs) {
   }
   requestAnimationFrame(frame);
 }
-if (qs.has('run')) start('run'); else if (qs.has('sandbox')) start('sandbox');
+if (qs.has('economy') || qs.has('run')) start('run'); else if (qs.has('free') || qs.has('sandbox')) start('sandbox');
 requestAnimationFrame(frame);

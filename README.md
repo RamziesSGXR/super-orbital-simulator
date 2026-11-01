@@ -10,11 +10,13 @@ It's Cities: Skylines for a Helldivers space station, with an Age of Empires 2 u
 
 It runs in your browser on a computer, or on a phone or tablet held sideways. There is nothing to install. Turn the sound on.
 
-**Quick start:** press **RUN A STATION**, press `F` (or the Docking Port button in the grid), and click one of the glowing yellow ports on Station Command. Add a Cargo Module (`V`) and a Hab Module (`B`) the same way, and the first ships and colonists arrive within a minute. Want to just build? Press **SANDBOX** instead.
+**Quick start:** press **ECONOMY**, press `F` (or the Docking Port button in the grid), and click one of the glowing yellow ports on Station Command. Add a Cargo Module (`V`) and a Hab Module (`B`) the same way, and the first ships and colonists arrive within a minute. Want to just build, or test how the station behaves? Press **FREE PLAY** instead.
 
 ## How to play
 
-- **RUN A STATION** starts you with Station Command and 2,000 CR. **SANDBOX** gives you every part, no costs and a big build zone.
+- **Two modes.**
+  - **Economy** is the game: Station Command and 2,000 CR. Keep the station profitable and earn the Garrison Permit for the big parts.
+  - **Free Play** is for building and for testing the simulation: every part, no costs, a big build zone, and the **SIM** test tools (`K`). You can send in a freighter or a shuttle, add 10 colonists, clear every ship, switch automatic traffic off, and run at up to 16×. A live readout shows crates per minute, ships waiting, in and docked, average time at berth, how many haulers are busy, beds, power, and where morale comes from.
 - **Build:** pick a part from the grid at the bottom left (or its hotkey), and the free ports glow yellow. Hover one to see the part in place, then click to build it. `R` turns it 45°. Right-click or `Esc` puts the part down.
 - **Look around:** drag to orbit, right-drag to pan, scroll or pinch to zoom. Click the minimap to look somewhere.
 - **Select:** click a part to see what it does and what's in it. `F` focuses on it and `X` demolishes it (half the cost back). Only parts with nothing attached can come down.
@@ -72,7 +74,7 @@ tools/bundle.mjs    builds dist/super-orbital-simulator.html, the whole game in 
 
 **Running your own copy.** Serve this folder with any local web server (`npm start`, then open <http://localhost:8080>). Opening `index.html` straight from disk won't work, because browsers block ES modules on `file://`.
 
-Tests: `npm run sim` needs only Node. For the browser test, `npm install`, `npm start` in one terminal and `npm run ui` in another. `?seed=N` fixes the random seed, and `?run` or `?sandbox` skips the title.
+Tests: `npm run sim` needs only Node. For the browser test, `npm install`, `npm start` in one terminal and `npm run ui` in another. `?seed=N` fixes the random seed, and `?economy` or `?free` skips the title.
 
 Prototype 0.1, the flat cross-section version, is the first commit in the history.
 

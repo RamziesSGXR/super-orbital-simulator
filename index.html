@@ -27,10 +27,23 @@
       <div class="menu">
         <button id="b-pause" class="btn icon" type="button" title="Pause (Space)">II</button>
         <button id="b-speed" class="btn icon" type="button" title="Game speed">1×</button>
+        <button id="b-sim" class="btn hidden" type="button" title="Simulation test tools (K)">SIM</button>
         <button id="b-menu" class="btn" type="button" title="Tax, sound and help (M)">MENU</button>
       </div>
     </header>
     <div id="msgs"></div>
+    <!-- Free play only: tools for testing the simulation, and what it is doing right now. -->
+    <div id="simpanel" class="panel simp hidden">
+      <div class="ph">SIMULATION TEST TOOLS</div>
+      <div class="sbtns">
+        <button class="btn" id="t-freighter" type="button">+ FREIGHTER</button>
+        <button class="btn" id="t-shuttle" type="button">+ SHUTTLE</button>
+        <button class="btn" id="t-colonists" type="button">+ 10 COLONISTS</button>
+        <button class="btn" id="t-clear" type="button">CLEAR SHIPS</button>
+        <button class="btn on" id="t-traffic" type="button">TRAFFIC ON</button>
+      </div>
+      <div class="sstats" id="t-stats"></div>
+    </div>
     <div id="tip" class="tip hidden"></div>
     <div id="banner" class="banner"></div>
 
@@ -64,11 +77,12 @@
         </ol>
       </div>
       <div class="btns">
-        <button id="b-run" class="btn primary big" type="button">RUN A STATION</button>
-        <button id="b-sandbox" class="btn big" type="button">SANDBOX</button>
+        <button id="b-economy" class="btn primary big" type="button">ECONOMY</button>
+        <button id="b-free" class="btn big" type="button">FREE PLAY</button>
       </div>
-      <p class="fine">Run a station: start with Station Command and 2,000 CR, and earn the Garrison Permit for the big parts.
-        Sandbox: every part, no money, a big build zone. Prototype 0.2, nothing is saved yet.<br>
+      <p class="fine"><b>Economy:</b> start with Station Command and 2,000 CR, keep it profitable, and earn the Garrison Permit for the big parts.
+        <b>Free play:</b> every part, no costs, a big build zone, and test tools for the simulation (spawn ships and colonists, switch traffic off, run up to 16×).
+        Prototype 0.2, nothing is saved yet.<br>
         An unofficial fan project for the Super Earth Special Forces community, by Robert Troumbley. Not affiliated with or endorsed by Arrowhead Game Studios or Sony Interactive Entertainment.</p>
     </div>
   </section>
@@ -87,6 +101,7 @@
         <span>Focus selected</span><span>F</span>
         <span>Views</span><span>1 Blueprint · 2 Hull · 3 Life signs · 4 Cutaway</span>
         <span>Pause</span><span>Space</span>
+        <span>Test tools (free play)</span><span>K</span>
       </div>
       <div class="btns">
         <button id="b-close" class="btn primary" type="button">BACK TO THE STATION</button>
