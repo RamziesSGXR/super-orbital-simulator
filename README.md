@@ -2,69 +2,88 @@
 
 Build and run a space station for the war effort. A browser game for the **Super Earth Special Forces** community, in the same look as [Orbital Fury](https://orbitalfury.com/).
 
-> **Prototype 0.2.** A test of the theme, the style and the smallest loop: building a station from parts in 3D, and watching it run. There is no game over and nothing is saved yet.
+> **Prototype 0.3.** Parts in groups, rooms you build inside them, divisions you fund and command, an upgrade path from Outpost to Citadel, and a station that runs while you watch. There is no game over and nothing is saved yet.
 
-It's Cities: Skylines for a Helldivers space station, with an Age of Empires 2 upgrade path. You start with Station Command in an empty 3D blueprint space, snap parts onto it, and run it at a profit while the war flows past the airlocks. Rings, cores, pylons, discs, drums, trusses, nodes, modules and solar wings are all in the kit, so you can build the station you have in your head.
+It's Cities: Skylines for a Helldivers space station, with an Age of Empires 2 upgrade path. You start with Station Command in an empty 3D blueprint space, snap parts onto it, build out their insides room by room, and run it at a profit while the war flows past the airlocks. Rings, spines, pylons, discs, drums, towers, hangars, drydocks, trusses and solar wings are all in the kit, so you can build the station you have in your head.
 
 ## ▶ [Play Super Orbital Simulator](https://ramziessgxr.github.io/super-orbital-simulator/)
 
 It runs in your browser on a computer, or on a phone or tablet held sideways. There is nothing to install. Turn the sound on.
 
-**Quick start:** press **ECONOMY**, press `F` (or the Docking Port button in the grid), and click one of the glowing yellow ports on Station Command. Add a Cargo Module (`V`) and a Hab Module (`B`) the same way, and the first ships and colonists arrive within a minute. Want to just build, or test how the station behaves? Press **FREE PLAY** instead.
+**Quick start:** press **ECONOMY**. Open the **DOCK** group at the bottom left, press `Q` for a Docking Port, move the pointer near Station Command and click when the little blue dot lights up. Add a Cargo Module from **INDUS** and a Hab Module from **HAB** the same way, and the first ships and colonists arrive within a minute. Want to just build? Press **FREE PLAY** instead.
 
 ## How to play
 
 - **Two modes.**
-  - **Economy** is the game: Station Command and 2,000 CR. Keep the station profitable and earn the Garrison Permit for the big parts.
-  - **Free Play** is for building and for testing the simulation: every part, no costs, a big build zone, and the **SIM** test tools (`K`). You can send in a freighter or a shuttle, add 10 colonists, clear every ship, switch automatic traffic off, and run at up to 16×. A live readout shows crates per minute, ships waiting, in and docked, average time at berth, how many haulers are busy, beds, power, and where morale comes from.
-- **Build:** pick a part from the grid at the bottom left (or its hotkey), and the free ports glow yellow. Hover one to see the part in place, then click to build it. `R` turns it 45°. Right-click or `Esc` puts the part down.
-- **Look around:** drag to orbit, right-drag to pan, scroll or pinch to zoom. Click the minimap to look somewhere.
-- **Select:** click a part to see what it does and what's in it. `F` focuses on it and `X` demolishes it (half the cost back). Only parts with nothing attached can come down.
+  - **Economy** is the game: Station Command and 2,500 CR. Keep the station profitable and climb the upgrade path.
+  - **Free Play** is for building: every part and room, no costs and the biggest build zone. Its controls (`K`) call in freighters, shuttles and damaged warships, add 10 colonists, break a part, clear every ship and switch automatic traffic off, and it runs at up to 16×. A live readout shows what the station is doing.
+- **Build:** parts come in seven groups, like a corvette builder: Structure, Habitation, Docking, Industry, Power, Defence and Comms. Click a group (or `Tab` through them) and pick a part (`Q W E T Y A S D`). Small see-through blue dots show the free ports near the pointer (on a phone, every free port shows faintly). Hover one to see the part in place, then click to build it. `R` turns it 45°. `P` turns the dots off; parts still snap to the nearest port. Right-click or `Esc` puts the part down.
+- **Build inside:** select a part and press **EDIT INSIDE** (`I`). Its hull turns to glass, everything else fades, and its rooms show in 3D with a name on each. Pick a room from the palette and click rooms in the part to build it there, tycoon style. A part does what its rooms do, so a ring doesn't have to be quarters all the way round: make it quarters, a mess hall, a market, a medbay and a security office. Shuttle Bays and Fighter Bays only fit in a Hangar or a Drydock. On a phone, tap a room number and then a room.
+- **Look around:** drag to orbit, right-drag to pan, scroll or pinch to zoom. Click the minimap to look somewhere. `H` hides the whole interface for a clean look at your station.
+- **Select:** click a part to see what it does, its rooms and who lives there. `F` focuses on it and `X` demolishes it (half the cost back). Only parts with nothing attached can come down.
 - **Views** (bottom right, or `1`-`4`):
   - **Blueprint** is a green technical drawing in 3D, with the X, Y and Z planes.
-  - **Hull** shows the station as it would look, over the planet.
-  - **Life Signs** is an x-ray: the hull fades and every person aboard glows through the walls.
-  - **Cutaway** slices away the quarter of the station facing you, to show the decks inside. It works with every view.
-- **The loop:** Docking Ports bring ships. Freighters unload crates, and blue haulers walk each one through the station to a Cargo Module, where it pays 15 CR. Shuttles bring colonists for Habs and Rings, and the colonists pay tax (set it in **MENU**). Reactors and Solar Arrays keep the power up. Reach the **Garrison Permit** (12 residents, 30 crates traded, 20 power) to grow the build zone and unlock rings, promenades, drums and pylons.
+  - **Hull** shows the station as it would look, under its sun, over a planet (a Mars-type, ice, highland, desert, jungle or barren world, different every game) with a moon or two. The stars, sun and moons stay put however you move the camera.
+  - **Life Signs** is an x-ray: the hull fades and everyone inside glows through the walls. People outside on EVA show as white dots.
+  - **Cutaway** slices away the quarter of the station facing you, to show the rooms inside. It works with every view.
+- **People:** you never manage them one by one. Haulers carry crates, engineers fix faults, officers inspect ships and medics run the medbays. When something is being built or repaired, engineers in suits go out on EVA and you can watch them work on the hull.
+- **Station comms** come in at the bottom right, above the minimap, in a window you can close (`C`; it counts what you missed). Every message comes in on a channel (Traffic Control, the Ministry of Truth, Patriotic Maintenance, ship captains and more) with its own colour, signal and sign-off.
+- **The Commander's channel** (`O`): one tab for each division you can talk to.
 
-**Layout matters.** Haulers walk through the station, so a docking port far from the cargo means slow unloading and ships giving up. `npm run sim` and `npm run sim:far` run the same station with the port beside the cargo and at the far end of a truss: 197 crates against 95 in twelve minutes, 0 ships lost against 23, and the permit at 2.3 minutes against not at all.
+  | Division | Budget pays for | Standing orders |
+  | --- | --- | --- |
+  | Ministry of Supply | haulers | normal or double shifts |
+  | Patriotic Maintenance | engineers | fix what breaks, or preventive maintenance |
+  | Democracy Officers | officers | spot checks, or inspect every ship |
+  | Medical Corps | medics | free care, or fees |
+  | Traffic Control | (no budget) | which ships, and how many |
+  | Ministry of Truth | broadcasts | the Patriotic Hour, a Recruitment Drive, or silence |
+
+  Each division reports in its own voice, and acknowledges your orders on the radio. Staff need places to work: Cargo Stores for haulers, Workshops for engineers, Security Offices and Medbays.
+- **The upgrade path** (`U`, or click the tier at the top): Outpost, Garrison, Fortress, Citadel. Each tier grows the build zone and unlocks parts and rooms, and the panel shows what the next one needs and what it brings.
+
+  | Tier | Build zone | Needs | Unlocks |
+  | --- | --- | --- | --- |
+  | Outpost | 16 | | the basics |
+  | Garrison | 40 | 12 residents, 30 crates traded, 20 power | the Long Spine, rings, drums, discs, towers, pylons, the Docking Ring, fuel tanks, radiators, dishes and propaganda screens; bunk rooms, markets, bars, medbays, security and truth offices |
+  | Fortress | 70 | 60 residents, 300 crates, 60 power, a Security Office and a Medbay | hangars, drydocks, refineries, turrets, shields, shuttle and fighter bays |
+  | Citadel | 120 | 150 residents, 1,200 crates, morale 70 | the biggest zone the Ministry grants |
+- **The loop:** Docking Ports bring ships. Freighters unload crates, and blue haulers walk each one through the station to a Cargo Store, where it pays 15 CR. Shuttles bring colonists for Quarters, and the colonists pay tax (set it in **MENU**). Markets and bars earn, mess halls and lounges keep morale up, and reactors and solar arrays keep the power on.
+
+**Layout matters.** Haulers walk through the station, so a docking port far from the cargo means slow unloading and ships giving up. `npm run sim` and `npm run sim:far` run the same station with the port beside the cargo and at the far end of a truss: 144 crates against 78 in twelve minutes, 0 ships lost against 16, and Garrison at 3.7 minutes against not at all.
 
 ## The part kit
 
-| Part | Goes | Does |
-| --- | --- | --- |
-| Core Segment | in the spine | A section of spine with four side ports |
-| Reactor Core | in the spine | +16 power |
-| Comms Spire | caps a spine | Ships come 20% more often |
-| Habitat Ring | in the spine | A torus on four spokes, beds for 24 |
-| Docking Ring | in the spine | A wide outer ring on six spokes, beds for 12 and 2 more haulers |
-| Promenade Disc | in the spine | +8 morale |
-| Habitat Drum | in the spine | Beds for 16 |
-| Arboretum Dome | caps anything | +5 morale |
-| Docking Port | on a side | A berth for freighters (6 crates) and shuttles |
-| Docking Pylon | on a side | A tall arm with a berth for heavy freighters (8 crates) |
-| Truss | on a side | Cheap reach, with four ports |
-| Node | on a side | Five more ports, for branching arms |
-| Cargo Module | on a side | Where crates go, plus 2 more haulers |
-| Hab Module | on a side | Beds for 6 |
-| Solar Array | on a side | +6 power |
+| Group | Parts |
+| --- | --- |
+| Structure | Core Segment, Long Spine, Hub Junction, Truss, Node, Connector Tube |
+| Habitation | Hab Module, Habitat Ring, Habitat Drum, Promenade Disc, Hab Tower, Arboretum Dome, Observation Blister |
+| Docking | Docking Port, Docking Pylon, Docking Ring, Hangar, Drydock |
+| Industry | Cargo Module, Cargo Rack, Fuel Tanks, Refinery |
+| Power | Reactor Core, Solar Array, Radiator |
+| Defence | Flak Turret, Shield Emitter |
+| Comms | Comms Spire, Dish Antenna, Propaganda Screen |
+
+**Rooms:** Quarters, Bunk Room, Mess Hall, Observation Lounge, Hydroponics, Workshop, Cargo Store, Ops Center, Market, Liberty Lounge, Medbay, Security Office, Truth Office, Shuttle Bay and Fighter Bay.
 
 Any part can go on any free port. Parts may overlap and nest on purpose, so a ring can sit inside a ring.
 
 ## How it's built
 
-Plain JavaScript modules, no framework and no build step. The 3D is three.js, vendored as one minified file in `js/vendor/`. Every part and ship is built in code from simple shapes (cylinders, rings, lathed profiles, boxes): there are no model, image or sound files. The look (palette, type, panels, buttons, scanlines) is carried over from Orbital Fury.
+Plain JavaScript modules, no framework and no build step. The 3D is three.js, vendored as one minified file in `js/vendor/`. Every part, room, ship, suit and planet is built in code from simple shapes and noise: there are no model, image or sound files. The look (palette, type, panels, buttons, scanlines) and the way planets are painted are carried over from Orbital Fury.
 
 ```
 index.html          the page, the title card and the menu
 css/style.css       the Orbital Fury theme plus the Age of Empires-style HUD
-js/config.js        every tuning number and the part kit (ports, costs, power, jobs)
+js/config.js        every tuning number: parts, rooms, divisions, orders and tiers
 js/math3.js         small vector and quaternion helpers for the simulation
-js/sim.js           the simulation: parts joined at ports, walking, ships, economy, morale, milestone (no DOM, no 3D)
-js/parts.js         every part and ship, drawn in code, plus the grid icons
-js/view.js          the 3D view: blueprint space, the four views, cutaway, life signs, picking
+js/sim.js           the simulation: parts and rooms, walking, staff, ships, faults, economy, morale, tiers (no DOM, no 3D)
+js/parts.js         every part, room, ship and suit, drawn in code, plus the grid icons
+js/planets.js       planets and moons, painted with noise the way Orbital Fury paints Mars
+js/noise.js         value noise, from Orbital Fury
+js/view.js          the 3D view: blueprint space, the four views, rooms, EVA, the sky, picking
 js/audio.js         synthesised sound
-js/main.js          the loop, input, HUD and minimap
+js/main.js          the loop, input, HUD, comms, the Commander's channel, the upgrade path and the minimap
 js/vendor/three.js  three.js (MIT), see js/vendor/THREE-LICENSE
 test/headless.mjs   runs a station without a browser and prints the economy
 test/ui.mjs         plays it through the real page on a desktop and a phone held sideways
@@ -74,13 +93,13 @@ tools/bundle.mjs    builds dist/super-orbital-simulator.html, the whole game in 
 
 **Running your own copy.** Serve this folder with any local web server (`npm start`, then open <http://localhost:8080>). Opening `index.html` straight from disk won't work, because browsers block ES modules on `file://`.
 
-Tests: `npm run sim` needs only Node. For the browser test, `npm install`, `npm start` in one terminal and `npm run ui` in another. `?seed=N` fixes the random seed, and `?economy` or `?free` skips the title.
+Tests: `npm run sim` needs only Node. For the browser test, `npm install`, `npm start` in one terminal and `npm run ui` in another. `?seed=N` fixes the random seed (and so the planet), and `?economy` or `?free` skips the title.
 
-Prototype 0.1, the flat cross-section version, is the first commit in the history.
+Prototype 0.1, the flat cross-section version, is the first commit in the history; 0.2 was the first 3D version.
 
 ## Give feedback
 
-This is an early prototype, and feedback is how it gets better. Join the **[SESF Helldivers Discord](https://discord.com/invite/qruRY4nkEz)** and tell us what you played on, what you built, what was fun, and what was confusing or broken. Screenshots of your stations are very welcome.
+This is an early prototype, and feedback is how it gets better. Join the **[SESF Helldivers Discord](https://discord.com/invite/qruRY4nkEz)** and tell us what you played on, what you built, what was fun, and what was confusing or broken. Screenshots of your stations are very welcome (`H` hides the interface).
 
 ## Credits and disclaimer
 

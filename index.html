@@ -14,7 +14,7 @@
   <canvas id="fx" class="ovfx"></canvas>
 
   <div id="hud" class="hidden">
-    <!-- Top bar, the Age of Empires way: resources on the left, the age in the middle, the menu on the right. -->
+    <!-- Top bar, the Age of Empires way: resources on the left, the age in the middle, the menus on the right. -->
     <header id="top">
       <div class="res">
         <span class="ri cr" title="Credits, and the running profit over the last minute"><i>CR</i><b id="r-cr">0</b><em id="r-net"></em></span>
@@ -23,33 +23,59 @@
         <span class="ri" title="Morale"><i>MRL</i><b id="r-mo"></b></span>
         <span class="ri" title="Ships served · lost"><i>SHIPS</i><b id="r-sh"></b></span>
       </div>
-      <div class="age"><b id="tier">OUTPOST</b><span id="tier-next"></span></div>
+      <button id="b-age" class="age" type="button" title="The upgrade path (U)"><b id="tier">OUTPOST</b><span id="tier-next"></span></button>
       <div class="menu">
         <button id="b-pause" class="btn icon" type="button" title="Pause (Space)">II</button>
         <button id="b-speed" class="btn icon" type="button" title="Game speed">1×</button>
-        <button id="b-sim" class="btn hidden" type="button" title="Simulation test tools (K)">SIM</button>
-        <button id="b-menu" class="btn" type="button" title="Tax, sound and help (M)">MENU</button>
+        <button id="b-cmdr" class="btn" type="button" title="The Commander's channel: divisions, budgets and standing orders (O)"><span class="lg">COMMANDER</span><span class="sm">CMDR</span></button>
+        <button id="b-upg" class="btn" type="button" title="The upgrade path (U)"><span class="lg">UPGRADES</span><span class="sm">UPG</span></button>
+        <button id="b-sim" class="btn hidden" type="button" title="Free play controls (K)"><span class="lg">CONTROLS</span><span class="sm">CTRL</span></button>
+        <button id="b-hide" class="btn" type="button" title="Hide the interface (H)">HIDE</button>
+        <button id="b-menu" class="btn" type="button" title="Tax, sound and keys (M)">MENU</button>
       </div>
     </header>
-    <div id="msgs"></div>
-    <!-- Free play only: tools for testing the simulation, and what it is doing right now. -->
+
+    <!-- Free play: call in ships and people, break things, and read what the station is doing. -->
     <div id="simpanel" class="panel simp hidden">
-      <div class="ph">SIMULATION TEST TOOLS</div>
+      <div class="ph"><span>FREE PLAY CONTROLS</span><button class="x" id="sp-x" type="button" title="Close (K)">×</button></div>
       <div class="sbtns">
         <button class="btn" id="t-freighter" type="button">+ FREIGHTER</button>
         <button class="btn" id="t-shuttle" type="button">+ SHUTTLE</button>
+        <button class="btn" id="t-warship" type="button">+ WARSHIP</button>
         <button class="btn" id="t-colonists" type="button">+ 10 COLONISTS</button>
+        <button class="btn" id="t-fault" type="button">BREAK A PART</button>
         <button class="btn" id="t-clear" type="button">CLEAR SHIPS</button>
         <button class="btn on" id="t-traffic" type="button">TRAFFIC ON</button>
       </div>
       <div class="sstats" id="t-stats"></div>
     </div>
+
+    <!-- The Commander's channel: one tab per division, with its budget, its report and its standing orders. -->
+    <div id="cmdr" class="panel float cmdr hidden">
+      <div class="ph"><span>COMMANDER'S CHANNEL</span><button class="x" id="cm-x" type="button" title="Close (O)">×</button></div>
+      <div class="cm-body"><div class="cm-tabs" id="cm-tabs"></div><div class="cm-main" id="cm-main"></div></div>
+    </div>
+
+    <!-- The upgrade path: Outpost to Citadel. -->
+    <div id="upg" class="panel float upg hidden">
+      <div class="ph"><span>UPGRADE PATH · MINISTRY OF ORBITAL AFFAIRS</span><button class="x" id="up-x" type="button" title="Close (U)">×</button></div>
+      <div id="up-list"></div>
+    </div>
+
+    <!-- Station comms, above the minimap. -->
+    <div id="comms" class="comms">
+      <div class="chd"><span class="led"></span><b>STATION COMMS</b><span class="sub">all channels</span><button class="x" id="c-x" type="button" title="Close (C)">×</button></div>
+      <div id="c-list" class="clist"></div>
+    </div>
+    <button id="c-open" class="btn copen hidden" type="button" title="Open the comms window (C)"><span class="led"></span>COMMS<span id="c-badge" class="badge"></span></button>
+
     <div id="tip" class="tip hidden"></div>
+    <div id="toast" class="toast"></div>
     <div id="banner" class="banner"></div>
 
-    <!-- Bottom panel: command grid on the left, the selection in the middle, the minimap on the right. -->
+    <!-- Bottom panel: part groups and the command grid on the left, the selection in the middle, views and the minimap on the right. -->
     <footer id="panel">
-      <div id="cmd" class="cmd"></div>
+      <div class="left"><div id="groups" class="groups"></div><div id="cmd" class="cmd"></div></div>
       <div id="info" class="info"></div>
       <div class="mm">
         <div class="views">
@@ -57,11 +83,13 @@
           <button class="btn vb" data-v="hull" type="button" title="Hull (2)">HULL</button>
           <button class="btn vb" data-v="life" type="button" title="Life signs (3)">LIFE SIGNS</button>
           <button class="btn vb" data-v="cut" type="button" title="Cutaway (4)">CUTAWAY</button>
+          <button class="btn vt on" id="b-dots" type="button" title="Little blue dots on the ports near the pointer while building (P)">DOTS ON</button>
         </div>
         <canvas id="mini" width="300" height="300"></canvas>
       </div>
     </footer>
   </div>
+  <button id="b-showui" class="btn showui hidden" type="button" title="Show the interface (H)">SHOW UI <small>H</small></button>
 
   <section id="s-title" class="screen on">
     <div class="card">
@@ -70,19 +98,19 @@
       <p class="tag">Build and run a space station for the war effort.</p>
       <div class="brief">
         <ol>
-          <li>Pick a part from the grid at the bottom left, then click one of the glowing <b>ports</b> to attach it. <b>R</b> turns it.</li>
-          <li>Drag to orbit, right-drag to pan, scroll or pinch to zoom.</li>
-          <li><b>Docking ports</b> bring ships. Haulers carry their crates to a <b>cargo module</b>, and every crate pays. <b>Habs</b> and <b>rings</b> house colonists, who pay tax.</li>
-          <li>Switch views at the bottom right: <b>Blueprint</b>, <b>Hull</b>, <b>Life Signs</b>, and a <b>Cutaway</b> that opens the station up.</li>
+          <li>Pick a part from a group at the bottom left, then click near a <b>port</b> to attach it: little blue dots show the free ports near the pointer. <b>R</b> turns it.</li>
+          <li>Select a built part and press <b>EDIT INSIDE</b> to build out its rooms: quarters, mess halls, workshops, markets, shuttle bays and more. A part does what its rooms do.</li>
+          <li>Fund your divisions and give them standing orders on the <b>Commander's channel</b>. Their reports come in on the comms at the bottom right.</li>
+          <li>Climb the <b>upgrade path</b> from Outpost to Citadel for bigger build zones, hangars and drydocks. <b>H</b> hides the interface for a clean look.</li>
         </ol>
       </div>
       <div class="btns">
         <button id="b-economy" class="btn primary big" type="button">ECONOMY</button>
         <button id="b-free" class="btn big" type="button">FREE PLAY</button>
       </div>
-      <p class="fine"><b>Economy:</b> start with Station Command and 2,000 CR, keep it profitable, and earn the Garrison Permit for the big parts.
-        <b>Free play:</b> every part, no costs, a big build zone, and test tools for the simulation (spawn ships and colonists, switch traffic off, run up to 16×).
-        Prototype 0.2, nothing is saved yet.<br>
+      <p class="fine"><b>Economy:</b> start with Station Command and 2,500 CR, keep it profitable, and earn your way up the upgrade path.
+        <b>Free play:</b> every part and room, no costs, the biggest build zone, and controls to call in ships and colonists.
+        Prototype 0.3, nothing is saved yet.<br>
         An unofficial fan project for the Super Earth Special Forces community, by Robert Troumbley. Not affiliated with or endorsed by Arrowhead Game Studios or Sony Interactive Entertainment.</p>
     </div>
   </section>
@@ -95,13 +123,16 @@
         <input id="in-tax" type="range" min="0" max="30" step="1"><span class="bn" id="bn-tax"></span></div>
       <div class="ledger" id="ledger"></div>
       <div class="keys">
-        <span>Parts</span><span>Q W E T Y · A S D F G · Z C V B N</span>
+        <span>Parts in the open group</span><span>Q W E T Y A S D</span>
+        <span>Next group</span><span>Tab</span>
         <span>Turn part</span><span>R</span>
-        <span>Demolish selected</span><span>X</span>
-        <span>Focus selected</span><span>F</span>
+        <span>Edit inside the selected part</span><span>I</span>
+        <span>Demolish · focus selected</span><span>X · F</span>
         <span>Views</span><span>1 Blueprint · 2 Hull · 3 Life signs · 4 Cutaway</span>
+        <span>Commander · upgrades · comms</span><span>O · U · C</span>
+        <span>Port dots · hide interface</span><span>P · H</span>
         <span>Pause</span><span>Space</span>
-        <span>Test tools (free play)</span><span>K</span>
+        <span>Free play controls</span><span>K</span>
       </div>
       <div class="btns">
         <button id="b-close" class="btn primary" type="button">BACK TO THE STATION</button>

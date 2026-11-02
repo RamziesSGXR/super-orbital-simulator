@@ -1,6 +1,8 @@
 // The station simulation. No DOM and no 3D library: it runs the same in the browser and headless in Node (test/headless.mjs).
-// The station is a tree of parts joined at ports. People walk along that tree, part to part, through the joins;
-// the distance between two parts is the real distance through the join, so where you put things matters.
+// The station is a tree of parts joined at ports, and each part holds rooms. People walk along the tree, part to part, through
+// the joins; the distance between two parts is the real distance through the join, so where you put things matters.
+// What a part does comes from its rooms (quarters, cargo stores, workshops...) plus a few things the part itself does (power,
+// berths, defence). Divisions are funded from the Commander's panel: the budget buys staff, up to the places their rooms have.
 import { C } from './config.js';
 import { RNG } from './rng.js';
 import { v, q } from './math3.js';
@@ -8,37 +10,49 @@ import { v, q } from './math3.js';
 const NAMES = ['Honest Work', 'Steady Progress', 'Fair Weather', 'Good Neighbors', 'Quiet Resolve', 'Open Skies', 'Sturdy Ballots',
   'Shared Prosperity', 'Cheerful Compliance', 'Sensible Shoes', 'Unanimous Consent', 'Bright Mornings', 'Fair Play', 'Civic Duty',
   'Common Sense', 'Rightful Order', 'Patient Thunder', 'Reliable Freedom'];
+const WARSHIPS = ['SES Hammer of Justice', 'SES Fist of Steady Progress', 'SES Banner of Fair Play', 'SES Gavel of Civic Duty', 'SES Rampart of Liberty', 'SES Pledge of Quiet Resolve'];
 const PROPAGANDA = [
   'Every crate unloaded is a bullet delivered. Thank you, citizen.',
   'A happy station is a compliant station.',
   'The Liberty Contribution keeps the lights on. Literally.',
   'Remember: the hull is load-bearing. So is your loyalty.',
-  'Today\'s promenade special: Freedom Loaf. Seconds are patriotic.',
+  'Today\'s mess special: Freedom Loaf. Seconds are patriotic.',
   'Report unapproved goods to your nearest Democracy Officer.',
   'The war is going well. Please continue to work.',
+  'Space is cold. Democracy is warm. Stay inside.',
 ];
+const STAFF = { hauler: 'supply', engineer: 'maintenance', officer: 'security', medic: 'medical' };
+const STRUCTURAL = new Set(['command', 'core', 'longcore', 'junction', 'truss', 'node', 'tube']);
 
 export class Station {
   constructor(seed = 1, mode = 'run') {
     this.rng = new RNG(seed);
+    this.seed = seed;
     this.mode = mode;
     this.sandbox = mode === 'sandbox';
     this.t = 0;
     this.credits = this.sandbox ? C.sandbox.credits : C.start.credits;
     this.tax = C.start.tax;
-    this.radius = this.sandbox ? C.sandbox.radius : C.start.radius;
-    this.unlocked = new Set(this.sandbox ? ['garrison'] : []);
-    this.done = {};
+    this.tier = this.sandbox ? C.tiers.length - 1 : 0;
+    this.radius = C.tiers[this.tier].radius;
+    this.div = {};
+    for (const k of C.divOrder) {
+      const d = C.div[k], order = {};
+      for (const [o, opts] of Object.entries(d.orders)) order[o] = o === 'rate' ? 'normal' : opts[0][0];
+      this.div[k] = { budget: this.sandbox && d.staff ? C.budgetMax : d.budget ?? 0, order };    // free play starts fully staffed
+    }
     this.parts = new Map();
     this.nextId = 1;
     this.agents = []; this.ships = []; this.events = [];
-    this.morale = C.morale.base; this.eff = 1; this.supply = 0; this.demand = 0;
-    this.stats = { crates: 0, ships: 0, lost: 0, colonists: 0, left: 0 };
-    this.traffic = true;                     // ships arrive on their own (free play can switch this off)
-    this.crateTimes = []; this.berthTimes = [];
-    this.totals = { trade: 0, tax: 0, upkeep: 0, build: 0 };
+    this.morale = C.morale.base; this.unrest = 0; this.eff = 1; this.supply = 0; this.demand = 0;
+    this.stats = { crates: 0, ships: 0, lost: 0, colonists: 0, left: 0, caught: 0, contraband: 0, repairs: 0, faults: 0 };
+    this.totals = { trade: 0, tax: 0, income: 0, upkeep: 0, wages: 0, build: 0 };
     this.buckets = Array.from({ length: 60 }, () => ({ s: -1, v: 0 }));
-    this.timers = { freighter: 5, shuttle: 10, leave: C.morale.leaveSec, talk: 45 };
+    this.timers = { freighter: 6, shuttle: 12, warship: 40, leave: C.morale.leaveSec, talk: 50 };
+    this.traffic = true;
+    this.crateTimes = []; this.berthTimes = [];
+    this.staff = { hauler: 0, engineer: 0, officer: 0, medic: 0 };
+    this.homes = { hauler: 0, engineer: 0, officer: 0, medic: 0 };
     const cmd = this._make('command', 0, -1, 0, [0, 0, 0], q.id());
     cmd.state = 'active'; cmd.prog = 1;
     this.root = cmd.id;
@@ -48,7 +62,6 @@ export class Station {
   // ---------------------------------------------------------------- geometry
   def(p) { return C.parts[p.type]; }
   name(p) { return p.type === 'command' ? 'Station Command' : `${this.def(p).name} ${p.n}`; }
-  // World position and facing of one of a part's ports.
   port(p, i) {
     const d = this.def(p).ports[i];
     return { pos: v.add(p.pos, q.rot(p.quat, [d[0], d[1], d[2]])), dir: q.rot(p.quat, [d[3], d[4], d[5]]), kind: d[6] };
@@ -58,13 +71,12 @@ export class Station {
     const b = this.def(p).berth;
     return b ? { pos: v.add(p.pos, q.rot(p.quat, [b[0], b[1], b[2]])), dir: q.rot(p.quat, [b[3], b[4], b[5]]) } : null;
   }
-  // Where a new part would sit if attached to `host`'s port `pi`, turned `rot` steps of 45 degrees about the port's axis.
+  // Where a new part would sit on `host`'s port `pi`, turned `rot` steps of 45 degrees about the port's axis.
   placement(type, host, pi, rot = 0) {
     const d = C.parts[type], tp = this.port(host, pi), base = d.ports[0];
     const align = q.fromTo([base[3], base[4], base[5]], v.mul(tp.dir, -1));
     const quat = q.mul(q.axisAngle(tp.dir, rot * Math.PI / 4), align);
-    const pos = v.sub(tp.pos, q.rot(quat, [base[0], base[1], base[2]]));
-    return { pos, quat };
+    return { pos: v.sub(tp.pos, q.rot(quat, [base[0], base[1], base[2]])), quat };
   }
   freePorts() {
     const out = [];
@@ -75,10 +87,13 @@ export class Station {
     return out;
   }
 
+  // ---------------------------------------------------------------- unlocks and building
+  partOpen(type) { return this.sandbox || (C.parts[type].tier ?? 0) <= this.tier; }
+  roomOpen(r) { return this.sandbox || (C.rooms[r].tier ?? 0) <= this.tier; }
   canBuild(type, hostId, pi, rot = 0) {
     const d = C.parts[type], host = this.parts.get(hostId);
     if (!d || d.fixed) return { ok: false, why: 'Not buildable' };
-    if (d.locked && !this.unlocked.has(d.locked)) return { ok: false, why: 'Needs the Garrison Permit' };
+    if (!this.partOpen(type)) return { ok: false, why: `Unlocks at ${C.tiers[d.tier].name}` };
     if (!host || host.state === 'demolish') return { ok: false, why: 'Nothing to attach to' };
     if (host.used.has(pi)) return { ok: false, why: 'That port is taken' };
     const pl = this.placement(type, host, pi, rot), c = v.add(pl.pos, q.rot(pl.quat, d.center));
@@ -87,7 +102,6 @@ export class Station {
     if (this.credits < d.cost) return { ok: false, why: 'Not enough credits' };
     return { ok: true, why: '' };
   }
-
   build(type, hostId, pi, rot = 0) {
     const chk = this.canBuild(type, hostId, pi, rot);
     if (!chk.ok) return chk;
@@ -98,7 +112,6 @@ export class Station {
     this.events.push({ type: 'build', part: p });
     return { ok: true, why: '', id: p.id };
   }
-
   canDemolish(id) {
     const p = this.parts.get(id);
     if (!p) return { ok: false, why: '' };
@@ -111,9 +124,31 @@ export class Station {
     const chk = this.canDemolish(id);
     if (!chk.ok) return chk;
     const p = this.parts.get(id);
-    if (p.state === 'building') { this._money(this.def(p).cost, 'build'); this._remove(p); return chk; }   // cancelled: full refund
+    if (p.state === 'building') { this._money(this.def(p).cost, 'build'); this._remove(p); return chk; }
     p.state = 'demolish'; p.prog = 0;
     this.events.push({ type: 'demolish', part: p });
+    this._refresh();
+    return chk;
+  }
+  // Rooms: paint a slot inside a part.
+  canRoom(id, slot, room) {
+    const p = this.parts.get(id), r = C.rooms[room];
+    if (!p || !r) return { ok: false, why: '' };
+    if (!p.rooms || slot < 0 || slot >= p.rooms.length) return { ok: false, why: 'No room there' };
+    if (p.rooms[slot] === room) return { ok: false, why: 'Already that room' };
+    if (!this.roomOpen(room)) return { ok: false, why: `Unlocks at ${C.tiers[r.tier].name}` };
+    if (r.bay && !this.def(p).bay) return { ok: false, why: 'Only inside a Hangar or Drydock' };
+    if (this.credits < r.cost) return { ok: false, why: 'Not enough credits' };
+    return { ok: true, why: '' };
+  }
+  setRoom(id, slot, room) {
+    const chk = this.canRoom(id, slot, room);
+    if (!chk.ok) return chk;
+    const p = this.parts.get(id);
+    this._money(-C.rooms[room].cost, 'build');
+    p.rooms[slot] = room;
+    for (const a of this.agents) if (a.home === p.id) a.home = 0;    // anyone housed here finds their place again
+    this.events.push({ type: 'room', part: p, slot });
     this._refresh();
     return chk;
   }
@@ -121,7 +156,7 @@ export class Station {
   _make(type, parent, pport, rot, pos, quat) {
     const n = [...this.parts.values()].filter((x) => x.type === type).length + 1;
     const p = { id: this.nextId++, type, parent, pport, rot, pos, quat, n, used: new Set(parent ? [0] : []), kids: [],
-      state: 'building', prog: 0, seed: this.rng.next() };
+      state: 'building', prog: 0, seed: this.rng.next(), rooms: [...(C.parts[type].rooms || [])], fault: false, fixer: 0 };
     this.parts.set(p.id, p);
     return p;
   }
@@ -131,25 +166,25 @@ export class Station {
     this.parts.delete(p.id);
     for (const s of this.ships) if (s.dock === p.id) this._depart(s, true);
     for (const a of [...this.agents]) {
-      if (a.at === p.id || a.path.includes(p.id) || a.home === p.id) { a.at = this.root; a.path = []; a.s = 0; a.task = null; a.wait = 0.5; if (a.carry) a.carry = false; }
+      if (a.at === p.id || a.path.includes(p.id)) { a.at = this.root; a.path = []; a.s = 0; a.task = null; a.wait = 0.5; a.carry = false; a.eva = false; }
+      if (a.home === p.id) a.home = 0;
     }
     this.events.push({ type: 'removed', id: p.id });
     this._refresh();
   }
 
-  works(p) { return !!p && p.state === 'active'; }
+  works(p) { return !!p && p.state === 'active' && !p.fault; }
+  has(p, room) { return !!p.rooms && p.rooms.includes(room); }
   list(test) { return [...this.parts.values()].filter((p) => this.works(p) && test(this.def(p), p)); }
 
   // ---------------------------------------------------------------- walking
-  nbrs(p) { const out = p.kids.map((k) => this.parts.get(k)).filter((x) => this.works(x)); const h = this.parts.get(p.parent); if (h && this.works(h)) out.push(h); return out; }
-  // The join between two neighbouring parts, and the walking distance through it.
+  nbrs(p) { const out = p.kids.map((k) => this.parts.get(k)).filter((x) => x && x.state === 'active'); const h = this.parts.get(p.parent); if (h && h.state === 'active') out.push(h); return out; }
   edge(a, b) {
     const child = b.parent === a.id ? b : a;
     const conn = this.port(child, 0).pos, ca = this.center(a), cb = this.center(b);
     const da = v.dist(ca, conn), db = v.dist(conn, cb);
     return { ca, conn, cb, da, db, len: Math.max(0.3, da + db) };
   }
-  // Shortest walk from part `from` to the nearest part passing `goal`: a list of part ids (start excluded), or null.
   route(from, goal) {
     const start = this.parts.get(from);
     if (!start) return null;
@@ -169,36 +204,85 @@ export class Station {
     }
     return null;
   }
-  walkDist(fromId, path) {
-    let d = 0, a = this.parts.get(fromId);
-    for (const id of path) { const b = this.parts.get(id); d += this.edge(a, b).len; a = b; }
-    return d;
-  }
+  walkDist(fromId, path) { let d = 0, a = this.parts.get(fromId); for (const id of path) { const b = this.parts.get(id); d += this.edge(a, b).len; a = b; } return d; }
 
-  // ---------------------------------------------------------------- derived numbers
+  // ---------------------------------------------------------------- what the station adds up to
   _refresh() {
-    let sup = 0, dem = 0;
+    let sup = 0, dem = 0, beds = 0, leisure = 0, income = 0, defence = 0, food = 0, broadcast = 0, ops = 0;
+    const homes = { hauler: 0, engineer: 0, officer: 0, medic: 0 };
+    let spires = 0, fuel = 0, refine = 0;
+    this.cargoIds = new Set(); this.homeParts = { hauler: [], engineer: [], officer: [], medic: [] };
     for (const p of this.parts.values()) {
       if (p.state !== 'active') continue;
-      const pw = this.def(p).pw;
-      if (pw < 0) sup -= pw; else dem += pw;
+      const d = this.def(p);
+      if (d.pw < 0) { if (!p.fault) sup -= d.pw; } else dem += d.pw;
+      const ok = !p.fault;
+      for (const r of p.rooms) { const R = C.rooms[r]; if (R.beds) beds += R.beds; }
+      if (!ok) continue;
+      if (d.leisure) leisure += d.leisure;
+      if (d.defence) defence += d.defence;
+      if (d.traffic) spires += d.traffic;
+      if (d.fuel) fuel++;
+      if (d.refine) refine++;
+      if (d.cargo) this.cargoIds.add(p.id);
+      for (const [role, n] of Object.entries(d.homes || {})) { homes[role] += n; this.homeParts[role].push(p.id); }
+      for (const r of p.rooms) {
+        const R = C.rooms[r];
+        leisure += R.leisure || 0; income += R.income || 0; defence += R.defence || 0; food += R.food || 0; broadcast += R.broadcast || 0;
+        if (R.traffic) ops++;
+        if (R.cargo) this.cargoIds.add(p.id);
+        for (const [role, n] of Object.entries(R.homes || {})) { homes[role] += n; if (!this.homeParts[role].includes(p.id)) this.homeParts[role].push(p.id); }
+      }
     }
-    this.supply = sup; this.demand = dem;
-    this.eff = dem <= 0 ? 1 : Math.min(1, sup / dem);
-    this.haulerCap = this.list((d) => d.haulers).reduce((s, p) => s + this.def(p).haulers, 0);
+    this.supply = sup; this.demand = dem; this.eff = dem <= 0 ? 1 : Math.min(1, sup / dem);
+    this.capBeds = beds; this.leisure = leisure; this.income = income; this.defence = defence; this.food = food; this.broadcast = broadcast;
+    this.trafficMul = 1 + Math.min(0.4, spires) + 0.1 * Math.min(3, ops);
+    this.fuelN = Math.min(3, fuel); this.refineN = Math.min(2, refine);
+    this.homes = homes;
+    for (const [role, k] of Object.entries(STAFF)) this.staff[role] = Math.min(homes[role], Math.floor(this.div[k].budget / C.div[k].wage));
   }
-  beds() { return this.list((d) => d.beds).reduce((s, p) => s + this.def(p).beds, 0); }
+  beds() { return this.capBeds; }
   residents() { let n = 0; for (const a of this.agents) if (a.role === 'resident') n++; return n; }
-  berths() { return this.list((d) => d.berth); }
-  upkeep() { let s = 0; for (const p of this.parts.values()) if (p.state === 'active') s += this.def(p).up; return s; }
+  berths(kind) {
+    return this.list((d, p) => d.berth && (!d.berthRoom || this.has(p, d.berthRoom)) && (!kind || d.ships.includes(kind)));
+  }
+  roomCount(room) { let n = 0; for (const p of this.parts.values()) if (this.works(p)) for (const r of p.rooms) if (r === room) n++; return n; }
+  upkeep() {
+    let s = 0;
+    for (const p of this.parts.values()) if (p.state === 'active') { s += this.def(p).up; for (const r of p.rooms) s += C.rooms[r].up || 0; }
+    s = s * (this.div.maintenance.order.plan === 'preventive' ? 1.2 : 1) - this.food;
+    return Math.max(0, s);
+  }
+  wages() {
+    let s = 0;
+    for (const [role, k] of Object.entries(STAFF)) s += this.staff[role] * C.div[k].wage;
+    if (this.div.truth.order.broadcast !== 'silence') s += this.div.truth.budget;
+    if (this.div.medical.order.care === 'free' && this.staff.medic) s += 10;
+    return s;
+  }
+  incomePerMin() {
+    let s = this.residents() ? this.income : 0;
+    if (this.div.medical.order.care === 'fees') s += 2 * this.staff.medic;
+    return s;
+  }
   taxPerMin() { return this.residents() * this.tax * C.econ.taxPerPct; }
   setTax(x) { this.tax = Math.max(0, Math.min(30, Math.round(x))); }
+  setBudget(k, x) { this.div[k].budget = Math.max(0, Math.min(C.budgetMax, Math.round(x))); this._refresh(); }
+  setOrder(k, o, val) { this.div[k].order[o] = val; this._refresh(); this.events.push({ type: 'order', from: k, text: this.ack(k, o, val) }); }
+  broadcastBoost() {
+    const o = this.div.truth.order.broadcast;
+    if (o !== 'patriotic') return 0;
+    return Math.min(8, (this.div.truth.budget / 10) * (1 + 0.5 * this.broadcast));
+  }
   moraleParts() {
-    const M = C.morale;
+    const M = C.morale, sh = this.div.supply.order.shift === 'double', care = this.div.medical.order.care;
     const tax = this.tax > M.taxFree ? -(this.tax - M.taxFree) * M.taxPenalty : (M.taxFree - this.tax) * M.taxBonus;
-    const prom = Math.min(M.promenadeMax, this.list((d) => d.promenade).length) * C.parts.disc.promenade;
-    const garden = Math.min(M.gardenMax, this.list((d) => d.garden).length) * C.parts.dome.garden;
-    return { base: M.base, tax, promenade: prom, garden, power: -M.power * (1 - this.eff), broke: this.credits < 0 ? -15 : 0 };
+    const faulty = [...this.parts.values()].filter((p) => p.fault && p.rooms.length).length;
+    return {
+      base: M.base, tax, leisure: Math.max(-10, Math.min(M.leisureMax, this.leisure)), power: -M.power * (1 - this.eff),
+      unrest: -this.unrest, faults: -M.faulty * faulty, medical: this.staff.medic ? (care === 'free' ? 4 : -2) : 0,
+      broadcast: this.broadcastBoost(), shifts: sh ? -5 : 0, broke: this.credits < 0 ? -15 : 0,
+    };
   }
   _money(x, cat) {
     if (this.sandbox && cat === 'build') return;
@@ -210,22 +294,40 @@ export class Station {
     b.v += x;
   }
   netPerMin() { const s = Math.floor(this.t); let x = 0; for (const b of this.buckets) if (b.s > s - 60 && b.s <= s) x += b.v; return x * 60 / Math.min(60, Math.max(1, this.t)); }
+  say(from, text, extra = {}) { this.events.push({ type: 'comms', from, text, ...extra }); }
 
-  milestone() {
-    const M = C.milestones[0];
-    const items = [
-      { label: 'Residents', have: this.residents(), need: M.residents },
-      { label: 'Crates traded', have: this.stats.crates, need: M.crates },
-      { label: 'Power supply', have: this.supply, need: M.power },
-    ];
+  // ---------------------------------------------------------------- the upgrade path
+  next() {
+    const T = C.tiers[this.tier + 1];
+    if (!T) return null;
+    const n = T.needs, items = [];
+    if (n.residents) items.push({ label: 'Residents', have: this.residents(), need: n.residents });
+    if (n.crates) items.push({ label: 'Crates traded', have: this.stats.crates, need: n.crates });
+    if (n.power) items.push({ label: 'Power supply', have: this.supply, need: n.power });
+    if (n.morale) items.push({ label: 'Morale', have: Math.round(this.morale), need: n.morale });
+    for (const r of n.rooms || []) items.push({ label: `${C.rooms[r].name} running`, have: this.roomCount(r), need: 1 });
     for (const i of items) i.ok = i.have >= i.need;
-    return { ...M, items, done: !!this.done[M.id] || this.sandbox };
+    return { ...T, items };
+  }
+  unlocksOf(tier) {
+    return { parts: Object.entries(C.parts).filter(([, d]) => (d.tier ?? -1) === tier).map(([, d]) => d.name),
+      rooms: Object.entries(C.rooms).filter(([, r]) => r.tier === tier).map(([, r]) => r.name) };
+  }
+  _tiers() {
+    const n = this.next();
+    if (!n || !n.items.every((i) => i.ok)) return;
+    this.tier++; this.radius = C.tiers[this.tier].radius;
+    const u = this.unlocksOf(this.tier);
+    this.events.push({ type: 'tier', tier: this.tier });
+    this.say('ministry', `${C.tiers[this.tier].name} STATUS GRANTED. The build zone grows to ${this.radius} units. Unlocked: ${[...u.parts, ...u.rooms].join(', ') || 'the Ministry\'s gratitude'}.`, { gold: true });
+    this._refresh();
   }
 
   // ---------------------------------------------------------------- the step
   step(dt) {
     this.t += dt;
     let changed = false;
+    const meanSec = C.faults.meanSec * (this.div.maintenance.order.plan === 'preventive' ? 2 : 1);
     for (const p of [...this.parts.values()]) {
       if (p.state === 'building') {
         p.prog += dt / Math.max(0.1, this.def(p).build);
@@ -233,7 +335,7 @@ export class Station {
       } else if (p.state === 'demolish') {
         p.prog += dt / C.demolish.sec;
         if (p.prog >= 1) { this._money(Math.round(this.def(p).cost * C.demolish.refund), 'build'); this._remove(p); }
-      }
+      } else if (!p.fault && !STRUCTURAL.has(p.type) && this.rng.chance(dt / meanSec)) { this._fault(p); changed = true; }
     }
     if (changed) this._refresh();
     this._staff();
@@ -242,60 +344,72 @@ export class Station {
     for (const a of [...this.agents]) this._agent(a, dt);
     const k = dt / 60;
     if (this.residents()) this._money(this.taxPerMin() * k, 'tax');
+    const inc = this.incomePerMin(); if (inc) this._money(inc * k, 'income');
     const u = this.upkeep(); if (u) this._money(-u * k, 'upkeep');
+    const w = this.wages(); if (w) this._money(-w * k, 'wages');
     const p = this.moraleParts(), target = Math.max(0, Math.min(100, Object.values(p).reduce((s, x) => s + x, 0)));
     this.morale += Math.max(-1.5 * dt, Math.min(1.5 * dt, target - this.morale));
-    this._milestone();
-    if ((this.timers.talk -= dt) <= 0) { this.timers.talk = 50 + this.rng.range(0, 30); this.events.push({ type: 'talk', text: this.rng.pick(PROPAGANDA) }); }
+    this.unrest = Math.max(0, this.unrest - dt * C.morale.contraband / C.morale.unrestDecaySec);
+    this._tiers();
+    if ((this.timers.talk -= dt) <= 0) {
+      this.timers.talk = 70 + this.rng.range(0, 40);
+      if (this.div.truth.order.broadcast !== 'silence') this.say('truth', this.rng.pick(PROPAGANDA), { dim: true });
+    }
   }
 
-  _milestone() {
-    const m = this.milestone();
-    if (m.done || !m.items.every((i) => i.ok)) return;
-    this.done[m.id] = true; this.unlocked.add(m.id); this.radius = m.radius;
-    this.events.push({ type: 'milestone', text: `${m.name} GRANTED. The build zone grows. Unlocked: rings, promenades, drums and pylons.` });
-  }
-
+  // ---------------------------------------------------------------- staff and residents
   _staff() {
-    const want = this.haulerCap || 0, have = this.agents.filter((a) => a.role === 'hauler');
-    for (let i = have.length; i < want; i++) this._spawn('hauler', this.root, this.root);
-    if (have.length > want) for (const a of have.filter((x) => !x.task).slice(0, have.length - want)) this._drop(a);
+    for (const role of Object.keys(STAFF)) {
+      const want = this.staff[role], have = this.agents.filter((a) => a.role === role);
+      const homes = this.homeParts[role].map((id) => this.parts.get(id)).filter((x) => x);
+      if (have.length > want) for (const a of have.sort((x, y) => (x.task ? 1 : 0) - (y.task ? 1 : 0)).slice(0, have.length - want)) this._drop(a);
+      else if (homes.length) for (let i = have.length; i < want; i++) { const h = homes[i % homes.length]; this._spawn(role, h.id, h.id); }
+      for (const a of this.agents) if (a.role === role && (!a.home || !this.parts.get(a.home))) a.home = homes.length ? homes[this.rng.int(homes.length)].id : this.root;
+    }
   }
   _spawn(role, at, home) {
-    const a = { id: this.nextId++, role, at, home, path: [], s: 0, wait: this.rng.range(0, 1), task: null, carry: false, ship: 0, seed: this.rng.next() };
+    const a = { id: this.nextId++, role, at, home, path: [], s: 0, wait: this.rng.range(0, 1), task: null, carry: false, ship: 0, seed: this.rng.next(), eva: false };
     this.agents.push(a); return a;
   }
   _drop(a) {
     if (a.task === 'pick') { const s = this.ships.find((x) => x.id === a.ship); if (s) s.reserved = Math.max(0, s.reserved - 1); }
+    if (a.task === 'fix') { const p = this.parts.get(a.target); if (p && p.fixer === a.id) p.fixer = 0; }
     this.agents.splice(this.agents.indexOf(a), 1);
   }
-
+  freeBeds() {
+    const out = [];
+    for (const p of this.parts.values()) {
+      if (p.state !== 'active') continue;
+      const beds = p.rooms.reduce((s, r) => s + (C.rooms[r].beds || 0), 0);
+      if (!beds) continue;
+      const n = this.agents.filter((a) => a.role === 'resident' && a.home === p.id && !a.leaving).length;
+      for (let i = n; i < beds; i++) out.push(p);
+    }
+    return out;
+  }
   _residents(dt) {
-    const homes = this.list((d) => d.beds);
-    const load = new Map(homes.map((h) => [h.id, 0]));
-    for (const a of this.agents) if (a.role === 'resident' && load.has(a.home)) load.set(a.home, load.get(a.home) + 1);
+    // Everyone with no bed (their room was changed or their part came down) finds a free one, or leaves.
+    const count = new Map();
+    let homeless = false;
     for (const a of this.agents) {
-      if (a.role !== 'resident' || a.leaving || load.has(a.home)) continue;
-      const h = homes.find((x) => load.get(x.id) < this.def(x).beds);
-      if (h) { a.home = h.id; load.set(h.id, load.get(h.id) + 1); } else this._leave(a);
+      if (a.role !== 'resident' || a.leaving) continue;
+      const h = this.parts.get(a.home), beds = h && h.state === 'active' ? h.rooms.reduce((s, r) => s + (C.rooms[r].beds || 0), 0) : 0;
+      const n = (count.get(a.home) || 0) + 1; count.set(a.home, n);
+      if (n > beds) { a.homeless = true; homeless = true; }
+    }
+    if (homeless) {
+      const free = this.freeBeds();
+      for (const a of this.agents) if (a.homeless) { a.homeless = false; const f = free.shift(); if (f) a.home = f.id; else this._leave(a); }
     }
     if (this.morale < C.morale.leaveBelow && this.residents() > 0) {
       if ((this.timers.leave -= dt) <= 0) {
         this.timers.leave = C.morale.leaveSec;
         const a = this.agents.find((x) => x.role === 'resident' && !x.leaving);
-        if (a) { this._leave(a); this.events.push({ type: 'left', text: 'A citizen has emigrated. This has been noted.' }); }
+        if (a) { this._leave(a); this.say('colonists', 'A citizen has asked to leave the station. This has been noted.', { warn: true }); }
       }
     } else this.timers.leave = C.morale.leaveSec;
   }
   _leave(a) { a.leaving = true; a.path = []; a.wait = 0; a.task = null; }
-  freeBeds() {
-    const out = [];
-    for (const h of this.list((d) => d.beds)) {
-      const n = this.agents.filter((a) => a.role === 'resident' && a.home === h.id && !a.leaving).length;
-      for (let i = n; i < this.def(h).beds; i++) out.push(h);
-    }
-    return out;
-  }
 
   // ---------------------------------------------------------------- agents
   _agent(a, dt) {
@@ -304,13 +418,13 @@ export class Station {
     this._think(a);
   }
   _walk(a, dt) {
-    let left = dt * C.walk.speed * (0.55 + 0.45 * this.eff);
+    const fast = a.role === 'hauler' && this.div.supply.order.shift === 'double' ? 1.4 : 1;
+    let left = dt * C.walk.speed * (0.55 + 0.45 * this.eff) * fast * (a.role !== 'resident' && this.credits < 0 ? 0.6 : 1);
     while (left > 0 && a.path.length) {
       const from = this.parts.get(a.at), to = this.parts.get(a.path[0]);
-      if (!from || !to || !this.works(to)) { a.path = []; a.s = 0; break; }
+      if (!from || !to || to.state !== 'active') { a.path = []; a.s = 0; break; }
       const L = this.edge(from, to).len;
-      if (a.s + left >= L) { left -= L - a.s; a.s = 0; a.at = to.id; a.path.shift(); }
-      else { a.s += left; left = 0; }
+      if (a.s + left >= L) { left -= L - a.s; a.s = 0; a.at = to.id; a.path.shift(); } else { a.s += left; left = 0; }
     }
     if (!a.path.length) this._arrive(a);
   }
@@ -321,26 +435,35 @@ export class Station {
     if (!p.length) this._arrive(a);
     return true;
   }
+  _goHome(a, idle = [1, 2.5]) {
+    if (a.at === a.home) { a.task = null; a.wait = this.rng.range(idle[0], idle[1]); return; }
+    if (!this._go(a, (x) => x.id === a.home, 'home')) { a.task = null; a.wait = 1.5; }
+  }
   _think(a) {
     if (a.role === 'hauler') return this._hauler(a);
-    if (a.leaving) {
-      if (!this._go(a, (p) => this.works(p) && this.def(p).berth, 'leave')) this._gone(a);
-      return;
+    if (a.role === 'engineer') return this._engineer(a);
+    if (a.role === 'medic') {
+      if (a.task !== 'rounds' && this.rng.chance(0.5)) {
+        const homes = [...new Set(this.agents.filter((x) => x.role === 'resident').map((x) => x.home))].filter((h) => this.parts.get(h));
+        if (homes.length) { const t = this.rng.pick(homes); if (this._go(a, (p) => p.id === t, 'rounds')) return; }
+      }
+      return this._goHome(a, [3, 7]);
     }
+    if (a.role === 'officer') return this._goHome(a, [2, 5]);
+    if (a.leaving) { if (!this._go(a, (p) => this.works(p) && this.def(p).berth, 'leave')) this._gone(a); return; }
     // Residents: home, then somewhere social, then home again.
     const goHome = a.task === 'back' || this.rng.next() >= 0.6;
     if (!goHome) {
-      const spots = this.list((d, p) => d.promenade || d.garden || p.type === 'command' || p.type === 'ring' || p.type === 'bigring').filter((p) => p.id !== a.at);
+      const spots = this.list((d, p) => p.type === 'command' || p.rooms.some((r) => C.rooms[r].leisure > 0) || d.leisure).filter((p) => p.id !== a.at);
       if (spots.length) { const t = this.rng.pick(spots).id; if (this._go(a, (p) => p.id === t, 'out')) return; }
     }
-    if (a.at === a.home) { a.task = null; a.wait = this.rng.range(6, 16); return; }
-    if (!this._go(a, (p) => p.id === a.home, 'home')) { a.task = null; a.wait = 3; }
+    if (!a.home) { a.task = null; a.wait = 2; return; }
+    this._goHome(a, [6, 16]);
   }
   _hauler(a) {
-    const cargo = (p) => this.works(p) && this.def(p).cargo;
+    const cargo = (p) => this.works(p) && this.cargoIds.has(p.id);
     if (a.carry) { if (!this._go(a, cargo, 'drop')) { a.task = null; a.wait = 1; } return; }
-    const hasCargo = this.list((d) => d.cargo).length > 0;
-    const open = hasCargo ? this.ships.filter((s) => s.state === 'docked' && s.kind === 'freighter' && s.crates - s.reserved > 0) : [];
+    const open = this.cargoIds.size ? this.ships.filter((s) => s.state === 'docked' && s.kind === 'freighter' && s.inspect <= 0 && s.crates - s.reserved > 0) : [];
     if (open.length) {
       const docks = new Map(open.map((s) => [s.dock, s]));
       const p = this.route(a.at, (x) => docks.has(x.id));
@@ -351,18 +474,38 @@ export class Station {
         return;
       }
     }
-    if (a.at !== a.home) { if (!this._go(a, (x) => x.id === a.home, 'home')) { a.task = null; a.wait = 1; } return; }
-    a.task = null; a.wait = this.rng.range(1, 2.5);
+    this._goHome(a);
+  }
+  _engineer(a) {
+    const broken = [...this.parts.values()].filter((p) => p.fault && !p.fixer && p.state === 'active');
+    if (broken.length) {
+      const ids = new Set(broken.map((p) => p.id)), path = this.route(a.at, (p) => ids.has(p.id));
+      if (path) {
+        const end = path.length ? path[path.length - 1] : a.at, p = this.parts.get(end);
+        p.fixer = a.id; a.target = p.id; a.path = path; a.s = 0; a.task = 'fix';
+        if (!path.length) this._arrive(a);
+        return;
+      }
+    }
+    // A warship in drydock needs hands on its hull.
+    const ws = this.ships.find((s) => s.state === 'docked' && s.kind === 'warship' && (s.crew || 0) < 3);
+    if (ws && this.rng.chance(0.6)) { ws.crew = (ws.crew || 0) + 1; a.ship = ws.id; if (this._go(a, (p) => p.id === ws.dock, 'drydock')) return; ws.crew--; }
+    this._goHome(a, [2, 4]);
   }
   _arrive(a) {
-    if (a.task === 'pick') { a.wait = C.walk.pickSec; a.pending = 'pick'; return; }
-    if (a.task === 'drop') { a.wait = C.walk.dropSec; a.pending = 'drop'; return; }
+    const W = C.walk;
+    if (a.task === 'pick') { a.wait = W.pickSec; a.pending = 'pick'; return; }
+    if (a.task === 'drop') { a.wait = W.dropSec; a.pending = 'drop'; return; }
+    if (a.task === 'fix') { a.wait = W.repairSec / (0.5 + 0.5 * this.eff); a.pending = 'fix'; a.eva = true; return; }
+    if (a.task === 'drydock') { a.wait = 8; a.pending = 'drydock'; a.eva = true; return; }
+    if (a.task === 'inspect') { a.wait = W.inspectSec; a.pending = 'inspect'; return; }
     if (a.task === 'leave') { this.stats.left++; this._gone(a); return; }
-    if (a.task === 'out') { a.wait = this.rng.range(5, 12); a.task = 'back'; return; }
+    if (a.task === 'out' || a.task === 'rounds') { a.wait = this.rng.range(5, 12); a.task = 'back'; return; }
     a.wait = a.role === 'resident' ? this.rng.range(6, 16) : this.rng.range(1, 2); a.task = null;
   }
   _gone(a) { const i = this.agents.indexOf(a); if (i >= 0) this.agents.splice(i, 1); }
   _done(a, what) {
+    a.eva = false;
     if (what === 'pick') {
       const s = this.ships.find((x) => x.id === a.ship);
       a.task = null;
@@ -370,83 +513,154 @@ export class Station {
       if (s) s.reserved = Math.max(0, s.reserved - 1);
     } else if (what === 'drop') {
       a.carry = false; a.task = null;
-      this._money(C.econ.crateFee, 'trade'); this.stats.crates++; this.crateTimes.push(this.t);
+      this._money(C.econ.crateFee + this.refineN * C.parts.refinery.refine, 'trade'); this.stats.crates++; this.crateTimes.push(this.t);
       this.events.push({ type: 'crate', part: a.at });
-    }
+    } else if (what === 'fix') {
+      const p = this.parts.get(a.target);
+      a.task = null;
+      if (p && p.fixer === a.id) {
+        p.fault = false; p.fixer = 0; this.stats.fixed = (this.stats.fixed || 0) + 1; this._refresh();
+        this.say('maintenance', `${this.name(p)} is back online. Hull integrity restored, Commander.`);
+      }
+    } else if (what === 'drydock') {
+      const s = this.ships.find((x) => x.id === a.ship);
+      if (s) s.crew = Math.max(0, (s.crew || 1) - 1);
+      a.task = null;
+    } else if (what === 'inspect') { a.task = null; }
   }
 
-  // ---------------------------------------------------------------- test tools (free play)
-  spawnShip(kind) { if (!this.berths().length) return false; this._arrive2(kind); return true; }
+  // ---------------------------------------------------------------- free play controls
+  _fault(p) {
+    p.fault = true; this.stats.faults++;
+    this.say('maintenance', this.staff.engineer ? `Fault on ${this.name(p)}. A team is suiting up for EVA.` : `Fault on ${this.name(p)}. We have no engineers on staff to fix it, Commander.`, { warn: true });
+  }
+  // Free play: break a random working part, to watch the engineers go out on EVA.
+  breakPart() {
+    const c = [...this.parts.values()].filter((p) => p.state === 'active' && !p.fault && !STRUCTURAL.has(p.type));
+    if (!c.length) return null;
+    const p = this.rng.pick(c); this._fault(p); this._refresh(); return p;
+  }
+  spawnShip(kind) { if (!this.berths(kind).length) return false; this._arrival(kind); return true; }
   addColonists(n) {
     const beds = this.freeBeds(), k = Math.min(n, beds.length);
     for (let i = 0; i < k; i++) { const a = this._spawn('resident', this.root, beds[i].id); a.task = 'back'; a.wait = i * 0.2; }
     this.stats.colonists += k;
     return k;
   }
-  clearShips() {
-    this.ships.length = 0;
-    for (const a of this.agents) if (a.task === 'pick') { a.task = null; a.path = []; a.s = 0; }
-  }
-  // Readings for the test panel.
+  clearShips() { this.ships.length = 0; for (const a of this.agents) if (a.task === 'pick') { a.task = null; a.path = []; a.s = 0; } }
   cratesPerMin() { while (this.crateTimes.length && this.crateTimes[0] < this.t - 60) this.crateTimes.shift(); return this.crateTimes.length * 60 / Math.min(60, Math.max(1, this.t)); }
   avgBerth() { const b = this.berthTimes; return b.length ? b.reduce((x, y) => x + y, 0) / b.length : null; }
-  haulersBusy() { const h = this.agents.filter((a) => a.role === 'hauler'); return { busy: h.filter((a) => a.carry || a.task === 'pick' || a.task === 'drop').length, all: h.length }; }
+  busy(role) { const h = this.agents.filter((a) => a.role === role); return { busy: h.filter((a) => a.carry || ['pick', 'drop', 'fix', 'drydock', 'inspect'].includes(a.task)).length, all: h.length }; }
 
   // ---------------------------------------------------------------- ships
   _ships(dt) {
-    const S = C.ships, berths = this.berths();
-    if (berths.length && this.traffic) {
-      const spires = Math.min(2, this.list((d) => d.traffic).length);
-      if ((this.timers.freighter -= dt) <= 0) {
-        this.timers.freighter = S.freighterSec / (1 + 0.5 * (berths.length - 1)) / (1 + 0.2 * spires) * this.rng.range(0.75, 1.25);
-        this._arrive2('freighter');
+    const S = C.ships, T = this.div.traffic.order, rate = S.rate[T.rate], mix = T.mix;
+    if (this.traffic) {
+      const fb = this.berths('freighter');
+      if (fb.length && mix !== 'colonists' && (this.timers.freighter -= dt) <= 0) {
+        this.timers.freighter = S.freighterSec / (1 + 0.5 * (fb.length - 1)) / this.trafficMul / rate * this.rng.range(0.75, 1.25);
+        this._arrival('freighter');
       }
-      if (this.freeBeds().length && this.morale >= S.shuttleMorale && !this.ships.some((s) => s.kind === 'shuttle' && s.state !== 'depart')) {
-        if ((this.timers.shuttle -= dt) <= 0) { this.timers.shuttle = S.shuttleSec * this.rng.range(0.8, 1.2); this._arrive2('shuttle'); }
+      const recruit = this.div.truth.order.broadcast === 'recruitment' ? 1.5 : 1;
+      if (this.berths('shuttle').length && mix !== 'freight' && this.freeBeds().length && this.morale >= S.shuttleMorale && !this.ships.some((s) => s.kind === 'shuttle' && s.state !== 'depart')) {
+        if ((this.timers.shuttle -= dt * recruit) <= 0) { this.timers.shuttle = S.shuttleSec * this.rng.range(0.8, 1.2); this._arrival('shuttle'); }
+      }
+      if (this.berths('warship').length && mix === 'all' && !this.ships.some((s) => s.kind === 'warship' && s.state !== 'depart')) {
+        if ((this.timers.warship -= dt) <= 0) { this.timers.warship = S.warshipSec * this.rng.range(0.8, 1.3); this._arrival('warship'); }
       }
     }
-    const free = berths.filter((b) => !this.ships.some((s) => s.dock === b.id && s.state !== 'depart'));
     for (const s of this.ships.filter((x) => x.state === 'hold').sort((a, b) => a.born - b.born)) {
-      if (!free.length) break;
-      s.dock = free.shift().id; s.state = 'approach'; s.t = 0;
+      const b = this.berths(s.kind).find((p) => !this.ships.some((o) => o.dock === p.id && o.state !== 'depart'));
+      if (!b) continue;
+      s.dock = b.id; s.state = 'approach'; s.t = 0;
     }
     for (const s of [...this.ships]) {
       s.t += dt;
-      if (s.state === 'hold' && s.t > S.waitSec) { this.stats.lost++; this.events.push({ type: 'lost', text: `${s.name} gave up waiting for a berth. Trade lost.` }); this._depart(s, true); }
+      if (s.state === 'hold' && s.t > S.waitSec) { this.stats.lost++; this.say('traffic', `${s.name} gave up waiting for a berth and jumped away. Trade lost.`, { warn: true }); this._depart(s, true); }
       else if (s.state === 'approach' && s.t >= S.approachSec) this._docked(s);
       else if (s.state === 'docked') {
-        if (!this.parts.get(s.dock)) this._depart(s, true);
-        else if (s.kind === 'shuttle' ? s.t > 3 : s.crates <= 0 && s.reserved <= 0) this._depart(s, false);
+        if (!this.parts.get(s.dock)) { this._depart(s, true); continue; }
+        if (s.inspect > 0) s.inspect -= dt;
+        if (s.kind === 'shuttle' ? s.t > 4 : s.kind === 'warship' ? s.repair >= 1 : s.crates <= 0 && s.reserved <= 0 && s.inspect <= 0) this._depart(s, false);
+        else if (s.kind === 'warship') {
+          const hands = this.agents.filter((a) => a.task === 'drydock' && a.ship === s.id && a.eva).length;
+          s.repair += dt / S.repairSec * (0.25 + 0.75 * Math.min(1, hands / 2));
+          if (s.repair >= 1) { this._money(S.repairFee, 'trade'); this.stats.repairs++; this.say('captain', `${s.name}: repairs complete. Your yard did fine work, Commander. Transferring ${S.repairFee} CR. Back to the front.`); }
+        }
       } else if (s.state === 'depart' && s.t >= S.departSec) this.ships.splice(this.ships.indexOf(s), 1);
     }
   }
-  _arrive2(kind) {
+  _arrival(kind) {
     if (this.ships.filter((s) => s.state === 'hold').length >= C.ships.queueMax) {
-      this.stats.lost++; this.events.push({ type: 'lost', text: 'A freighter was turned away: every berth and holding slot is full.' }); return;
+      this.stats.lost++; this.say('traffic', 'A ship was turned away: every berth and holding slot is full.', { warn: true }); return;
     }
-    this.ships.push({ id: this.nextId++, kind, name: `${kind === 'shuttle' ? 'Shuttle' : 'Freighter'} ${this.rng.pick(NAMES)}`, born: this.t,
-      state: 'hold', t: 0, dock: 0, crates: 0, reserved: 0, seed: this.rng.next(), lastDock: 0 });
+    const name = kind === 'warship' ? this.rng.pick(WARSHIPS) : `${kind === 'shuttle' ? 'Shuttle' : 'Freighter'} ${this.rng.pick(NAMES)}`;
+    this.ships.push({ id: this.nextId++, kind, name, born: this.t, state: 'hold', t: 0, dock: 0, crates: 0, reserved: 0, inspect: 0, repair: 0, crew: 0,
+      seed: this.rng.next(), lastDock: 0, smuggler: kind === 'freighter' && this.rng.chance(C.ships.smuggler) });
+    if (kind === 'warship') this.say('traffic', `${name} is inbound with battle damage, requesting the drydock.`);
   }
   _docked(s) {
     const p = this.parts.get(s.dock);
     if (!p) { this._depart(s, true); return; }
     s.state = 'docked'; s.t = 0; s.lastDock = p.id; s.dockedAt = this.t;
-    this._money(C.econ.dockFee, 'trade');
+    this._money(C.econ.dockFee + this.fuelN * C.parts.tanks.fuel, 'trade');
     if (s.kind === 'shuttle') {
       const beds = this.freeBeds(), n = Math.min(C.ships.colonists, beds.length);
       for (let i = 0; i < n; i++) { const a = this._spawn('resident', p.id, beds[i].id); a.wait = i * 0.5; a.task = 'back'; }
       this.stats.colonists += n;
-      this.events.push({ type: 'dock', ship: s, text: n ? `${s.name} docked at ${this.name(p)}: ${n} colonists. Welcome, citizens! Report for gratitude.` : `${s.name} docked at ${this.name(p)}.` });
+      this.say('captain', n ? `${s.name} at ${this.name(p)}. ${n} colonists disembarking. Welcome, citizens! Report for gratitude.` : `${s.name} at ${this.name(p)}, no one to drop off.`);
       return;
     }
-    s.crates = this.def(p).crates;
-    this.events.push({ type: 'dock', ship: s, text: `${s.name} docked at ${this.name(p)} with ${s.crates} crates. Commerce is patriotism.` });
+    if (s.kind === 'warship') { this.say('traffic', `${s.name} is in the drydock. Engineers to EVA stations.`); return; }
+    s.crates = this.def(p).crates || 6;
+    this.say(this.rng.chance(0.5) ? 'captain' : 'traffic', this.rng.chance(0.5) ? `${s.name}, clamps locked at ${this.name(p)}. ${s.crates} crates of liberty for you.` : `${s.name} has docked at ${this.name(p)} with ${s.crates} crates.`);
+    // Democracy Officers check freighters at bays near a Security Office.
+    const every = this.div.security.order.checks === 'every';
+    const post = this.staff.officer ? this.list((d, x) => this.has(x, 'secoffice')).find((o) => { const r = this.route(o.id, (x) => x.id === p.id); return r && this.walkDist(o.id, r) <= C.securityReach; }) : null;
+    if (post && every) s.inspect = C.walk.inspectSec;
+    if (s.smuggler) {
+      const caught = post && (every || this.rng.chance(0.5));
+      if (caught) {
+        this.stats.caught++; this._money(C.econ.fine, 'trade');
+        this.say('security', `Unapproved goods seized from ${s.name}. A ${C.econ.fine} CR fine has been collected. Democracy is safe.`, { gold: true });
+        const off = this.agents.find((a) => a.role === 'officer' && !a.task);
+        if (off) this._go(off, (x) => x.id === p.id, 'inspect');
+      } else {
+        this.stats.contraband++; this.unrest += C.morale.contraband;
+        this.say('security', `Unapproved goods from ${s.name} have reached the residents. ${post ? 'Our spot check missed it.' : 'No officers were near that bay.'}`, { warn: true });
+      }
+    }
   }
   _depart(s, lost) {
-    if (!lost && s.dockedAt != null) { this.berthTimes.push(this.t - s.dockedAt); if (this.berthTimes.length > 20) this.berthTimes.shift(); }
-    if (!lost) this.stats.ships++;
+    if (!lost) { this.stats.ships++; if (s.dockedAt != null) { this.berthTimes.push(this.t - s.dockedAt); if (this.berthTimes.length > 20) this.berthTimes.shift(); } }
     else if (s.state === 'docked' && s.crates > 0) this.stats.lost++;
     s.lastDock = s.dock || s.lastDock; s.state = 'depart'; s.t = 0; s.dock = 0; s.crates = 0; s.reserved = 0;
-    for (const a of this.agents) if (a.task === 'pick' && a.ship === s.id) { a.task = null; a.path = []; a.s = 0; }
+    for (const a of this.agents) if ((a.task === 'pick' || a.task === 'drydock') && a.ship === s.id) { a.task = null; a.path = []; a.s = 0; a.eva = false; }
+  }
+
+  // ---------------------------------------------------------------- division reports, in their own voices
+  report(k) {
+    const st = this.staff, open = [...this.parts.values()].filter((p) => p.fault);
+    switch (k) {
+      case 'supply': { const b = this.busy('hauler'); return `Haulers on shift: ${st.hauler} of ${this.homes.hauler} places, ${b.busy} carrying right now. Crates this minute: ${this.cratesPerMin().toFixed(0)}. Ships waiting: ${this.ships.filter((s) => s.state === 'hold').length}. ${this.cargoIds.size ? 'Every crate accounted for, Commander.' : 'We have nowhere to put cargo. Build a Cargo Store.'}`; }
+      case 'maintenance': return `Engineers on staff: ${st.engineer} of ${this.homes.engineer} places. Open faults: ${open.length}${open.length ? ` (${open.slice(0, 3).map((p) => this.name(p)).join(', ')})` : ''}. Faults fixed: ${this.stats.fixed || 0}. ${st.engineer ? 'Suits charged and ready.' : 'Give us a Workshop and a budget and we\'ll keep her flying.'}`;
+      case 'security': return `Officers on duty: ${st.officer} of ${this.homes.officer} places. Smugglers caught: ${this.stats.caught}, slipped through: ${this.stats.contraband}. ${this.homes.officer ? 'Bays near a Security Office are watched.' : 'Without a Security Office, every bay is unwatched.'}`;
+      case 'medical': return `Medics: ${st.medic} of ${this.homes.medic} places. ${st.medic ? (this.div.medical.order.care === 'free' ? 'Free care for every citizen: morale is up.' : 'Fees are being collected at the door.') : 'No Medbay, no medics. Citizens are treating themselves.'}`;
+      case 'traffic': { const bf = this.berths('freighter').length; return `Berths: ${bf} for freighters, ${this.berths('shuttle').length} for shuttles, ${this.berths('warship').length} drydock. Ships served: ${this.stats.ships}, lost: ${this.stats.lost}. Average time at berth: ${this.avgBerth() == null ? 'no data yet' : this.avgBerth().toFixed(0) + ' s'}.`; }
+      case 'truth': return this.div.truth.order.broadcast === 'silence' ? 'The Ministry is silent, by your order. Citizens are left alone with their thoughts.' : `Broadcasting ${this.div.truth.order.broadcast === 'patriotic' ? 'the Patriotic Hour' : 'the Recruitment Drive'} on every screen. Morale from broadcasts: +${this.broadcastBoost().toFixed(0)}. Truth Offices aboard: ${this.broadcast}.`;
+    }
+    return '';
+  }
+  ack(k, o, val) {
+    const lines = {
+      shift: { normal: 'Back to normal shifts, Commander.', double: 'Double shifts it is. The haulers won\'t thank you.' },
+      plan: { reactive: 'Understood. We fix what breaks.', preventive: 'Preventive maintenance schedule in effect.' },
+      checks: { spot: 'Spot checks only. Faster, and riskier.', every: 'Every ship will be inspected. No exceptions.' },
+      care: { free: 'Free care for all citizens. Democracy heals.', fees: 'Fees in effect. Payment before treatment.' },
+      mix: { all: 'Clearing all traffic to approach.', freight: 'Freighters only. Shuttles will be waved off.', colonists: 'Colonist shuttles only. Freighters will be waved off.' },
+      rate: { low: 'Thinning the traffic.', normal: 'Normal traffic.', high: 'Opening the lanes. Expect a crowd.' },
+      broadcast: { patriotic: 'The Patriotic Hour begins now.', recruitment: 'The Recruitment Drive is on every screen.', silence: 'Broadcasts suspended. This is highly irregular.' },
+    };
+    return (lines[o] && lines[o][val]) || 'Orders received.';
   }
 }

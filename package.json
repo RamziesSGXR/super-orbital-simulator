@@ -1,6 +1,6 @@
 {
   "name": "super-orbital-simulator",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Super Orbital Simulator - build and run a Super Earth space station (unofficial fan project, prototype)",
   "type": "module",
   "private": true,

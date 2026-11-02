@@ -45,6 +45,7 @@ export class Audio {
       case 'caught': if (this._ok(key, 0.5)) { this._tone(880, 880, 0.07, 0.08, 'square'); this._tone(1175, 1175, 0.12, 0.08, 'square', 0.08); } break;
       case 'contraband': if (this._ok(key, 0.8)) this._tone(140, 90, 0.5, 0.12, 'sawtooth'); break;
       case 'lost': if (this._ok(key, 0.8)) this._tone(500, 200, 0.4, 0.08, 'triangle'); break;
+      case 'comms': if (this._ok(key, 0.6)) { this._noise(0.07, 2400, 1800, 0.05, 'bandpass'); this._tone(1320, 1320, 0.05, 0.035, 'sine', 0.07); } break;
       case 'milestone': if (this._ok(key, 2)) [523, 659, 784, 1047].forEach((f, i) => this._tone(f, f, 0.22, 0.12, 'square', i * 0.12)); break;
     }
   }
