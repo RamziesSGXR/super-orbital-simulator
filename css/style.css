@@ -314,7 +314,7 @@ button.chip { cursor: pointer; touch-action: manipulation; }
 }
 @media (max-width: 760px) { .res { gap: 8px; } .ri:nth-child(5) { display: none; } }
 @media (max-width: 700px) { .ri:nth-child(4) { display: none; } }
-@media (max-width: 480px) { .age, #b-upg, .ri:nth-child(3) { display: none; } .menu { margin-left: auto; } }
+@media (max-width: 480px) { .age, #b-upg, .ri:nth-child(3) { display: none; } .menu { margin-left: auto; gap: 3px; } .menu .btn { padding: 2px 5px; } .res { gap: 7px; } .ri i { margin-right: 3px; } }
 @media (max-height: 520px) {
   #top { height: calc(34px + env(safe-area-inset-top)); }
   .age span { display: none; }
@@ -351,3 +351,4 @@ button.chip { cursor: pointer; touch-action: manipulation; }
   .menu .btn { padding: 2px 6px; }
 }
 #app.float-open .simp { display: none; }
+@media (max-width: 600px) { #app.float-open .comms, #app.float-open .copen { display: none; } }
