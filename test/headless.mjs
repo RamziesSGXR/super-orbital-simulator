@@ -32,14 +32,17 @@ const fmt = (x) => Math.round(x).toLocaleString('en-US');
 const dt = 1 / 20;
 const tiers = [];
 console.log(`layout=${layout} seed=${seed}  parts=${st.parts.size}`);
-console.log('min   credits  net/min  res/beds  morale  crates  ships  lost  power   staff H/E/O/M  faults caught/miss');
+console.log('min   credits  net/min  res/beds  morale  crates  ships  lost  power   staff H/E/O/M  faults caught/miss  cap  sat S/M/O/D  req');
+// Like a commander who says yes to everything: approve each request as it comes in, so the whole loop gets exercised.
+const approveAll = process.argv[5] === 'approve';
 for (let s = 1; s <= minutes * 60 / dt; s++) {
   st.step(dt);
   for (const e of st.events) if (e.type === 'tier') tiers.push(`${e.tier}@${(st.t / 60).toFixed(1)}m`);
   st.events.length = 0;
+  if (approveAll) for (const r of [...st.requests]) st.approve(r.id);
   if (s % Math.round(60 / dt) === 0) {
     const S = st.staff;
-    console.log(`${String(Math.round(st.t / 60)).padStart(3)}  ${fmt(st.credits).padStart(8)}  ${fmt(st.netPerMin()).padStart(7)}  ${String(st.residents()).padStart(3)}/${String(st.beds()).padEnd(4)}  ${String(Math.round(st.morale)).padStart(6)}  ${String(st.stats.crates).padStart(6)}  ${String(st.stats.ships).padStart(5)}  ${String(st.stats.lost).padStart(4)}  ${String(st.demand).padStart(3)}/${String(st.supply).padEnd(3)}  ${S.hauler}/${S.engineer}/${S.officer}/${S.medic}         ${st.stats.faults}/${st.stats.fixed || 0}  ${st.stats.caught}/${st.stats.contraband}`);
+    console.log(`${String(Math.round(st.t / 60)).padStart(3)}  ${fmt(st.credits).padStart(8)}  ${fmt(st.netPerMin()).padStart(7)}  ${String(st.residents()).padStart(3)}/${String(st.beds()).padEnd(4)}  ${String(Math.round(st.morale)).padStart(6)}  ${String(st.stats.crates).padStart(6)}  ${String(st.stats.ships).padStart(5)}  ${String(st.stats.lost).padStart(4)}  ${String(st.demand).padStart(3)}/${String(st.supply).padEnd(3)}  ${S.hauler}/${S.engineer}/${S.officer}/${S.medic}         ${st.stats.faults}/${st.stats.fixed || 0}  ${st.stats.caught}/${st.stats.contraband}   ${String(st.capability()).padStart(5)}  ${['supply', 'maintenance', 'security', 'medical'].map((k) => Math.round(st.sat[k])).join('/')}  ${st.reqLog.length}+${st.requests.length}`);
   }
 }
 console.log(`tiers reached: ${tiers.join(' ') || 'none'}; agents ${st.agents.length}; repairs ${st.stats.repairs}`);

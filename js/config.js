@@ -13,7 +13,7 @@ const arm = (len) => [[0, 0, 0, -1, 0, 0, 'L'], [len, 0, 0, 1, 0, 0, 'L']];
 const fill = (n, room) => Array(n).fill(room);
 
 export const C = {
-  version: '0.3.0',
+  version: '0.4.0',
 
   groups: [
     { id: 'structure', name: 'STRUCTURE' }, { id: 'habitation', name: 'HABITATION' }, { id: 'docking', name: 'DOCKING' },
@@ -136,6 +136,20 @@ export const C = {
   divOrder: ['supply', 'maintenance', 'security', 'medical', 'traffic', 'truth'],
   budgetMax: 120,
 
+  // The four staffed divisions are also the station's factions. Each one wants the station laid out its way, and how well it is
+  // (plus what you approve) decides how happy it is. Happy factions work faster; unhappy ones work slower and complain.
+  // `room` is what they ask you to build, `need` says what they judge the layout by.
+  factions: {
+    supply:      { who: 'Supply', room: 'cargostore', wants: 'Cargo Stores close to the docking ports, so crates do not walk far.', ask: 'a Cargo Store' },
+    maintenance: { who: 'Maintenance', room: 'workshop', wants: 'Workshops near everything that can break, and few open faults.', ask: 'a Workshop' },
+    security:    { who: 'Security', room: 'secoffice', wants: 'A Security Office close to every docking bay, and few smugglers getting through.', ask: 'a Security Office' },
+    medical:     { who: 'Medical', room: 'medbay', wants: 'A Medbay close to where people sleep.', ask: 'a Medbay' },
+  },
+  faction: { start: 60, easeSec: 0.9, evalSec: 1.5, low: 35, high: 85, speedMin: 0.75, speedMax: 1.25, requestSec: [70, 120], ttl: 100,
+    farUnits: 10, approve: 12, deny: -8, ignore: -4, favorDecay: 0.05, cooldown: 140, praiseCooldown: 400, pending: 2 },
+  // Capability is what the station adds to the war effort. It is the score, and it opens the upgrade path.
+  capability: { crate: 0.5, ship: 1.5, resident: 2, defence: 3, repair: 12, staff: 1 },
+
   start: { credits: 2500, tax: 10 },
   sandbox: { credits: 999999 },
   demolish: { sec: 3, refund: 0.5 },
@@ -151,11 +165,11 @@ export const C = {
   // The upgrade path: each tier grows the build zone and unlocks parts and rooms of its tier. Nothing is forced.
   tiers: [
     { id: 'outpost', name: 'OUTPOST', radius: 16, about: 'A command module and a permit to grow. Trade, house colonists and keep the lights on.' },
-    { id: 'garrison', name: 'GARRISON', radius: 40, needs: { residents: 12, crates: 30, power: 20 },
+    { id: 'garrison', name: 'GARRISON', radius: 40, needs: { residents: 12, cap: 80, power: 20 },
       about: 'Recognised by the Ministry. Rings, drums, pylons and the promenade, with markets, bars, medbays and security offices inside.' },
-    { id: 'fortress', name: 'FORTRESS', radius: 70, needs: { residents: 60, crates: 300, power: 60, rooms: ['secoffice', 'medbay'] },
+    { id: 'fortress', name: 'FORTRESS', radius: 70, needs: { residents: 60, cap: 300, power: 60, rooms: ['secoffice', 'medbay'] },
       about: 'A fortified waypoint for the fleet. Hangars and shuttle bays, drydocks for warships, refineries, flak and shields.' },
-    { id: 'citadel', name: 'CITADEL', radius: 120, needs: { residents: 150, crates: 1200, morale: 70 },
+    { id: 'citadel', name: 'CITADEL', radius: 120, needs: { residents: 150, cap: 1000, morale: 70 },
       about: 'A beacon of managed democracy, with the largest build zone the Ministry grants.' },
   ],
 };

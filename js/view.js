@@ -300,7 +300,7 @@ export class View {
   _rooms(p) {
     const lay = SLOTS[p.type];
     if (!lay || p.state === 'building') return;
-    const sig = p.rooms.join(',');
+    const sig = `${p.rooms.join(',')}|${p.marks.join(',')}`;
     let r = this.roomObjs.get(p.id);
     if (r && r.sig === sig) return;
     if (r) this.scene.remove(r.group);
@@ -309,6 +309,15 @@ export class View {
       const room = p.rooms[i] || 'empty', rg = buildRoom(room, s.w, s.d);
       rg.position.set(...s.p); rg.rotation.y = s.ry;
       rg.traverse((x) => { x.userData.part = p.id; x.userData.slot = i; });
+      // A room a faction asked for carries that faction's colour: a bar along the front edge and a flag on a short post.
+      const mk = p.marks[i];
+      if (mk && C.div[mk]) {
+        const col = new THREE.Color(C.div[mk].col), m = new THREE.MeshBasicMaterial({ color: col });
+        const bar = new THREE.Mesh(new THREE.BoxGeometry(s.w * 0.9, 0.06, 0.07), m); bar.position.set(0, 0.05, s.d * 0.46);
+        const post = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.5, 0.04), m); post.position.set(s.w * 0.4, 0.28, s.d * 0.44);
+        const flag = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.18, 0.02), m); flag.position.set(s.w * 0.4 + 0.17, 0.46, s.d * 0.44);
+        rg.add(bar, post, flag);
+      }
       g.add(rg);
     });
     g.position.set(...p.pos); g.quaternion.set(...p.quat);
@@ -579,6 +588,29 @@ export class View {
       if (d < bd) { bd = d; best = fp; }
     }
     return best;
+  }
+  // The person nearest to the pointer, within 14 px, when the dots are showing (Life Signs, Cutaway, or editing a part).
+  pickAgent(x, y) {
+    if (!this.agentPts.visible) return 0;
+    const r = this.canvas.getBoundingClientRect(), now = performance.now() / 1000, v = new THREE.Vector3();
+    let best = 0, bd = 14 * 14;
+    for (const a of this.st.agents) {
+      if (a.eva) continue;
+      const P = this.agentPos(a, now);
+      if (!P) continue;
+      v.set(P[0], P[1], P[2]).project(this.camera);
+      if (v.z > 1) continue;
+      const sx = (v.x + 1) / 2 * r.width + r.left, sy = (1 - v.y) / 2 * r.height + r.top, d = (sx - x) ** 2 + (sy - y) ** 2;
+      if (d < bd) { bd = d; best = a.id; }
+    }
+    return best;
+  }
+  // Move the camera's target to a person, keeping the same angle and distance.
+  lookAtAgent(a) {
+    const P = this.agentPos(a, performance.now() / 1000);
+    if (!P) return;
+    const d = this.camera.position.clone().sub(this.controls.target);
+    this.controls.target.set(P[0], P[1], P[2]); this.camera.position.copy(this.controls.target).add(d);
   }
   pickPart(x, y) {
     this.ray.setFromCamera(this._ndc(x, y), this.camera);

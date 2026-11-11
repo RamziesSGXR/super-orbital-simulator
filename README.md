@@ -2,9 +2,9 @@
 
 Build and run a space station for the war effort. A browser game for the **Super Earth Special Forces** community, in the same look as [Orbital Fury](https://orbitalfury.com/).
 
-> **Prototype 0.3.** Parts in groups, rooms you build inside them, divisions you fund and command, an upgrade path from Outpost to Citadel, and a station that runs while you watch. There is no game over and nothing is saved yet.
+> **Prototype 0.4.** Your divisions are now factions with names, moods and wishes. They ask you for rooms, work faster when the station suits them, and the score is the station's capability. Hull is the default view, and `H` hides everything. There is no game over and nothing is saved yet.
 
-It's Cities: Skylines for a Helldivers space station, with an Age of Empires 2 upgrade path. You start with Station Command in an empty 3D blueprint space, snap parts onto it, build out their insides room by room, and run it at a profit while the war flows past the airlocks. Rings, spines, pylons, discs, drums, towers, hangars, drydocks, trusses and solar wings are all in the kit, so you can build the station you have in your head.
+It's Cities: Skylines for a Helldivers space station, with an Age of Empires 2 upgrade path. You start with Station Command in an empty 3D blueprint space, snap parts onto it, build out their insides room by room, and keep its people working while the war flows past the airlocks. Rings, spines, pylons, discs, drums, towers, hangars, drydocks, trusses and solar wings are all in the kit, so you can build the station you have in your head.
 
 ## ▶ [Play Super Orbital Simulator](https://ramziessgxr.github.io/super-orbital-simulator/)
 
@@ -15,17 +15,20 @@ It runs in your browser on a computer, or on a phone or tablet held sideways. Th
 ## How to play
 
 - **Two modes.**
-  - **Economy** is the game: Station Command and 2,500 CR. Keep the station profitable and climb the upgrade path.
+  - **Economy** is the game: Station Command and 2,500 CR to build with. Keep the factions happy, raise the station's capability and climb the upgrade path.
   - **Free Play** is for building: every part and room, no costs and the biggest build zone. Its controls (`K`) call in freighters, shuttles and damaged warships, add 10 colonists, break a part, clear every ship and switch automatic traffic off, and it runs at up to 16×. A live readout shows what the station is doing.
 - **Build:** parts come in seven groups, like a corvette builder: Structure, Habitation, Docking, Industry, Power, Defence and Comms. Click a group (or `Tab` through them) and pick a part (`Q W E T Y A S D`). Small see-through blue dots show the free ports near the pointer (on a phone, every free port shows faintly). Hover one to see the part in place, then click to build it. `R` turns it 45°. `P` turns the dots off; parts still snap to the nearest port. Right-click or `Esc` puts the part down.
 - **Build inside:** select a part and press **EDIT INSIDE** (`I`). Its hull turns to glass, everything else fades, and its rooms show in 3D with a name on each. Pick a room from the palette and click rooms in the part to build it there, tycoon style. A part does what its rooms do, so a ring doesn't have to be quarters all the way round: make it quarters, a mess hall, a market, a medbay and a security office. Shuttle Bays and Fighter Bays only fit in a Hangar or a Drydock. On a phone, tap a room number and then a room.
-- **Look around:** drag to orbit, right-drag to pan, scroll or pinch to zoom. Click the minimap to look somewhere. `H` hides the whole interface for a clean look at your station.
+- **Look around:** drag to orbit, right-drag to pan, scroll or pinch to zoom. Click the minimap to look somewhere. `H` hides the whole interface (panels, tips, toasts and all) for a clean look at your station; tap the station to bring the SHOW UI button back for a moment.
 - **Select:** click a part to see what it does, its rooms and who lives there. `F` focuses on it and `X` demolishes it (half the cost back). Only parts with nothing attached can come down.
 - **Views** (bottom right, or `1`-`4`):
   - **Blueprint** is a green technical drawing in 3D, with the X, Y and Z planes.
   - **Hull** shows the station as it would look, under its sun, over a planet (a Mars-type, ice, highland, desert, jungle or barren world, different every game) with a moon or two. The stars, sun and moons stay put however you move the camera.
   - **Life Signs** is an x-ray: the hull fades and everyone inside glows through the walls. People outside on EVA show as white dots.
   - **Cutaway** slices away the quarter of the station facing you, to show the rooms inside. It works with every view.
+- **Factions:** Supply, Maintenance, Security and Medical are also the station's factions, and each has an ideal station. Supply wants Cargo Stores close to the docks, Maintenance wants Workshops near everything that breaks, Security wants an office close to every bay, Medical wants a Medbay close to the beds. Each has a mood from 0 to 100 worked out from your layout: happy factions work up to 25% faster, unhappy ones up to 25% slower and complain on the comms. Nothing ends the game.
+- **Requests:** every minute or two a faction that is missing something asks for a room, with **APPROVE** and **DENY** right in the message (or on its page in the Commander's channel). Approving builds it in a free space near the problem and marks it with the faction's colour (you see the flag in Cutaway and when editing inside). Denying or ignoring costs goodwill. The COMMANDER button counts what is waiting.
+- **Named people:** everyone aboard has a name. Click a life sign (Life Signs or Cutaway view) or a name in a faction's crew list to see who they are and what they are doing.
 - **People:** you never manage them one by one. Haulers carry crates, engineers fix faults, officers inspect ships and medics run the medbays. When something is being built or repaired, engineers in suits go out on EVA and you can watch them work on the hull.
 - **Station comms** come in at the bottom right, above the minimap, in a window you can close (`C`; it counts what you missed). Every message comes in on a channel (Traffic Control, the Ministry of Truth, Patriotic Maintenance, ship captains and more) with its own colour, signal and sign-off.
 - **The Commander's channel** (`O`): one tab for each division you can talk to.
@@ -40,17 +43,18 @@ It runs in your browser on a computer, or on a phone or tablet held sideways. Th
   | Ministry of Truth | broadcasts | the Patriotic Hour, a Recruitment Drive, or silence |
 
   Each division reports in its own voice, and acknowledges your orders on the radio. Staff need places to work: Cargo Stores for haulers, Workshops for engineers, Security Offices and Medbays.
+- **Capability** (CAP in the top bar) is what the station adds to the war effort: crates traded, ships served, residents, defence, warships repaired and staff on duty, all scaled by how happy the factions are. It is the score, and it opens the upgrade path.
 - **The upgrade path** (`U`, or click the tier at the top): Outpost, Garrison, Fortress, Citadel. Each tier grows the build zone and unlocks parts and rooms, and the panel shows what the next one needs and what it brings.
 
   | Tier | Build zone | Needs | Unlocks |
   | --- | --- | --- | --- |
   | Outpost | 16 | | the basics |
-  | Garrison | 40 | 12 residents, 30 crates traded, 20 power | the Long Spine, rings, drums, discs, towers, pylons, the Docking Ring, fuel tanks, radiators, dishes and propaganda screens; bunk rooms, markets, bars, medbays, security and truth offices |
-  | Fortress | 70 | 60 residents, 300 crates, 60 power, a Security Office and a Medbay | hangars, drydocks, refineries, turrets, shields, shuttle and fighter bays |
-  | Citadel | 120 | 150 residents, 1,200 crates, morale 70 | the biggest zone the Ministry grants |
+  | Garrison | 40 | 12 residents, 80 capability, 20 power | the Long Spine, rings, drums, discs, towers, pylons, the Docking Ring, fuel tanks, radiators, dishes and propaganda screens; bunk rooms, markets, bars, medbays, security and truth offices |
+  | Fortress | 70 | 60 residents, 300 capability, 60 power, a Security Office and a Medbay | hangars, drydocks, refineries, turrets, shields, shuttle and fighter bays |
+  | Citadel | 120 | 150 residents, 1,000 capability, morale 70 | the biggest zone the Ministry grants |
 - **The loop:** Docking Ports bring ships. Freighters unload crates, and blue haulers walk each one through the station to a Cargo Store, where it pays 15 CR. Shuttles bring colonists for Quarters, and the colonists pay tax (set it in **MENU**). Markets and bars earn, mess halls and lounges keep morale up, and reactors and solar arrays keep the power on.
 
-**Layout matters.** Haulers walk through the station, so a docking port far from the cargo means slow unloading and ships giving up. `npm run sim` and `npm run sim:far` run the same station with the port beside the cargo and at the far end of a truss: 144 crates against 78 in twelve minutes, 0 ships lost against 16, and Garrison at 3.7 minutes against not at all.
+**Layout matters.** Haulers walk through the station, so a docking port far from the cargo means slow unloading, ships giving up and an unhappy Supply faction. `npm run sim` and `npm run sim:far` run the same station with the port beside the cargo and at the far end of a truss, and print capability and each faction's mood every minute. The near station reaches Garrison in about 4 minutes; the far one never does in twelve.
 
 ## The part kit
 
@@ -85,8 +89,9 @@ js/view.js          the 3D view: blueprint space, the four views, rooms, EVA, th
 js/audio.js         synthesised sound
 js/main.js          the loop, input, HUD, comms, the Commander's channel, the upgrade path and the minimap
 js/vendor/three.js  three.js (MIT), see js/vendor/THREE-LICENSE
-test/headless.mjs   runs a station without a browser and prints the economy
+test/headless.mjs   runs a station without a browser and prints the economy, capability and faction moods (add `approve` as a fifth argument to say yes to every request)
 test/ui.mjs         plays it through the real page on a desktop and a phone held sideways
+test/fit.mjs        opens the interface at seven screen sizes and reports anything cut off, spilling out of its box or overlapping
 tools/vendor.mjs    rebuilds js/vendor/three.js
 tools/bundle.mjs    builds dist/super-orbital-simulator.html, the whole game in one file
 ```

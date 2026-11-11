@@ -39,6 +39,8 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
   await page.screenshot({ path: 'test/shots/title.png' });
   await page.click('#b-economy'); await page.waitForTimeout(500);
   check('ECONOMY starts with Station Command alone and 2,500 CR', await page.evaluate(() => window.__st.parts.size === 1 && window.__st.credits > 2490 && window.__st.credits <= 2500));
+  check('Hull is the default view', await page.evaluate(() => window.__view.mode === 'hull' && window.__ui.view === 'hull') && await page.$eval('.vb[data-v="hull"]', (b) => b.classList.contains('on')));
+  check('the top bar shows capability, not a profit figure', await page.evaluate(() => !document.getElementById('r-net') && /^\d/.test(document.getElementById('r-cap').textContent)));
   check('parts come in seven groups', (await page.$$eval('#groups .gt', (b) => b.map((x) => x.textContent))).join() === 'STRUCT,HAB,DOCK,INDUS,POWER,DEF,COMMS');
   await page.keyboard.press('Tab');
   const hab = await page.$$eval('#cmd .cb', (b) => b.map((x) => [x.dataset.t, x.classList.contains('locked')]));
@@ -122,16 +124,33 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
   await page.waitForTimeout(1200);
   check('the division reports in its own voice', /Engineers on staff/.test(await page.textContent('#cm-rep')));
   await page.screenshot({ path: 'test/shots/commander.png' });
+  // Factions: a mood, what they want, and their people by name.
+  check('a division page shows its faction: mood, wants and named crew', await page.isVisible('#cm-fac .fac') && /Wants/.test(await page.textContent('#cm-fac')) && (await page.$$('#cm-fac .pp')).length > 0);
+  const who = await page.$eval('#cm-fac .pp', (b) => b.firstChild.textContent);
+  await page.click('#cm-fac .pp'); await page.waitForTimeout(300);
+  check('clicking a name in the crew list shows that person', await page.evaluate(() => window.__ui.person > 0) && (await page.textContent('#info')).toLowerCase().includes(who.toLowerCase()));
   await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape'); await page.waitForTimeout(100);
 
   // The upgrade path.
   await page.keyboard.press('u'); await page.waitForTimeout(200);
   check('U shows the upgrade path, Outpost to Citadel', (await page.$$('#up-list .tier')).length === 4 && await page.isVisible('#up-list .tier.now') && (await page.$$('#up-list .tier.next .req')).length === 3);
   await page.screenshot({ path: 'test/shots/upgrades.png' });
   await page.keyboard.press('u');
-  for (let i = 0; i < 8 && await page.evaluate(() => window.__st.tier) < 1; i++) await steps(page, 60);
+  for (let i = 0; i < 14 && await page.evaluate(() => window.__st.tier) < 1; i++) await steps(page, 60);
   await page.waitForTimeout(400);
   check('Garrison status is granted and grows the build zone', await page.evaluate(() => window.__st.tier >= 1 && window.__st.radius === 40), await page.evaluate(() => JSON.stringify(window.__st.next()?.items.map((i) => `${i.label} ${i.have}/${i.need}`))));
+  // A faction asks for a room: approve it from the comms window.
+  await page.evaluate(() => { window.__st.credits += 500; window.__st.timers.request = 0; });
+  await steps(page, 2); await page.waitForTimeout(500);
+  const askN = await page.evaluate(() => window.__st.requests.length);
+  check('a faction asks for a room, with APPROVE and DENY on the comms', askN >= 1 && (await page.$$('#c-list .rq-bar button')).length >= 2, `${askN}`);
+  check('the Commander button counts what is waiting', +(await page.textContent('#cm-badge')).trim() === askN);
+  const ask = await page.evaluate(() => ({ ...window.__st.requests[0] }));
+  await page.locator('#c-list .rq-bar button[data-a="ok"]').first().click(); await page.waitForTimeout(300);
+  const built = await page.evaluate((a) => { const p = window.__st.parts.get(a.part); return p && p.rooms[a.slot] === a.room && p.marks[a.slot] === a.k; }, ask);
+  check('approving builds the room and marks it for the faction', built, JSON.stringify(ask));
+  check('the message shows the answer', /APPROVED/.test(await page.textContent('#c-list')));
   await page.click('#groups .gt[data-g="habitation"]');
   check('and unlocks the rings', !(await page.$eval('#cmd .cb[data-t="ring"]', (b) => b.classList.contains('locked'))));
 
@@ -147,9 +166,20 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
   check('3 shows life signs', await page.evaluate(() => window.__view.mode === 'life' && window.__view.agentPts.geometry.drawRange.count > 0));
   check('life signs are only people inside the station', await page.evaluate(() => window.__view.agentPts.geometry.drawRange.count <= window.__st.agents.filter((a) => !a.eva).length + window.__view.suits.children.filter((s) => s.visible).length));
   await page.screenshot({ path: 'test/shots/life-signs.png' });
+  await page.evaluate(() => { window.__ui.paused = true; });      // hold still, so the person is where we aimed
+  const dot = await page.evaluate(() => { const v = window.__view, a = window.__st.agents.find((x) => !x.eva && v.agentPos(x, performance.now() / 1000)); v.camera.updateMatrixWorld(); const P = v.agentPos(a, performance.now() / 1000), q = v.camera.position.clone().set(...P).project(v.camera), r = v.canvas.getBoundingClientRect(); return { id: a.id, name: a.name, xy: [(q.x + 1) / 2 * r.width + r.left, (1 - q.y) / 2 * r.height + r.top] }; });
+  await page.mouse.move(...dot.xy); await page.waitForTimeout(250);
+  check('hovering a life sign names the person', (await page.textContent('#tip')).length > 3 && !(await page.isHidden('#tip')));
+  await page.mouse.click(...dot.xy); await page.waitForTimeout(300);
+  check('clicking a life sign shows who they are', await page.evaluate(() => window.__ui.person > 0) && /DOING/.test(await page.textContent('#info')), await page.textContent('#info'));
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => { window.__ui.paused = false; });
   await page.keyboard.press('2'); await page.keyboard.press('h'); await page.waitForTimeout(200);
   check('H hides the interface, leaving only the station', !(await page.isVisible('#hud')) && await page.isVisible('#b-showui') && await page.evaluate(() => !window.__view.overlay));
   await page.screenshot({ path: 'test/shots/clean.png' });
+  check('hidden means hidden: no panels, tips, toasts or banners', await page.evaluate(() => ['hud', 'tip', 'toast', 'banner', 'fx'].every((id) => getComputedStyle(document.getElementById(id)).display === 'none')));
+  await page.mouse.click(683, 300); await page.waitForTimeout(150);
+  check('tapping the station brings the SHOW UI button back for a moment', await page.evaluate(() => document.getElementById('app').classList.contains('peek')));
   await page.keyboard.press('h');
   check('H brings it back', await page.isVisible('#hud'));
   await page.keyboard.press('1');

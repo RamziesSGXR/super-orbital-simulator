@@ -1,6 +1,6 @@
 {
   "name": "super-orbital-simulator",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Super Orbital Simulator - build and run a Super Earth space station (unofficial fan project, prototype)",
   "type": "module",
   "private": true,
@@ -9,6 +9,7 @@
     "start": "python3 -m http.server 8080",
     "sim": "node test/headless.mjs 12 near 1",
     "sim:far": "node test/headless.mjs 12 far 1",
+    "fit": "node test/fit.mjs",
     "ui": "node test/ui.mjs",
     "vendor": "node tools/vendor.mjs",
     "bundle": "node tools/bundle.mjs"

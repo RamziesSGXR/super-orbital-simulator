@@ -17,7 +17,8 @@
     <!-- Top bar, the Age of Empires way: resources on the left, the age in the middle, the menus on the right. -->
     <header id="top">
       <div class="res">
-        <span class="ri cr" title="Credits, and the running profit over the last minute"><i>CR</i><b id="r-cr">0</b><em id="r-net"></em></span>
+        <span class="ri cr" title="Credits: what you spend on building"><i>CR</i><b id="r-cr">0</b></span>
+        <span class="ri cap" title="Capability: what the station adds to the war effort. It is the score, and it opens the upgrade path."><i>CAP</i><b id="r-cap">0</b></span>
         <span class="ri" title="Power used / supplied"><i>PWR</i><b id="r-pw"></b></span>
         <span class="ri" title="Residents / beds"><i>POP</i><b id="r-pop"></b></span>
         <span class="ri" title="Morale"><i>MRL</i><b id="r-mo"></b></span>
@@ -27,7 +28,7 @@
       <div class="menu">
         <button id="b-pause" class="btn icon" type="button" title="Pause (Space)">II</button>
         <button id="b-speed" class="btn icon" type="button" title="Game speed">1×</button>
-        <button id="b-cmdr" class="btn" type="button" title="The Commander's channel: divisions, budgets and standing orders (O)"><span class="lg">COMMANDER</span><span class="sm">CMDR</span></button>
+        <button id="b-cmdr" class="btn" type="button" title="The Commander's channel: divisions, factions, requests and standing orders (O)"><span class="lg">COMMANDER</span><span class="sm">CMDR</span><span id="cm-badge" class="badge"></span></button>
         <button id="b-upg" class="btn" type="button" title="The upgrade path (U)"><span class="lg">UPGRADES</span><span class="sm">UPG</span></button>
         <button id="b-sim" class="btn hidden" type="button" title="Free play controls (K)"><span class="lg">CONTROLS</span><span class="sm">CTRL</span></button>
         <button id="b-hide" class="btn" type="button" title="Hide the interface (H)">HIDE</button>
@@ -100,7 +101,7 @@
         <ol>
           <li>Pick a part from a group at the bottom left, then click near a <b>port</b> to attach it: little blue dots show the free ports near the pointer. <b>R</b> turns it.</li>
           <li>Select a built part and press <b>EDIT INSIDE</b> to build out its rooms: quarters, mess halls, workshops, markets, shuttle bays and more. A part does what its rooms do.</li>
-          <li>Fund your divisions and give them standing orders on the <b>Commander's channel</b>. Their reports come in on the comms at the bottom right.</li>
+          <li>Your divisions are also the station's <b>factions</b>, and each wants the station laid out its way. Their people have names. Now and then one asks for a room: <b>approve</b> or <b>deny</b> it on the comms or the <b>Commander's channel</b>. Happy factions work faster.</li>
           <li>Climb the <b>upgrade path</b> from Outpost to Citadel for bigger build zones, hangars and drydocks. <b>H</b> hides the interface for a clean look.</li>
         </ol>
       </div>
@@ -108,9 +109,9 @@
         <button id="b-economy" class="btn primary big" type="button">ECONOMY</button>
         <button id="b-free" class="btn big" type="button">FREE PLAY</button>
       </div>
-      <p class="fine"><b>Economy:</b> start with Station Command and 2,500 CR, keep it profitable, and earn your way up the upgrade path.
+      <p class="fine"><b>Economy:</b> start with Station Command and 2,500 CR, keep its factions happy, build up its capability, and earn your way up the upgrade path.
         <b>Free play:</b> every part and room, no costs, the biggest build zone, and controls to call in ships and colonists.
-        Prototype 0.3, nothing is saved yet.<br>
+        Prototype 0.4, nothing is saved yet.<br>
         An unofficial fan project for the Super Earth Special Forces community, by Robert Troumbley. Not affiliated with or endorsed by Arrowhead Game Studios or Sony Interactive Entertainment.</p>
     </div>
   </section>

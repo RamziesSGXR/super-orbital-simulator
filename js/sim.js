@@ -21,7 +21,24 @@ const PROPAGANDA = [
   'The war is going well. Please continue to work.',
   'Space is cold. Democracy is warm. Stay inside.',
 ];
+const FIRST = ['Mara', 'Teo', 'Ines', 'Dax', 'Lena', 'Okoye', 'Priya', 'Jonas', 'Sana', 'Rook', 'Ada', 'Viktor', 'Nell', 'Kofi', 'Mina', 'Bram', 'Yuki', 'Hale',
+  'Corin', 'Tala', 'Emeka', 'Rhea', 'Soren', 'Zadie', 'Marek', 'Imani', 'Cass', 'Oren', 'Dilys', 'Pavel'];
+const LAST = ['Voss', 'Marsh', 'Okafor', 'Lindqvist', 'Reyes', 'Tanaka', 'Brandt', 'Halloran', 'Ng', 'Castellan', 'Ibarra', 'Quill', 'Moreau', 'Sato', 'Dunmore',
+  'Achebe', 'Petrov', 'Kessler', 'Aldana', 'Fenwick', 'Ruiz', 'Sorensen', 'Bell', 'Nakamura', 'Odum', 'Larkin', 'Vance', 'Mbeki', 'Hart', 'Ivanova'];
 const STAFF = { hauler: 'supply', engineer: 'maintenance', officer: 'security', medic: 'medical' };
+const FACTIONS = ['supply', 'maintenance', 'security', 'medical'];
+const COMPLAIN = {
+  supply: ['Commander, my haulers are walking half the station with every crate. {why}', 'Supply is not happy. {why}'],
+  maintenance: ['Commander, Maintenance is stretched thin. {why}', 'The engineers are grumbling. {why}'],
+  security: ['Commander, the Officers feel exposed. {why}', 'Security is not happy. {why}'],
+  medical: ['Commander, Medical cannot reach the people it should. {why}', 'The medics are not happy. {why}'],
+};
+const PRAISE = {
+  supply: 'Supply wanted you to know: the cargo flows, and the haulers noticed.',
+  maintenance: 'Maintenance reports: good layout, short walks, hands happy. Wrenches up.',
+  security: 'Security reports: every bay watched. The Officers are in good spirits.',
+  medical: 'Medical reports: the Medbay is where it should be. Spirits are high.',
+};
 const STRUCTURAL = new Set(['command', 'core', 'longcore', 'junction', 'truss', 'node', 'tube']);
 
 export class Station {
@@ -53,6 +70,11 @@ export class Station {
     this.crateTimes = []; this.berthTimes = [];
     this.staff = { hauler: 0, engineer: 0, officer: 0, medic: 0 };
     this.homes = { hauler: 0, engineer: 0, officer: 0, medic: 0 };
+    // Factions: how happy each is (0 to 100), what it thinks is wrong, goodwill from your decisions, and what it has asked for.
+    this.sat = {}; this.why = {}; this.favor = {}; this.cool = {}; this.praised = {};
+    for (const k of FACTIONS) { this.sat[k] = C.faction.start; this.why[k] = ''; this.favor[k] = 0; this.cool[k] = 30; this.praised[k] = -300; }
+    this.requests = []; this.reqLog = [];
+    this.timers.fac = 0; this.timers.request = this.rng.range(C.faction.requestSec[0], C.faction.requestSec[1]);
     const cmd = this._make('command', 0, -1, 0, [0, 0, 0], q.id());
     cmd.state = 'active'; cmd.prog = 1;
     this.root = cmd.id;
@@ -141,12 +163,12 @@ export class Station {
     if (this.credits < r.cost) return { ok: false, why: 'Not enough credits' };
     return { ok: true, why: '' };
   }
-  setRoom(id, slot, room) {
+  setRoom(id, slot, room, mark = null) {
     const chk = this.canRoom(id, slot, room);
     if (!chk.ok) return chk;
     const p = this.parts.get(id);
     this._money(-C.rooms[room].cost, 'build');
-    p.rooms[slot] = room;
+    p.rooms[slot] = room; p.marks[slot] = mark;
     for (const a of this.agents) if (a.home === p.id) a.home = 0;    // anyone housed here finds their place again
     this.events.push({ type: 'room', part: p, slot });
     this._refresh();
@@ -156,7 +178,7 @@ export class Station {
   _make(type, parent, pport, rot, pos, quat) {
     const n = [...this.parts.values()].filter((x) => x.type === type).length + 1;
     const p = { id: this.nextId++, type, parent, pport, rot, pos, quat, n, used: new Set(parent ? [0] : []), kids: [],
-      state: 'building', prog: 0, seed: this.rng.next(), rooms: [...(C.parts[type].rooms || [])], fault: false, fixer: 0 };
+      state: 'building', prog: 0, seed: this.rng.next(), rooms: [...(C.parts[type].rooms || [])], marks: [], fault: false, fixer: 0 };
     this.parts.set(p.id, p);
     return p;
   }
@@ -302,6 +324,7 @@ export class Station {
     if (!T) return null;
     const n = T.needs, items = [];
     if (n.residents) items.push({ label: 'Residents', have: this.residents(), need: n.residents });
+    if (n.cap) items.push({ label: 'Capability', have: this.capability(), need: n.cap });
     if (n.crates) items.push({ label: 'Crates traded', have: this.stats.crates, need: n.crates });
     if (n.power) items.push({ label: 'Power supply', have: this.supply, need: n.power });
     if (n.morale) items.push({ label: 'Morale', have: Math.round(this.morale), need: n.morale });
@@ -321,6 +344,190 @@ export class Station {
     this.events.push({ type: 'tier', tier: this.tier });
     this.say('ministry', `${C.tiers[this.tier].name} STATUS GRANTED. The build zone grows to ${this.radius} units. Unlocked: ${[...u.parts, ...u.rooms].join(', ') || 'the Ministry\'s gratitude'}.`, { gold: true });
     this._refresh();
+  }
+
+  // ---------------------------------------------------------------- factions: what each division wants, and how happy it is
+  // Walking distance from the nearest of `sources` to every active part (a multi-source Dijkstra over the joins).
+  distMap(sources) {
+    const dist = new Map(), open = [], done = new Set();
+    for (const id of sources) if (this.parts.get(id)) { dist.set(id, 0); open.push(id); }
+    while (open.length) {
+      open.sort((a, b) => dist.get(a) - dist.get(b));
+      const id = open.shift();
+      if (done.has(id)) continue;
+      done.add(id);
+      const p = this.parts.get(id);
+      for (const n of this.nbrs(p)) {
+        const d = dist.get(id) + this.edge(p, n).len;
+        if (!dist.has(n.id) || d < dist.get(n.id)) { dist.set(n.id, d); open.push(n.id); }
+      }
+    }
+    return dist;
+  }
+  // Happy factions work faster, unhappy ones slower.
+  mood(role) {
+    const k = STAFF[role], F = C.faction;
+    return k ? F.speedMin + (F.speedMax - F.speedMin) * this.sat[k] / 100 : 1;
+  }
+  _active() { return [...this.parts.values()].filter((p) => p.state === 'active'); }
+  _withRoom(room) { return this._active().filter((p) => !p.fault && p.rooms.includes(room)).map((p) => p.id); }
+  // What the layout is worth to each faction right now (0 to 100), and the reason in the faction's own terms.
+  _targets() {
+    const out = {}, act = this._active(), fb = this.berths('freighter').map((p) => p.id);
+    const avg = (xs) => xs.reduce((s, x) => s + x, 0) / Math.max(1, xs.length), clamp = (x) => Math.max(5, Math.min(100, x));
+    const cargo = [...this.cargoIds];
+    if (!fb.length) out.supply = { t: 55, why: 'There are no docking ports yet.' };
+    else if (!cargo.length) out.supply = { t: 15, why: 'There is nowhere to put the cargo.' };
+    else {
+      const dm = this.distMap(cargo), d = avg(fb.map((b) => dm.get(b) ?? 60)), lost = this.stats.lost / Math.max(1, this.stats.ships + this.stats.lost);
+      out.supply = { t: clamp(100 - d * 3 - lost * 40), why: `Crates walk ${Math.round(d)} units from the docks to a store.${lost > 0.2 ? ' Ships are giving up and leaving.' : ''}` };
+    }
+    const shops = this._withRoom('workshop'), body = act.filter((p) => !STRUCTURAL.has(p.type)).map((p) => p.id), faults = act.filter((p) => p.fault).length;
+    if (!body.length) out.maintenance = { t: 55, why: 'There is little to maintain yet.' };
+    else if (!shops.length) out.maintenance = { t: 15, why: 'There is no Workshop to work from.' };
+    else {
+      const dm = this.distMap(shops), d = avg(body.map((b) => dm.get(b) ?? 60));
+      out.maintenance = { t: clamp(100 - d * 2.5 - Math.min(45, faults * 15)), why: `The nearest Workshop is ${Math.round(d)} units from the average part.${faults ? ` ${faults} fault${faults > 1 ? 's are' : ' is'} still open.` : ''}` };
+    }
+    const offices = this._withRoom('secoffice');
+    if (!fb.length) out.security = { t: 55, why: 'There are no docking bays to watch yet.' };
+    else if (!offices.length) out.security = { t: 20, why: 'There is no Security Office, so every bay is unwatched.' };
+    else {
+      const dm = this.distMap(offices), cover = fb.filter((b) => (dm.get(b) ?? 99) <= C.securityReach).length / fb.length;
+      out.security = { t: clamp(30 + 70 * cover - Math.min(20, this.unrest * 1.5)), why: cover < 1 ? `Only ${Math.round(cover * 100)}% of the docking bays are within reach of a Security Office.` : 'Smugglers keep getting through.' };
+    }
+    const bays = this._withRoom('medbay'), beds = act.filter((p) => p.rooms.some((r) => C.rooms[r].beds)).map((p) => p.id);
+    if (!this.residents()) out.medical = { t: 55, why: 'There is no one to look after yet.' };
+    else if (!bays.length) out.medical = { t: 20, why: 'There is no Medbay.' };
+    else {
+      const dm = this.distMap(bays), d = avg(beds.map((b) => dm.get(b) ?? 60));
+      out.medical = { t: clamp(100 - d * 3), why: `The Medbay is ${Math.round(d)} units from the average bed.` };
+    }
+    // A faction cannot be blamed for a room the Ministry has not allowed yet.
+    for (const k of FACTIONS) if (!this.roomOpen(C.factions[k].room)) out[k] = { t: 55, why: `The Ministry has not yet allowed ${C.factions[k].ask.replace(/^an? /, '')}s.` };
+    for (const [role, k] of Object.entries(STAFF)) if (this.homes[role] > 0 && this.staff[role] === 0) { out[k].t = Math.max(5, out[k].t - 20); out[k].why = `No one is on the budget to staff it. ${out[k].why}`; }
+    return out;
+  }
+  _factions(dt) {
+    const F = C.faction;
+    if ((this.timers.fac -= dt) <= 0) { this.timers.fac = F.evalSec; this.target = this._targets(); }
+    if (!this.target) return;
+    for (const k of FACTIONS) {
+      const f = this.favor[k];
+      this.favor[k] = f - Math.sign(f) * Math.min(Math.abs(f), F.favorDecay * dt);
+      const T = this.target[k], goal = Math.max(0, Math.min(100, T.t + this.favor[k]));
+      this.sat[k] += Math.max(-F.easeSec * dt, Math.min(F.easeSec * dt, goal - this.sat[k]));
+      this.why[k] = T.why;
+      this.cool[k] -= dt;
+      if (this.sandbox || this.t < 60) continue;
+      if (this.sat[k] < F.low && this.cool[k] <= 0) { this.cool[k] = F.cooldown; this.say(k, this.rng.pick(COMPLAIN[k]).replace('{why}', T.why), { warn: true }); }
+      else if (this.sat[k] > F.high && this.t - this.praised[k] > F.praiseCooldown) { this.praised[k] = this.t; this.say(k, PRAISE[k], { gold: true }); }
+    }
+  }
+  // The overall score: what the station adds to the war effort, nudged by how happy its factions are.
+  capability() {
+    const K = C.capability, sat = FACTIONS.reduce((s, k) => s + this.sat[k], 0) / FACTIONS.length;
+    const staff = Object.values(this.staff).reduce((s, x) => s + x, 0);
+    const raw = this.stats.crates * K.crate + this.stats.ships * K.ship + this.residents() * K.resident + this.defence * K.defence + (this.stats.repairs || 0) * K.repair + staff * K.staff;
+    return Math.round(raw * (0.7 + 0.6 * sat / 100));
+  }
+  crew(k) { return this.agents.filter((a) => a.role === C.div[k].staff); }
+  doing(a) {
+    if (a.eva) return a.task === 'drydock' ? 'on EVA, repairing a warship' : 'on EVA, repairing the hull';
+    if (a.carry) return 'carrying a crate to a store';
+    switch (a.task) {
+      case 'pick': return 'going to collect a crate';
+      case 'fix': return 'heading out to a fault';
+      case 'drydock': return 'heading to the drydock';
+      case 'inspect': return 'inspecting a ship';
+      case 'rounds': return 'doing rounds';
+      case 'leave': return 'leaving the station';
+      case 'out': return 'out for a walk';
+      case 'back': return 'heading home';
+      default: return a.role === 'resident' ? 'at home' : 'on station';
+    }
+  }
+
+  // ---------------------------------------------------------------- requests: a faction asks for a room, you approve or deny
+  // The place it would like: the part furthest from what it has (or the first it has none for), and the nearest free slot to that.
+  _needPoint(k) {
+    const act = this._active(), fb = this.berths('freighter').map((p) => p.id);
+    let have, subjects;
+    if (k === 'supply') { have = [...this.cargoIds]; subjects = fb; }
+    else if (k === 'maintenance') { have = this._withRoom('workshop'); subjects = act.filter((p) => !STRUCTURAL.has(p.type)).map((p) => p.id); }
+    else if (k === 'security') { have = this._withRoom('secoffice'); subjects = fb; }
+    else { have = this._withRoom('medbay'); subjects = this.residents() ? act.filter((p) => p.rooms.some((r) => C.rooms[r].beds)).map((p) => p.id) : []; }
+    if (!subjects.length) return null;
+    if (!have.length) return { part: subjects[0], far: Infinity };
+    const dm = this.distMap(have);
+    let worst = null;
+    for (const id of subjects) { const d = dm.get(id) ?? 99; if (!worst || d > worst.far) worst = { part: id, far: d }; }
+    return worst.far > C.faction.farUnits ? worst : null;
+  }
+  _freeSlot(p) {
+    const taken = new Set(this.requests.filter((r) => r.part === p.id).map((r) => r.slot));
+    let slot = p.rooms.findIndex((r, i) => r === 'empty' && !taken.has(i));
+    if (slot >= 0) return slot;
+    const beds = p.rooms.reduce((s, r) => s + (C.rooms[r].beds || 0), 0);
+    const housed = this.agents.filter((a) => a.role === 'resident' && a.home === p.id && !a.leaving).length;
+    return beds - housed >= 2 ? p.rooms.findIndex((r, i) => r === 'quarters' && !taken.has(i)) : -1;
+  }
+  _propose() {
+    const order = FACTIONS.filter((k) => !this.requests.some((r) => r.k === k)).sort((a, b) => this.sat[a] - this.sat[b]);
+    for (const k of order) {
+      const room = C.factions[k].room, cost = C.rooms[room].cost;
+      if (!this.roomOpen(room) || this.credits < cost) continue;
+      const need = this._needPoint(k);
+      if (!need) continue;
+      const dm = this.distMap([need.part]);
+      let best = null;
+      for (const p of this._active()) {
+        if (p.fault || !dm.has(p.id)) continue;
+        const slot = this._freeSlot(p);
+        if (slot >= 0 && (!best || dm.get(p.id) < best.d)) best = { p, slot, d: dm.get(p.id) };
+      }
+      if (!best || best.d > need.far * 0.6) continue;
+      const F = C.factions[k], req = { id: this.nextId++, k, part: best.p.id, slot: best.slot, room, was: best.p.rooms[best.slot], cost, t: 0 };
+      this.requests.push(req);
+      this.say(k, need.far === Infinity
+        ? `Commander, ${F.who} has nothing of its own yet. We request ${F.ask} in ${this.name(best.p)} (${cost} CR).`
+        : `Commander, ${F.who} requests ${F.ask} in ${this.name(best.p)} (${cost} CR). ${this.why[k]}`, { request: req.id });
+      return true;
+    }
+    return false;
+  }
+  _requests(dt) {
+    if (this.sandbox) return;
+    const F = C.faction;
+    for (const r of [...this.requests]) {
+      r.t += dt;
+      if (r.t >= F.ttl) { this._close(r, 'expired'); this.favor[r.k] += F.ignore; this.say(r.k, `No answer on our request, Commander. We will remember that.`, { warn: true }); }
+    }
+    if ((this.timers.request -= dt) <= 0) {
+      this.timers.request = this.rng.range(F.requestSec[0], F.requestSec[1]);
+      if (this.requests.length < F.pending) this._propose();
+    }
+  }
+  _close(r, outcome) { this.requests.splice(this.requests.indexOf(r), 1); this.reqLog.push({ k: r.k, outcome, t: this.t }); this.events.push({ type: 'request', id: r.id, outcome }); }
+  approve(id) {
+    const r = this.requests.find((x) => x.id === id);
+    if (!r) return { ok: false, why: 'That request has closed.' };
+    const p = this.parts.get(r.part);
+    if (!p || p.state !== 'active' || p.rooms[r.slot] !== r.was) { this._close(r, 'void'); return { ok: false, why: 'That space is no longer free.' }; }
+    const res = this.setRoom(r.part, r.slot, r.room, r.k);
+    if (!res.ok) return res;
+    this._close(r, 'approved');
+    this.favor[r.k] = Math.min(25, this.favor[r.k] + C.faction.approve);
+    this.say(r.k, `Thank you, Commander. ${C.factions[r.k].ask[0].toUpperCase()}${C.factions[r.k].ask.slice(1)} is going into ${this.name(p)}, marked for ${C.factions[r.k].who}.`, { gold: true });
+    return { ok: true, why: '' };
+  }
+  deny(id) {
+    const r = this.requests.find((x) => x.id === id);
+    if (!r) return { ok: false, why: 'That request has closed.' };
+    this._close(r, 'denied');
+    this.favor[r.k] = Math.max(-25, this.favor[r.k] + C.faction.deny);
+    this.say(r.k, 'Understood, Commander. The answer is no. We will make do.', { dim: true });
+    return { ok: true, why: '' };
   }
 
   // ---------------------------------------------------------------- the step
@@ -350,6 +557,8 @@ export class Station {
     const p = this.moraleParts(), target = Math.max(0, Math.min(100, Object.values(p).reduce((s, x) => s + x, 0)));
     this.morale += Math.max(-1.5 * dt, Math.min(1.5 * dt, target - this.morale));
     this.unrest = Math.max(0, this.unrest - dt * C.morale.contraband / C.morale.unrestDecaySec);
+    this._factions(dt);
+    this._requests(dt);
     this._tiers();
     if ((this.timers.talk -= dt) <= 0) {
       this.timers.talk = 70 + this.rng.range(0, 40);
@@ -368,7 +577,8 @@ export class Station {
     }
   }
   _spawn(role, at, home) {
-    const a = { id: this.nextId++, role, at, home, path: [], s: 0, wait: this.rng.range(0, 1), task: null, carry: false, ship: 0, seed: this.rng.next(), eva: false };
+    const a = { id: this.nextId++, role, at, home, path: [], s: 0, wait: this.rng.range(0, 1), task: null, carry: false, ship: 0, seed: this.rng.next(), eva: false,
+      name: `${this.rng.pick(FIRST)} ${this.rng.pick(LAST)}`, since: this.t };
     this.agents.push(a); return a;
   }
   _drop(a) {
@@ -419,7 +629,7 @@ export class Station {
   }
   _walk(a, dt) {
     const fast = a.role === 'hauler' && this.div.supply.order.shift === 'double' ? 1.4 : 1;
-    let left = dt * C.walk.speed * (0.55 + 0.45 * this.eff) * fast * (a.role !== 'resident' && this.credits < 0 ? 0.6 : 1);
+    let left = dt * C.walk.speed * (0.55 + 0.45 * this.eff) * fast * (a.role !== 'resident' && this.credits < 0 ? 0.6 : 1) * this.mood(a.role);
     while (left > 0 && a.path.length) {
       const from = this.parts.get(a.at), to = this.parts.get(a.path[0]);
       if (!from || !to || to.state !== 'active') { a.path = []; a.s = 0; break; }
@@ -496,7 +706,7 @@ export class Station {
     const W = C.walk;
     if (a.task === 'pick') { a.wait = W.pickSec; a.pending = 'pick'; return; }
     if (a.task === 'drop') { a.wait = W.dropSec; a.pending = 'drop'; return; }
-    if (a.task === 'fix') { a.wait = W.repairSec / (0.5 + 0.5 * this.eff); a.pending = 'fix'; a.eva = true; return; }
+    if (a.task === 'fix') { a.wait = W.repairSec / (0.5 + 0.5 * this.eff) / this.mood(a.role); a.pending = 'fix'; a.eva = true; return; }
     if (a.task === 'drydock') { a.wait = 8; a.pending = 'drydock'; a.eva = true; return; }
     if (a.task === 'inspect') { a.wait = W.inspectSec; a.pending = 'inspect'; return; }
     if (a.task === 'leave') { this.stats.left++; this._gone(a); return; }

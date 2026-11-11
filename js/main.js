@@ -10,6 +10,7 @@ const qs = new URLSearchParams(location.search);
 const KEYS = ['q', 'w', 'e', 't', 'y', 'a', 's', 'd'];          // the parts of the open group, left to right
 const GROUP_SHORT = { structure: 'STRUCT', habitation: 'HAB', docking: 'DOCK', industry: 'INDUS', power: 'POWER', defence: 'DEF', comms: 'COMMS' };
 const ROLE = { hauler: 'haulers', engineer: 'engineers', officer: 'officers', medic: 'medics' };
+const ROLE_ONE = { hauler: 'Hauler', engineer: 'Engineer', officer: 'Democracy Officer', medic: 'Medic', resident: 'Resident' };
 const PLACES = { hauler: 'Cargo Stores, Cargo Racks and Station Command', engineer: 'Workshops', officer: 'Security Offices', medic: 'Medbays' };
 const ORDER_NAMES = { shift: 'SHIFTS', plan: 'MAINTENANCE PLAN', checks: 'SHIP INSPECTIONS', care: 'MEDICAL CARE', mix: 'TRAFFIC MIX', rate: 'TRAFFIC VOLUME', broadcast: 'BROADCAST' };
 // Radio channels: who is talking, on which channel, in which colour, and how they sign off.
@@ -25,8 +26,8 @@ const CH = {
   captain:     { n: 9, name: 'SHIP-TO-STATION', col: '#7fc8ff', off: ['Over.', 'Over and out.', 'For democracy, over.'] },
 };
 const audio = new Audio();
-const ui = { started: false, tool: null, rot: 0, hot: null, sel: null, paused: false, speed: 1, view: 'blueprint', cut: false, group: 'structure',
-  edit: null, room: null, slot: null, px: null, py: null, portsDirty: false, dots: true, clean: false, div: 'supply', comms: true };
+const ui = { started: false, tool: null, rot: 0, hot: null, sel: null, paused: false, speed: 1, view: 'hull', cut: false, group: 'structure',
+  edit: null, room: null, slot: null, px: null, py: null, portsDirty: false, dots: true, clean: false, div: 'supply', comms: true, person: 0 };
 
 // ---------------------------------------------------------------- the title backdrop: an example station, turning slowly
 function demoStation() {
@@ -58,8 +59,8 @@ function start(mode) {
   view.setStation(st);
   view.controls.autoRotate = false;
   view.frame();
-  Object.assign(ui, { started: true, tool: null, sel: null, hot: null, edit: null, room: null, slot: null, group: 'structure', speed: 1 });
-  setView('blueprint'); setCut(false); setClean(false);
+  Object.assign(ui, { started: true, tool: null, sel: null, hot: null, edit: null, room: null, slot: null, group: 'structure', speed: 1, person: 0 });
+  setView('hull'); setCut(false); setClean(false);
   $('s-title').classList.remove('on'); $('hud').classList.remove('hidden');
   $('b-speed').textContent = '1×';
   const free = mode === 'sandbox';
@@ -67,7 +68,7 @@ function start(mode) {
   closeFloats(null);
   simPanel(free && innerHeight > 520, true);
   $('t-traffic').classList.add('on'); $('t-traffic').textContent = 'TRAFFIC ON';
-  $('c-list').innerHTML = ''; typing.length = 0; setComms(true);
+  $('c-list').innerHTML = ''; typing.length = 0; reqEls.clear(); setComms(true);
   if (free) radio('ministry', 'Free play, Commander. Every part and every room is open to you, and none of it costs a credit. Build whatever you like.');
   else radio('ministry', `Welcome aboard, Commander. The Ministry grants you an Outpost permit and ${C.start.credits.toLocaleString('en-US')} CR. Start with a Docking Port, and somewhere to put the cargo.`);
   radio('ministry', 'Your divisions answer on the Commander\'s channel (O). Select a part and press EDIT INSIDE (I) to build out its rooms.', { dim: true });
@@ -127,7 +128,8 @@ function setTool(t) {
   if (t) ui.portsDirty = true; else view.showPorts(null);
   gridState(); info();
 }
-function select(id) { ui.sel = id; view.select(id); info(); }
+function select(id) { ui.sel = id; ui.person = 0; view.select(id); info(); }
+function pickPerson(id) { select(null); ui.person = id; audio.play('click'); info(); }
 
 // ---------------------------------------------------------------- building out a part's insides, room by room
 const canEdit = (id) => { const p = st.parts.get(id); return !!p && !!SLOTS[p.type] && p.state === 'active'; };
@@ -209,8 +211,10 @@ $('b-dots').onclick = () => { audio.play('click'); setDots(); };
 function setClean(on) {
   ui.clean = on;
   $('app').classList.toggle('clean', on); view.setOverlay(!on);
-  $('b-showui').classList.toggle('hidden', !on); hideTip();
+  $('b-showui').classList.toggle('hidden', !on); hideTip(); $('app').classList.remove('peek'); peekT = 0;
   if (on && ui.tool) setTool(null);
+  if (on && ui.edit) endEdit();
+  if (on) { select(null); closeFloats(null); $('simpanel').classList.add('hidden'); view.showPorts(null); view.setGhost(null, null, 0); }
 }
 $('b-hide').onclick = () => { audio.play('click'); setClean(true); };
 $('b-showui').onclick = () => { audio.play('click'); setClean(false); };
@@ -235,8 +239,9 @@ cv.addEventListener('pointermove', (e) => {
 });
 cv.addEventListener('pointerleave', () => { hideTip(); ui.px = ui.py = null; ui.portsDirty = true; });
 
+let peekT = 0;
 function click(x, y) {
-  if (ui.clean) return;
+  if (ui.clean) { $('app').classList.add('peek'); peekT = 3.5; return; }      // tap the station to bring the SHOW UI button back for a moment
   if (ui.edit) { editClick(x, y); return; }
   if (ui.tool) {
     const p = view.pickPort(x, y);
@@ -251,6 +256,8 @@ function click(x, y) {
     else { audio.play('deny'); toast(r.why); }
     return;
   }
+  const who = view.pickAgent(x, y);
+  if (who) { pickPerson(who); return; }
   const id = view.pickPart(x, y);
   select(id || null);
   if (id) audio.play('click');
@@ -276,6 +283,8 @@ function hover(x, y) {
     if (p) portTip(p, x, y, 'Click to build · R turns it'); else hideTip();
     return;
   }
+  const who = view.pickAgent(x, y), pa = who && st.agents.find((a) => a.id === who);
+  if (pa) { tip.innerHTML = `<b>${pa.name}</b> · ${ROLE_ONE[pa.role]}<br>${st.doing(pa)}`; showTip(x, y); return; }
   const id = view.pickPart(x, y);
   if (id) {
     const p = st.parts.get(id);
@@ -339,7 +348,15 @@ $('b-speed').onclick = () => {
 };
 
 // ---------------------------------------------------------------- station comms: every channel, typed out as it comes in
-const typing = [];
+const typing = [], reqEls = new Map();
+const OUTCOME = { approved: 'APPROVED', denied: 'DENIED', expired: 'NO ANSWER', void: 'NO LONGER POSSIBLE' };
+// Answer a faction's request, from the comms window or from its tab in the Commander's channel.
+function answer(id, yes) {
+  const r = yes ? st.approve(id) : st.deny(id);
+  if (!r.ok) { audio.play('deny'); if (r.why) toast(r.why); }
+  else audio.play(yes ? 'place' : 'click');
+  info(); if (!$('cmdr').classList.contains('hidden')) drawFac();
+}
 const clock = (t) => `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
 function radio(from, text, o = {}) {
   const ch = CH[from] || CH.ministry, list = $('c-list');
@@ -349,6 +366,14 @@ function radio(from, text, o = {}) {
   const bars = 2 + Math.floor(Math.random() * 3), off = ch.off[Math.floor(Math.random() * ch.off.length)];
   el.innerHTML = `<div class="cmh"><span class="led"></span><b>CH ${ch.n} · ${ch.name}</b><span class="sig">${'▂▄▆█'.slice(0, bars)}<s>${'▂▄▆█'.slice(bars)}</s></span><time>${ui.started ? clock(st.t) : ''}</time></div><div class="cmt"></div>${off ? `<div class="cms">— ${off}</div>` : ''}`;
   const body = (from === 'captain' || from === 'colonists') && Math.random() < 0.3 ? `*kssht* ${text}` : text;
+  // A faction asking for something carries its answer buttons right in the message.
+  if (o.request) {
+    const bar = document.createElement('div');
+    bar.className = 'rq-bar';
+    bar.innerHTML = '<button type="button" class="btn primary" data-a="ok">APPROVE</button><button type="button" class="btn" data-a="no">DENY</button>';
+    bar.onclick = (ev) => { const b = ev.target.closest('button'); if (b) answer(o.request, b.dataset.a === 'ok'); };
+    el.appendChild(bar); reqEls.set(o.request, bar);
+  }
   typing.push({ el: el.querySelector('.cmt'), wrap: el, full: body, i: 0 });
   const stick = list.scrollTop + list.clientHeight >= list.scrollHeight - 30;
   list.appendChild(el);
@@ -399,13 +424,13 @@ function drawCmdr() {
     tabs.appendChild(b);
   }
   const k = ui.div, d = C.div[k], ch = CH[k], div = st.div[k];
-  let h = `<div class="dh" style="--c:${d.col}"><b>CH ${ch.n} · ${d.name.toUpperCase()}</b><span class="sig">▂▄▆█</span></div><div class="rep" id="cm-rep"></div>`;
+  let h = `<div class="dh" style="--c:${d.col}"><b>CH ${ch.n} · ${d.name.toUpperCase()}</b><span class="sig">▂▄▆█</span></div><div class="rep" id="cm-rep"></div><div id="cm-fac"></div>`;
   if (d.budget != null) h += `<div class="brow"><span class="bl">${d.staff ? 'BUDGET FOR WAGES' : 'BROADCAST BUDGET'}</span><span class="bv" id="cm-bv"></span>`
     + `<input id="cm-budget" type="range" min="0" max="${C.budgetMax}" step="2" value="${div.budget}"><span class="bn" id="cm-bn"></span></div>`;
   for (const [o, opts] of Object.entries(d.orders)) {
     h += `<div class="ord"><span class="ol">${ORDER_NAMES[o] || o.toUpperCase()}</span><div class="obs">${opts.map(([v, l]) => `<button type="button" class="btn ob${div.order[o] === v ? ' on' : ''}" data-o="${o}" data-v="${v}">${l}</button>`).join('')}</div></div>`;
   }
-  $('cm-main').innerHTML = h;
+  $('cm-main').innerHTML = h; facSig = '';
   if ($('cm-budget')) $('cm-budget').oninput = (e) => { st.setBudget(k, +e.target.value); cmdrText(); };
   for (const b of $('cm-main').querySelectorAll('.ob')) b.onclick = () => {
     if (st.div[k].order[b.dataset.o] === b.dataset.v) return;
@@ -414,7 +439,32 @@ function drawCmdr() {
     cmType = { el: $('cm-rep'), full: st.report(k), i: 0 };
   };
   cmType = { el: $('cm-rep'), full: st.report(k), i: 0 };
-  cmdrText();
+  cmdrText(); drawFac();
+}
+// A faction's page: its mood, what it wants, any request waiting for your answer, and its people by name.
+let facSig = '';
+function drawFac() {
+  const box = $('cm-fac'); if (!box) return;
+  const k = ui.div, F = C.factions[k];
+  if (!F) { box.innerHTML = ''; facSig = ''; return; }
+  const crew = st.crew(k), req = st.requests.find((r) => r.k === k), shown = crew.slice(0, 8);
+  const sig = `${k}|${req ? req.id : 0}|${shown.map((a) => a.id).join(',')}|${crew.length}`;
+  if (sig !== facSig) {
+    facSig = sig;
+    const where = req && st.parts.get(req.part);
+    box.innerHTML = `<div class="fac"><div class="fh"><b>${F.who.toUpperCase()} · MOOD</b><span class="fs"></span></div><div class="fbar"><i></i></div>`
+      + `<p class="fw"><b>Wants:</b> ${F.wants}</p><p class="fy"></p>`
+      + (req ? `<div class="freq"><span>REQUEST: ${F.ask} in ${where ? st.name(where) : 'a part'} · ${req.cost} CR · <em class="ft"></em></span><button type="button" class="btn primary" data-a="ok">APPROVE</button><button type="button" class="btn" data-a="no">DENY</button></div>` : '')
+      + `<div class="crew"><b>${ROLE[C.div[k].staff].toUpperCase()} ON STATION (${crew.length})</b>${shown.map((a) => `<button type="button" class="pp" data-id="${a.id}">${a.name}<small></small></button>`).join('')}${crew.length > shown.length ? `<em>+${crew.length - shown.length} more</em>` : ''}</div></div>`;
+    for (const b of box.querySelectorAll('.freq button')) b.onclick = () => answer(req.id, b.dataset.a === 'ok');
+    for (const b of box.querySelectorAll('.pp')) b.onclick = () => { const a = st.agents.find((x) => x.id === +b.dataset.id); if (a) { pickPerson(a.id); view.lookAtAgent(a); } };
+  }
+  const sat = Math.round(st.sat[k]), cls = sat >= 65 ? 'ok' : sat >= C.faction.low ? 'mid' : 'bad';
+  box.querySelector('.fs').textContent = sat; box.querySelector('.fs').className = `fs ${cls}`;
+  box.querySelector('.fbar').className = `fbar ${cls}`; box.querySelector('.fbar i').style.width = `${sat}%`;
+  box.querySelector('.fy').textContent = st.why[k] || '';
+  if (req) box.querySelector('.ft').textContent = `${Math.max(0, Math.round(C.faction.ttl - req.t))} s left`;
+  for (const b of box.querySelectorAll('.pp')) { const a = st.agents.find((x) => x.id === +b.dataset.id); b.querySelector('small').textContent = a ? st.doing(a) : ''; }
 }
 function cmdrText() {
   for (const k of C.divOrder) {
@@ -451,7 +501,7 @@ $('b-upg').onclick = () => upg(); $('b-age').onclick = () => upg(); $('up-x').on
 const NUM = ['I', 'II', 'III', 'IV', 'V'];
 function needsText(T) {
   const n = T.needs || {}, out = [];
-  if (n.residents) out.push(`${n.residents} residents`); if (n.crates) out.push(`${n.crates} crates traded`);
+  if (n.residents) out.push(`${n.residents} residents`); if (n.cap) out.push(`${n.cap} capability`); if (n.crates) out.push(`${n.crates} crates traded`);
   if (n.power) out.push(`${n.power} power`); if (n.morale) out.push(`morale ${n.morale}`);
   for (const r of n.rooms || []) out.push(`a ${C.rooms[r].name}`);
   return out.join(' · ');
@@ -537,6 +587,7 @@ function drain() {
       case 'crate': audio.play('crate'); break;
       case 'comms': radio(e.from, e.text, e); if (e.from === 'maintenance' && e.warn) audio.play('fault'); break;
       case 'order': radio(e.from, e.text); break;
+      case 'request': { const bar = reqEls.get(e.id); if (bar) { bar.innerHTML = `<span class="rq-out ${e.outcome}">${OUTCOME[e.outcome] || ''}</span>`; reqEls.delete(e.id); } break; }
       case 'tier': {
         audio.play('milestone');
         const T = C.tiers[e.tier], u = st.unlocksOf(e.tier);
@@ -551,9 +602,9 @@ function drain() {
 
 // ---------------------------------------------------------------- HUD
 function hud() {
-  const net = st.netPerMin();
   $('r-cr').textContent = st.sandbox ? '∞' : Math.round(st.credits).toLocaleString('en-US');
-  $('r-net').textContent = st.sandbox ? '' : `${net >= 0 ? '+' : '−'}${Math.abs(Math.round(net))}/min`; $('r-net').className = net >= 0 ? 'up' : 'down';
+  $('r-cap').textContent = st.capability().toLocaleString('en-US');
+  $('cm-badge').textContent = st.requests.length || '';
   $('r-pw').textContent = `${st.demand}/${st.supply}`; $('r-pw').style.color = st.eff < 1 ? 'var(--red)' : '';
   $('r-pop').textContent = `${st.residents()}/${st.beds()}`;
   const mo = Math.round(st.morale); $('r-mo').textContent = mo; $('r-mo').style.color = mo >= 55 ? '' : mo >= 35 ? 'var(--amber)' : 'var(--red)';
@@ -565,7 +616,7 @@ function hud() {
   if (!ui.tool) info();
   if ($('s-menu').classList.contains('on')) menuText();
   if (st.sandbox && !$('simpanel').classList.contains('hidden')) simStats();
-  if (!$('cmdr').classList.contains('hidden')) cmdrText();
+  if (!$('cmdr').classList.contains('hidden')) { cmdrText(); drawFac(); }
   if (!$('upg').classList.contains('hidden')) drawUpg();
   fitComms();
 }
@@ -598,6 +649,11 @@ function info(peek) {
       + (ui.tool ? `<div class="ia">Click near a port to attach it (little blue dots near the pointer). <b>R</b> turns it (${ui.rot * 45}°). Right-click or Esc puts it down.</div>` : ''));
     return;
   }
+  if (ui.person) {
+    const a = st.agents.find((x) => x.id === ui.person);
+    if (a) { personInfo(a); return; }
+    ui.person = 0;
+  }
   const p = ui.sel && st.parts.get(ui.sel);
   if (p) {
     const d = C.parts[p.type];
@@ -625,7 +681,18 @@ function info(peek) {
   const n = st.next();
   setInfo(`<div class="in">${st.sandbox ? 'FREE PLAY' : `STATION OVERVIEW · ${C.tiers[st.tier].name}`}</div>`
     + `<div class="ia">Pick a part from a group on the left, then click near a port. Select a built part to build out its rooms. Drag to orbit, right-drag to pan, scroll to zoom.</div>`
+    + `<div class="st moods">${['supply', 'maintenance', 'security', 'medical'].map((k) => stat(C.factions[k].who.toUpperCase(), Math.round(st.sat[k]), st.sat[k] < C.faction.low ? 'bad' : st.sat[k] >= 65 ? 'ok' : 'warn')).join('')}</div>`
     + (st.sandbox || !n ? '' : `<ul class="ms">${n.items.map((i) => `<li class="${i.ok ? 'ok' : ''}">${i.label} ${Math.min(i.have, i.need)}/${i.need}</li>`).join('')}<li class="nx">Next: ${n.name}. The full path is under UPGRADES (U).</li></ul>`));
+}
+// One person: who they are, who they work for, and what they are doing right now.
+function personInfo(a) {
+  const k = C.divOrder.find((d) => C.div[d].staff === a.role), home = st.parts.get(a.home), at = st.parts.get(a.at);
+  setInfo(`<div class="in edit"><span>${a.name.toUpperCase()}</span><button class="btn" id="a-focus" type="button">FOCUS <small>F</small></button><button class="btn primary" id="a-done" type="button">DONE</button></div>`
+    + `<div class="ia">${ROLE_ONE[a.role]}${k ? `, ${C.factions[k].who}` : ''}. ${k ? `${C.factions[k].who} is ${st.sat[k] >= 65 ? 'in good spirits' : st.sat[k] >= C.faction.low ? 'getting by' : 'unhappy'}.` : ''}</div>`
+    + `<div class="st">${stat('DOING', st.doing(a))}${stat('IN', at ? st.name(at) : '—')}${stat(a.role === 'resident' ? 'QUARTERS' : 'POSTED', home ? st.name(home) : '—')}${stat('ABOARD', clock(st.t - a.since))}</div>`, () => {
+    $('a-focus').onclick = () => view.lookAtAgent(a);
+    $('a-done').onclick = () => { audio.play('click'); select(null); };
+  });
 }
 function editInfo(peekRoom) {
   const p = st.parts.get(ui.edit);
@@ -715,6 +782,7 @@ function frame(nowMs) {
     if ((miniT -= dt) <= 0) { miniT = 0.1; drawMini(); }
     if (bannerT > 0 && (bannerT -= dt) <= 0) $('banner').classList.remove('show');
     if (toastT > 0 && (toastT -= dt) <= 0) $('toast').classList.remove('show');
+    if (peekT > 0 && (peekT -= dt) <= 0) $('app').classList.remove('peek');
   }
   requestAnimationFrame(frame);
 }
