@@ -414,7 +414,8 @@ h1 { text-shadow: none; letter-spacing: 0.1em; } .eyebrow, .panel .ph, .desk .ph
 }
 @media (max-width: 860px) { .res { gap: 8px; } .ri:nth-child(5) { display: none; } }
 @media (max-width: 780px) { .ri:nth-child(4) { display: none; } .ri.cap, .ri.cr { padding: 1px 6px 1px 5px; gap: 3px; } .ri.cap b { font-size: 16px; } }
-@media (max-width: 640px) { .ri:nth-child(3) { display: none; } .ri.cr i { display: none; } }
+@media (max-width: 700px) { .ri:nth-child(3) { display: none; } .ri.cr i { display: none; } #b-upg { display: none; } .age { padding: 2px 4px; } .age b { letter-spacing: 0.06em; font-size: 11px; } #top { gap: 6px; } }
+@media (max-width: 600px) { .res { gap: 5px; } .ri.cap, .ri.cr { padding: 1px 4px; } .ri.cap b { font-size: 14px; } .ri.cr b { font-size: 12px; } .ri.cap i { display: none; } #hud:has(#simpanel:not(.hidden)) .comms { display: none; } }
 @media (max-width: 480px) { .age, #b-upg, .ri:nth-child(3) { display: none; } .menu { margin-left: auto; gap: 3px; } .menu .btn { padding: 2px 5px; } .res { gap: 7px; } .ri i { margin-right: 3px; } }
 @media (max-height: 520px) {
   #top { height: calc(34px + env(safe-area-inset-top)); }
