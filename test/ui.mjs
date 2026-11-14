@@ -41,6 +41,7 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
   check('ECONOMY starts with Station Command alone and 2,500 CR', await page.evaluate(() => window.__st.parts.size === 1 && window.__st.credits > 2490 && window.__st.credits <= 2500));
   check('Hull is the default view', await page.evaluate(() => window.__view.mode === 'hull' && window.__ui.view === 'hull') && await page.$eval('.vb[data-v="hull"]', (b) => b.classList.contains('on')));
   check('the top bar shows capability, not a profit figure', await page.evaluate(() => !document.getElementById('r-net') && /^\d/.test(document.getElementById('r-cap').textContent)));
+  check('build buttons show a picture of the part, with its name and cost', await page.evaluate(() => { const b = document.querySelector('#cmd .cb'); return !!b.querySelector('img') && b.querySelector('img').src.startsWith('data:image/png') && !!b.querySelector('.cn').textContent && +b.querySelector('.cc').textContent > 0; }));
   check('parts come in seven groups', (await page.$$eval('#groups .gt', (b) => b.map((x) => x.textContent))).join() === 'STRUCT,HAB,DOCK,INDUS,POWER,DEF,COMMS');
   await page.keyboard.press('Tab');
   const hab = await page.$$eval('#cmd .cb', (b) => b.map((x) => [x.dataset.t, x.classList.contains('locked')]));
@@ -99,7 +100,7 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
   for (let i = 0; i < 3 && await page.evaluate(() => window.__st.parts.get(window.__ui.sel)?.type) !== 'hab'; i++) { await page.mouse.click(...await partXY(page, 'p.type === "hab"')); await page.waitForTimeout(300); }
   check('clicking a part selects it, with EDIT INSIDE', await page.evaluate(() => window.__st.parts.get(window.__ui.sel)?.type) === 'hab' && await page.isVisible('#a-edit'), await page.evaluate(() => `${window.__st.parts.get(window.__ui.sel)?.type} ${window.__ui.tool} ${window.__ui.edit}`));
   await page.keyboard.press('i'); await page.waitForTimeout(500);
-  check('I opens the part: a room palette and its rooms', await page.evaluate(() => window.__view.edit) && (await page.$$('#cmd .rb')).length === 16 && (await page.$$('#info .chip[data-i]')).length === 3);
+  check('I opens the part: a room palette and its rooms', await page.evaluate(() => window.__view.edit) && (await page.$$('#cmd .rb')).length === 18 && (await page.$$('#info .chip[data-i]')).length === 3);
   const habId = await page.evaluate(() => window.__view.edit), cr0 = await page.evaluate(() => window.__st.credits);
   await page.click('.rb[data-r="mess"]');
   const t1 = await tileXY(page, 1);
@@ -115,12 +116,15 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
 
   // The Commander's channel.
   await page.keyboard.press('o'); await page.waitForTimeout(300);
-  check('O opens the Commander\'s channel with six divisions', await page.isVisible('#cmdr') && (await page.$$('#cm-tabs .dt')).length === 6);
+  check('O opens the Commander\'s channel with eight divisions', await page.isVisible('#cmdr') && (await page.$$('#cm-tabs .dt')).length === 8);
   await page.click('#cm-tabs .dt[data-k="maintenance"]'); await page.waitForTimeout(100);
   await page.click('.ob[data-v="preventive"]'); await page.waitForTimeout(300);
   check('a standing order is given and acknowledged on the radio', await page.evaluate(() => window.__st.div.maintenance.order.plan) === 'preventive' && /CH 4 · PATRIOTIC MAINTENANCE/.test(await page.textContent('#c-list')));
-  await page.$eval('#cm-budget', (e) => { e.value = 40; e.dispatchEvent(new Event('input')); });
-  check('the budget slider funds the division', await page.evaluate(() => window.__st.div.maintenance.budget) === 40);
+  await page.$eval('#cm-budget', (e) => { e.value = 12; e.dispatchEvent(new Event('input')); });
+  check('the weekly allotment slider sets what the division draws', await page.evaluate(() => window.__st.div.maintenance.allot) === 12 && /crates a week/.test(await page.textContent('#cm-bv')));
+  await page.click('#cm-tabs .dt[data-k="supply"]'); await page.waitForTimeout(200);
+  check('Supply\'s page lists the stores', /Coffee/.test(await page.textContent('#cm-stores')) && /Rations/.test(await page.textContent('#cm-stores')));
+  await page.click('#cm-tabs .dt[data-k="maintenance"]'); await page.waitForTimeout(200);
   await page.waitForTimeout(1200);
   check('the division reports in its own voice', /Engineers on staff/.test(await page.textContent('#cm-rep')));
   await page.screenshot({ path: 'test/shots/commander.png' });
@@ -140,17 +144,27 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
   for (let i = 0; i < 14 && await page.evaluate(() => window.__st.tier) < 1; i++) await steps(page, 60);
   await page.waitForTimeout(400);
   check('Garrison status is granted and grows the build zone', await page.evaluate(() => window.__st.tier >= 1 && window.__st.radius === 40), await page.evaluate(() => JSON.stringify(window.__st.next()?.items.map((i) => `${i.label} ${i.have}/${i.need}`))));
-  // A faction asks for a room: approve it from the comms window.
-  await page.evaluate(() => { window.__st.credits += 500; window.__st.timers.request = 0; });
-  await steps(page, 2); await page.waitForTimeout(500);
-  const askN = await page.evaluate(() => window.__st.requests.length);
-  check('a faction asks for a room, with APPROVE and DENY on the comms', askN >= 1 && (await page.$$('#c-list .rq-bar button')).length >= 2, `${askN}`);
-  check('the Commander button counts what is waiting', +(await page.textContent('#cm-badge')).trim() === askN);
-  const ask = await page.evaluate(() => ({ ...window.__st.requests[0] }));
-  await page.locator('#c-list .rq-bar button[data-a="ok"]').first().click(); await page.waitForTimeout(300);
-  const built = await page.evaluate((a) => { const p = window.__st.parts.get(a.part); return p && p.rooms[a.slot] === a.room && p.marks[a.slot] === a.k; }, ask);
+  // What reaches the commander lands on the desk, with its choices.
+  const ask = await page.evaluate(() => {
+    const s = window.__st; s.credits += 500; s.requests.length = 0;
+    const p = [...s.parts.values()].find((x) => x.state === 'active' && x.rooms.includes('quarters')), slot = p.rooms.indexOf('quarters');
+    const r = s._ask({ k: 'security', kind: 'room', part: p.id, slot, room: 'secoffice', was: 'quarters', cost: 60, text: `Commander, Security wants to turn spare quarters in ${s.name(p)} into a Security Office (60 CR).` });
+    if (!s.staff.officer) { s.staff.officer = 1; s._spawn('officer', s.root, s.root); }      // a row needs two people to have it
+    s._dilemma();
+    return { id: r.id, part: p.id, slot, n: s.requests.length };
+  });
+  await page.waitForTimeout(700);
+  check('a request lands on the desk with its choices', await page.isVisible('#desk') && (await page.$$('#dk-list .dk')).length === ask.n && (await page.$$(`#dk-list .dk[data-id="${ask.id}"] button`)).length === 2, `${ask.n}`);
+  check('a matter of people comes with choices of its own', ask.n === 2 && (await page.$$('#dk-list .dk:last-child button')).length >= 2 && /MATTER OF PEOPLE/.test(await page.textContent('#dk-list .dk:last-child')), `${ask.n}`);
+  check('the Commander button counts what is waiting', +(await page.textContent('#cm-badge')).trim() === ask.n);
+  check('the comms line says it is on the desk', /ON YOUR DESK/.test(await page.textContent('#c-list')));
+  await page.click(`#dk-list .dk[data-id="${ask.id}"] button[data-i="0"]`); await page.waitForTimeout(300);
+  const built = await page.evaluate((a) => { const p = window.__st.parts.get(a.part); return p && p.rooms[a.slot] === 'secoffice' && p.marks[a.slot] === 'security'; }, ask);
   check('approving builds the room and marks it for the faction', built, JSON.stringify(ask));
-  check('the message shows the answer', /APPROVED/.test(await page.textContent('#c-list')));
+  check('the message shows the answer', /APPROVE/.test(await page.textContent('#c-list .rq-out.approved')));
+  await page.click('#dk-list .dk button[data-i="1"]'); await page.waitForTimeout(300);
+  check('answering a matter of people clears the desk and goes in their stories', await page.isHidden('#desk') && await page.evaluate(() => window.__st.agents.some((a) => a.story.length >= 2)));
+  check('the top bar shows the station week', /^WEEK \d+ · DAY \d$/.test(await page.textContent('#wk')));
   await page.click('#groups .gt[data-g="habitation"]');
   check('and unlocks the rings', !(await page.$eval('#cmd .cb[data-t="ring"]', (b) => b.classList.contains('locked'))));
 
@@ -161,11 +175,13 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
   check('the stars, sun and moons move with the camera, so they never slide', await page.evaluate(() => window.__view.sky.position.distanceTo(window.__view.camera.position) < 1e-6));
   await page.keyboard.press('4'); await page.waitForTimeout(300);
   check('4 cuts the station away', await page.evaluate(() => window.__view.cutaway && !!window.__view.M.hull.clippingPlanes));
+  check('with the hull cut away, people are figures by job', await page.evaluate(() => { const v = window.__view; return v.figOn && Object.values(v.figs).reduce((n, f) => n + f.count, 0) === window.__st.agents.filter((x) => !x.eva).length && v.figs.hauler.count > 0; }));
   await page.screenshot({ path: 'test/shots/cutaway.png' });
   await page.keyboard.press('4'); await page.keyboard.press('3'); await page.waitForTimeout(300);
   check('3 shows life signs', await page.evaluate(() => window.__view.mode === 'life' && window.__view.agentPts.geometry.drawRange.count > 0));
   check('life signs are only people inside the station', await page.evaluate(() => window.__view.agentPts.geometry.drawRange.count <= window.__st.agents.filter((a) => !a.eva).length + window.__view.suits.children.filter((s) => s.visible).length));
   await page.screenshot({ path: 'test/shots/life-signs.png' });
+  check('in the x-ray people are life signs, not figures', await page.evaluate(() => window.__view.peopleOn && !window.__view.figOn));
   await page.evaluate(() => { window.__ui.paused = true; });      // hold still, so the person is where we aimed
   const dot = await page.evaluate(() => { const v = window.__view, a = window.__st.agents.find((x) => !x.eva && v.agentPos(x, performance.now() / 1000)); v.camera.updateMatrixWorld(); const P = v.agentPos(a, performance.now() / 1000), q = v.camera.position.clone().set(...P).project(v.camera), r = v.canvas.getBoundingClientRect(); return { id: a.id, name: a.name, xy: [(q.x + 1) / 2 * r.width + r.left, (1 - q.y) / 2 * r.height + r.top] }; });
   await page.mouse.move(...dot.xy); await page.waitForTimeout(250);
@@ -264,6 +280,36 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
   await page.keyboard.press('i'); await page.tap('#b-cmdr'); await page.waitForTimeout(400);
   await page.screenshot({ path: 'test/shots/phone-commander.png' });
   check('no page errors on the phone', errs.length === 0, errs.join(' | '));
+  await page.close();
+}
+
+// ---------------------------------------------------------------- the Broken Station, saving, and coming back
+{
+  const page = await browser.newPage({ viewport: { width: 1366, height: 768 } });
+  const errs = []; page.on('pageerror', (e) => { errs.push(e.message); console.log('  page error:', e.message); });
+  await page.goto(`${BASE}/index.html?seed=5`); await page.waitForTimeout(1200);
+  check('the title offers a new station, a broken one and free play, and no Continue before there is a save', await page.isVisible('#b-economy') && await page.isVisible('#b-broken') && await page.isVisible('#b-free') && await page.isHidden('#b-continue'));
+  await page.click('#b-broken'); await page.waitForTimeout(800);
+  const w0 = await page.evaluate(() => ({ n: window.__st.parts.size, dark: [...window.__st.parts.values()].filter((p) => p.fault).length, mode: window.__st.mode }));
+  check('the Broken Station is a dark, stripped station', w0.mode === 'broken' && w0.n >= 15 && w0.dark >= 5 && /Parts repaired/.test(await page.textContent('#info')), JSON.stringify(w0));
+  await page.screenshot({ path: 'test/shots/broken.png' });
+  await steps(page, 90);
+  await page.keyboard.press('m'); await page.click('#b-restart'); await page.waitForTimeout(600);      // leaving for the title saves
+  check('Continue appears once the station has been saved', await page.isVisible('#b-continue'));
+  const before = await page.evaluate(() => JSON.parse(localStorage.getItem('sos.save.05')).t);
+  await page.reload(); await page.waitForTimeout(1500);
+  await page.click('#b-continue'); await page.waitForTimeout(800);
+  const w1 = await page.evaluate(() => ({ n: window.__st.parts.size, t: window.__st.t, mode: window.__st.mode, agents: window.__st.agents.length, objs: window.__view.partObjs.size }));
+  check('Continue brings the same station back', w1.mode === 'broken' && w1.n === w0.n && Math.abs(w1.t - before) < 3 && w1.agents > 0 && w1.objs === w1.n, JSON.stringify(w1));
+  // a raid, called by hand
+  await page.evaluate(() => { const s = window.__st; s.callRaid(); });
+  await page.waitForTimeout(400);
+  check('a raid warns before it arrives', await page.evaluate(() => window.__st.raid && window.__st.raid.state === 'warn') && /RAIDERS INBOUND/.test(await page.textContent('#banner')));
+  await steps(page, 30); await page.waitForTimeout(400);
+  check('the raiders come in and the raid resolves', await page.evaluate(() => { const s = window.__st; return !s.raid || s.raid.state === 'fight'; }));
+  await steps(page, 20);
+  check('and it is over one way or the other', await page.evaluate(() => !window.__st.raid && window.__st.stats.raidsWon + window.__st.stats.raidsLost >= 1));
+  check('no page errors', errs.length === 0, errs.join(' | '));
   await page.close();
 }
 

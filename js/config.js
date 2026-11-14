@@ -13,7 +13,7 @@ const arm = (len) => [[0, 0, 0, -1, 0, 0, 'L'], [len, 0, 0, 1, 0, 0, 'L']];
 const fill = (n, room) => Array(n).fill(room);
 
 export const C = {
-  version: '0.4.0',
+  version: '0.5.0',
 
   groups: [
     { id: 'structure', name: 'STRUCTURE' }, { id: 'habitation', name: 'HABITATION' }, { id: 'docking', name: 'DOCKING' },
@@ -84,7 +84,7 @@ export const C = {
     radiator: { name: 'Radiator', group: 'power', tier: 1, cost: 90, up: 1, pw: -4, build: 3, center: [1.6, 0, 0], r: 4,
       about: 'Heat fins that let the reactors run harder: +4 power.', ports: [[0, 0, 0, -1, 0, 0, 'L']] },
     // ---- defence
-    turret:   { name: 'Flak Turret', group: 'defence', tier: 2, cost: 200, up: 3, pw: 2, build: 5, defence: 4, center: [0.6, 0, 0], r: 1.4,
+    turret:   { name: 'Flak Turret', group: 'defence', tier: 1, cost: 200, up: 3, pw: 2, build: 5, defence: 4, center: [0.6, 0, 0], r: 1.4,
       about: 'Twin guns on a turning mount. Defence +4.', ports: [[0, 0, 0, -1, 0, 0, 'L']] },
     shield:   { name: 'Shield Emitter', group: 'defence', tier: 2, cost: 260, up: 4, pw: 4, build: 6, defence: 6, center: [1.2, 0, 0], r: 1.8,
       about: 'Projects a shield over the station. Defence +6.', ports: [[0, 0, 0, -1, 0, 0, 'L']] },
@@ -114,27 +114,40 @@ export const C = {
     secoffice:  { name: 'Security Office', short: 'SEC', tier: 1, cost: 60, up: 1, homes: { officer: 2 }, col: '#9a3a3a', about: 'Places for 2 Democracy Officers, who inspect ships nearby.' },
     truth:      { name: 'Truth Office', short: 'TRUTH', tier: 1, cost: 50, up: 1, leisure: 1, broadcast: 1, col: '#9a8a1a', about: 'Morale +1, and the Ministry of Truth\'s broadcasts carry further.' },
     shuttlebay: { name: 'Shuttle Bay', short: 'BAY', tier: 2, cost: 80, up: 2, bay: true, col: '#5a6a8a', about: 'Shuttles land inside the hangar.' },
+    brass:      { name: 'Brass Suite', short: 'BRASS', tier: 1, cost: 90, up: 2, homes: { aide: 1 }, col: '#b89a3a', about: 'A suite for visiting top brass, kept spotless. Places for 1 aide.' },
+    lab:        { name: 'Laboratory', short: 'LAB', tier: 1, cost: 80, up: 1, homes: { scientist: 2 }, col: '#3a6a9a', about: 'Places for 2 scientists, whose research adds to capability.' },
     fighterbay: { name: 'Fighter Bay', short: 'FTR', tier: 2, cost: 120, up: 3, bay: true, defence: 5, col: '#6a4a4a', about: 'A flight of patrol fighters. Defence +5.' },
   },
-  roomOrder: ['quarters', 'bunks', 'mess', 'lounge', 'hydro', 'workshop', 'cargostore', 'ops', 'market', 'bar', 'medbay', 'secoffice', 'truth', 'shuttlebay', 'fighterbay', 'empty'],
+  roomOrder: ['quarters', 'bunks', 'mess', 'lounge', 'hydro', 'workshop', 'cargostore', 'ops', 'market', 'bar', 'medbay', 'secoffice', 'truth', 'brass', 'lab', 'shuttlebay', 'fighterbay', 'empty'],
 
   // The divisions you fund and give standing orders to, from the Commander's comms panel.
   div: {
-    supply:      { name: 'Ministry of Supply', short: 'SUPPLY', staff: 'hauler', wage: 6, col: '#4db8ff', budget: 30,
+    supply:      { name: 'Ministry of Supply', short: 'SUPPLY', staff: 'hauler', uses: 'coffee', per: 2, allot: 10, col: '#4db8ff',
       orders: { shift: [['normal', 'Normal shifts'], ['double', 'Double shifts: haulers 40% faster, morale −5']] } },
-    maintenance: { name: 'Department of Patriotic Maintenance', short: 'MAINT', staff: 'engineer', wage: 8, col: '#ffc340', budget: 16,
+    maintenance: { name: 'Department of Patriotic Maintenance', short: 'MAINT', staff: 'engineer', uses: 'parts', per: 3, allot: 6, col: '#ffc340',
       orders: { plan: [['reactive', 'Fix what breaks'], ['preventive', 'Preventive: half the faults, upkeep +20%']] } },
-    security:    { name: 'Democracy Officers', short: 'SECURITY', staff: 'officer', wage: 8, col: '#ff5a4a', budget: 16,
+    security:    { name: 'Democracy Officers', short: 'SECURITY', staff: 'officer', uses: 'ammo', per: 3, allot: 6, col: '#ff5a4a',
       orders: { checks: [['spot', 'Spot checks: catch half the smugglers'], ['every', 'Inspect every ship: catch them all, unloading waits 4 s']] } },
-    medical:     { name: 'Medical Corps', short: 'MEDICAL', staff: 'medic', wage: 8, col: '#9dffb8', budget: 16,
+    medical:     { name: 'Medical Corps', short: 'MEDICAL', staff: 'medic', uses: 'medkits', per: 3, allot: 6, col: '#9dffb8',
       orders: { care: [['free', 'Free care: morale +4, costs 10 CR/min'], ['fees', 'Fees: +2 CR/min per medic, morale −2']] } },
+    command:     { name: 'Command Staff', short: 'COMMAND', staff: 'aide', uses: 'luxuries', per: 4, allot: 4, col: '#f5d547', orders: {} },
+    science:     { name: 'Science Directorate', short: 'SCIENCE', staff: 'scientist', uses: 'instruments', per: 3, allot: 6, col: '#b48cff', orders: {} },
     traffic:     { name: 'Traffic Control', short: 'TRAFFIC', col: '#e6e6e6',
       orders: { mix: [['all', 'All traffic'], ['freight', 'Freighters only'], ['colonists', 'Colonists only']], rate: [['low', 'Light'], ['normal', 'Normal'], ['high', 'Heavy']] } },
-    truth:       { name: 'Ministry of Truth', short: 'TRUTH', col: '#ffe600', budget: 20,
-      orders: { broadcast: [['patriotic', 'Patriotic hour: morale + budget/10 (up to 8)'], ['recruitment', 'Recruitment drive: shuttles 50% more often'], ['silence', 'Silence: no broadcast, no cost']] } },
+    truth:       { name: 'Ministry of Truth', short: 'TRUTH', col: '#ffe600',
+      orders: { broadcast: [['patriotic', 'Patriotic hour: morale up to +8, more with Truth Offices'], ['recruitment', 'Recruitment drive: shuttles 50% more often'], ['silence', 'Silence: no broadcast']] } },
   },
-  divOrder: ['supply', 'maintenance', 'security', 'medical', 'traffic', 'truth'],
-  budgetMax: 120,
+  divOrder: ['supply', 'maintenance', 'security', 'medical', 'command', 'science', 'traffic', 'truth'],
+  // Supplies come in on freighters, one unit a crate, and each faction draws its weekly allotment from the stores a day at a time.
+  supplies: {
+    coffee: { name: 'Coffee', unit: 'tins' }, parts: { name: 'Spare parts', unit: 'crates' }, ammo: { name: 'Ammunition', unit: 'boxes' },
+    medkits: { name: 'Medkits', unit: 'kits' }, luxuries: { name: 'Fine rations', unit: 'hampers' }, instruments: { name: 'Instruments', unit: 'cases' },
+    rations: { name: 'Rations', unit: 'packs' },
+  },
+  supply: { start: 12, allotMax: 40, rationPerResident: 0.5, repairParts: 1 },
+  // A station day and week, in seconds of play at 1× speed.
+  time: { daySec: 40, week: 7 },
+  allotMax: 40,
 
   // The four staffed divisions are also the station's factions. Each one wants the station laid out its way, and how well it is
   // (plus what you approve) decides how happy it is. Happy factions work faster; unhappy ones work slower and complain.
@@ -142,13 +155,19 @@ export const C = {
   factions: {
     supply:      { who: 'Supply', room: 'cargostore', wants: 'Cargo Stores close to the docking ports, so crates do not walk far.', ask: 'a Cargo Store' },
     maintenance: { who: 'Maintenance', room: 'workshop', wants: 'Workshops near everything that can break, and few open faults.', ask: 'a Workshop' },
-    security:    { who: 'Security', room: 'secoffice', wants: 'A Security Office close to every docking bay, and few smugglers getting through.', ask: 'a Security Office' },
+    security:    { who: 'Security', room: 'secoffice', wants: 'A Security Office close to every docking bay, guns on the hull, and few smugglers getting through.', ask: 'a Security Office' },
     medical:     { who: 'Medical', room: 'medbay', wants: 'A Medbay close to where people sleep.', ask: 'a Medbay' },
+    command:     { who: 'Command', room: 'brass', wants: 'A Brass Suite close to Station Command, everything clean and working, and full stores.', ask: 'a Brass Suite' },
+    science:     { who: 'Science', room: 'lab', wants: 'Laboratories close to the antennas, domes and observation rooms.', ask: 'a Laboratory' },
   },
   faction: { start: 60, easeSec: 0.9, evalSec: 1.5, low: 35, high: 85, speedMin: 0.75, speedMax: 1.25, requestSec: [70, 120], ttl: 100,
-    farUnits: 10, approve: 12, deny: -8, ignore: -4, favorDecay: 0.05, cooldown: 140, praiseCooldown: 400, pending: 2 },
+    farUnits: 10, approve: 12, deny: -8, ignore: -4, favorDecay: 0.05, cooldown: 140, praiseCooldown: 400, pending: 3,
+    autoCost: 60, autoShare: 0.25, meddle: -6, short: 25, dilemmaSec: [150, 240] },
+  // Raiders test the station now and then, from Garrison on. Defence (turrets, shields, fighters, officers) against their strength.
+  raid: { firstSec: 420, everySec: [380, 560], warnSec: 25, fightSec: 18, base: 3, perTier: 5, perHit: 4, maxHits: 4, win: 15 },
   // Capability is what the station adds to the war effort. It is the score, and it opens the upgrade path.
-  capability: { crate: 0.5, ship: 1.5, resident: 2, defence: 3, repair: 12, staff: 1 },
+  capability: { crate: 0.5, ship: 1.5, resident: 2, defence: 3, repair: 12, staff: 1, research: 1, raid: 15 },
+  researchPerMin: 1.5,
 
   start: { credits: 2500, tax: 10 },
   sandbox: { credits: 999999 },
@@ -157,7 +176,7 @@ export const C = {
   walk: { speed: 2.4, pickSec: 1.0, dropSec: 0.5, repairSec: 6, inspectSec: 4 },
   ships: { freighterSec: 38, shuttleSec: 42, warshipSec: 95, shuttleMorale: 35, colonists: 4, approachSec: 14, departSec: 11,
     waitSec: 60, queueMax: 3, smuggler: 0.15, repairSec: 30, repairFee: 150, rate: { low: 0.6, normal: 1, high: 1.5 } },
-  econ: { crateFee: 15, dockFee: 10, fine: 80, taxPerPct: 0.6 },
+  econ: { crateFee: 8, dockFee: 6, fine: 80, taxPerPct: 0.6 },
   morale: { base: 70, taxFree: 10, taxPenalty: 2.5, taxBonus: 1, power: 25, leaveBelow: 30, leaveSec: 10, leisureMax: 25, contraband: 10, unrestDecaySec: 60, faulty: 3 },
   faults: { meanSec: 480 },
   securityReach: 16,

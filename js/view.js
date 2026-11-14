@@ -6,12 +6,13 @@
 // The sky is a skybox: it moves with the camera, so stars, sun and moons never slide about when you pan or zoom.
 import * as THREE from './vendor/three.js';
 import { C } from './config.js';
-import { buildPart, buildShip, buildRoom, buildSuit, SLOTS } from './parts.js';
+import { buildPart, buildShip, buildRoom, buildSuit, buildFigure, buildRaider, FIGURES, SLOTS } from './parts.js';
 import { paintWorld, WORLDS, WORLD_TYPES } from './planets.js';
 import { RNG } from './rng.js';
 
-const GREEN = 0x9dffb8, YELLOW = 0xffe600, BLUE = 0x4db8ff;
-const ROLE_COL = { resident: [0.85, 1, 0.9], hauler: [0.3, 0.72, 1], engineer: [1, 0.76, 0.25], officer: [1, 0.35, 0.29], medic: [0.6, 1, 0.75], carry: [1, 0.69, 0.13], eva: [1, 1, 1] };
+const GREEN = 0x7fe9e0, YELLOW = 0xf5d547, BLUE = 0x7fe9e0;      // the drawing lines are cyan and selections amber, as in the interface
+const ROLE_COL = { resident: [0.85, 1, 0.9], hauler: [0.3, 0.72, 1], engineer: [1, 0.76, 0.25], officer: [1, 0.35, 0.29], medic: [0.6, 1, 0.75], aide: [0.96, 0.84, 0.28], scientist: [0.7, 0.55, 1], carry: [1, 0.69, 0.13], eva: [1, 1, 1] };
+const UP = new THREE.Vector3(0, 1, 0);
 const SLOGANS = ['LIBERTY', 'SUPER EARTH', 'REPORT FOR\nGRATITUDE', 'A HAPPY STATION IS\nA COMPLIANT STATION', 'DEMOCRACY\nNEVER SLEEPS', 'HAVE YOU PAID YOUR\nLIBERTY CONTRIBUTION?'];
 
 export class View {
@@ -37,7 +38,7 @@ export class View {
     this.sel = null; this.selLines = null; this.edit = null; this.slotHot = null; this.slotLines = null;
     this.suits = new THREE.Group(); this.scene.add(this.suits); this.suitPool = []; this.evaPos = []; this.boxes = new Map();
     this.sparks = new THREE.Group(); this.scene.add(this.sparks);
-    this._agentsInit();
+    this._agentsInit(); this._figuresInit(); this._raidInit();
     this.ray = new THREE.Raycaster(); this.ray.params.Line.threshold = 0.2;
     this.setMode('blueprint');
     this.resize();
@@ -57,7 +58,7 @@ export class View {
   _materials() {
     const B = (o) => new THREE.MeshBasicMaterial(o), S = (o) => new THREE.MeshStandardMaterial(o), L = (o) => new THREE.LineBasicMaterial(o);
     const M = this.M = {
-      bpHull: B({ color: 0x0b2a16, transparent: true, opacity: 0.38, depthWrite: false, side: THREE.DoubleSide }),
+      bpHull: B({ color: 0x0b2426, transparent: true, opacity: 0.38, depthWrite: false, side: THREE.DoubleSide }),
       bpLine: L({ color: GREEN, transparent: true, opacity: 0.85 }),
       bpInner: B({ color: 0x0a2414, transparent: true, opacity: 0.25, depthWrite: false, side: THREE.DoubleSide }),
       bpInnerLine: L({ color: GREEN, transparent: true, opacity: 0.22 }),
@@ -70,6 +71,8 @@ export class View {
       innerLine: L({ color: 0x2a2014, transparent: true, opacity: 0.5 }),
       tileLine: L({ color: 0x0c0c0c, transparent: true, opacity: 0.6 }),
       glow: B({ color: 0xfff1b0 }),
+      thHull: S({ color: 0x9aa59e, metalness: 0.5, roughness: 0.5, flatShading: true, side: THREE.DoubleSide }), thPod: S({ color: 0xb08a3a, metalness: 0.3, roughness: 0.7, flatShading: true }),
+      thGlass: S({ color: 0x8fe0c8, metalness: 0.2, roughness: 0.05, transparent: true, opacity: 0.35, side: THREE.DoubleSide }), thPanel: S({ color: 0x1c2f5a, metalness: 0.7, roughness: 0.35, side: THREE.DoubleSide }),
       glass: S({ color: 0x8fe0c8, metalness: 0.2, roughness: 0.05, transparent: true, opacity: 0.25, depthWrite: false, side: THREE.DoubleSide }),
       panel: S({ color: 0x1c2f5a, metalness: 0.7, roughness: 0.35, side: THREE.DoubleSide }),
       wire: L({ color: 0xaab6b0 }),
@@ -77,11 +80,12 @@ export class View {
       crate: S({ color: 0xc08a3a, roughness: 0.8, flatShading: true }),
       plant: B({ color: 0x4fcf5a }), awning: B({ color: 0xd06a8a }), cross: B({ color: 0xff4a4a }), alarm: B({ color: 0xff3a2a }), spark: B({ color: 0xbfe8ff }),
       suit: S({ color: 0xeeeeea, roughness: 0.6 }), visor: B({ color: 0xffb020 }),
+      raider: S({ color: 0x3a2226, metalness: 0.6, roughness: 0.4, flatShading: true }), raiderGlow: B({ color: 0xff5a3a }),
       xHull: B({ color: 0x0c2a1a, transparent: true, opacity: 0.07, depthWrite: false, side: THREE.DoubleSide }),
       xLine: L({ color: 0x3f8f68, transparent: true, opacity: 0.28 }),
       xInnerLine: L({ color: 0x3f8f68, transparent: true, opacity: 0.12 }),
       xGlow: B({ color: 0x3f8f68, transparent: true, opacity: 0.2 }),
-      eHull: B({ color: 0x9dffb8, transparent: true, opacity: 0.05, depthWrite: false, side: THREE.DoubleSide }),
+      eHull: B({ color: 0x7fe9e0, transparent: true, opacity: 0.05, depthWrite: false, side: THREE.DoubleSide }),
       eLine: L({ color: GREEN, transparent: true, opacity: 0.6 }),
       eInnerLine: L({ color: GREEN, transparent: true, opacity: 0.18 }),
       dimHull: B({ color: 0x1a2a22, transparent: true, opacity: 0.1, depthWrite: false, side: THREE.DoubleSide }),
@@ -139,6 +143,7 @@ export class View {
     g.traverse((o) => {
       const r = o.userData.role; if (!r) return;
       if (dim) { o.material = this.M.hidden; return; }
+      if (r === 'mark') { o.material = m === 'life' ? this.M.hidden : o.userData.mat; return; }
       if (r === 'tile') o.material = m === 'blueprint' ? this.tileBp : m === 'life' ? this.M.hidden : this.tileMats[o.userData.room];
       else if (r === 'tileLine') o.material = m === 'blueprint' ? this.M.bpTileLine : m === 'life' ? this.M.xInnerLine : this.M.tileLine;
       else if (m === 'blueprint') o.material = r === 'glow' || r === 'spark' ? this.M.bpGlow : this.M.bpInner;
@@ -258,7 +263,12 @@ export class View {
     const life = this.mode === 'life';
     this.agentMat.size = life ? 0.9 : 0.55;
     this.agentMat.depthTest = !life && !this.cutaway && !this.edit;
-    this.agentPts.visible = this.mode !== 'hull' || this.cutaway || !!this.edit;
+    // People show as life signs in the x-ray, and as small figures wherever you can see inside the hull.
+    this.peopleOn = this.mode !== 'hull' || this.cutaway || !!this.edit;
+    this.figOn = this.peopleOn && !life;
+    this.agentPts.visible = this.peopleOn;
+    for (const f of Object.values(this.figs)) f.visible = this.figOn;
+    this.crateIM.visible = this.figOn;
   }
 
   // ---------------------------------------------------------------- sync with the simulation
@@ -285,6 +295,7 @@ export class View {
     }
     this._eva(now);
     this._agents(now);
+    this._raid(now, dt);
     if (this.edit) { const p = st.parts.get(this.edit); if (p && p.rooms.join(',') !== this.editSig) this._editLabels(); }
     // The cut faces the camera, through what you are looking at.
     if (this.cutaway && !this.edit) {
@@ -316,6 +327,7 @@ export class View {
         const bar = new THREE.Mesh(new THREE.BoxGeometry(s.w * 0.9, 0.06, 0.07), m); bar.position.set(0, 0.05, s.d * 0.46);
         const post = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.5, 0.04), m); post.position.set(s.w * 0.4, 0.28, s.d * 0.44);
         const flag = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.18, 0.02), m); flag.position.set(s.w * 0.4 + 0.17, 0.46, s.d * 0.44);
+        for (const x of [bar, post, flag]) { x.userData.role = 'mark'; x.userData.mat = m; x.userData.part = p.id; x.userData.slot = i; }
         rg.add(bar, post, flag);
       }
       g.add(rg);
@@ -393,15 +405,104 @@ export class View {
     const pos = this.agentPts.geometry.attributes.position, col = this.agentPts.geometry.attributes.color;
     let n = 0;
     const put = (P, c) => { if (n >= pos.count) return; pos.setXYZ(n, P[0], P[1] + 0.05, P[2]); col.setXYZ(n, c[0], c[1], c[2]); n++; };
+    const count = {}, fig = this.figOn, m4 = this._m4, qa = this._qa, qb = this._qb, sc = this._sc, v3 = this._v3, tintc = this._col;
+    let crates = 0;
     for (const a of this.st.agents) {
       if (a.eva) continue;
       const P = this.agentPos(a, now);
-      if (P) put(P, a.carry ? ROLE_COL.carry : ROLE_COL[a.role] || ROLE_COL.resident);
+      if (!P) continue;
+      if (!fig) { put(P, a.carry ? ROLE_COL.carry : ROLE_COL[a.role] || ROLE_COL.resident); continue; }
+      // A figure stands on the deck of the part it is in, turned the way it walks (or a way of its own when it is standing).
+      const im = this.figs[a.role] || this.figs.resident, i = count[a.role] = (count[a.role] || 0), part = this.st.parts.get(a.at);
+      if (i >= im.instanceMatrix.count) continue;
+      count[a.role] = i + 1;
+      qa.set(...part.quat); qb.setFromAxisAngle(UP, a.seed * 6.283 + (a.path.length ? Math.sin(now * 9 + a.seed * 30) * 0.12 : 0)); qa.multiply(qb);
+      v3.set(P[0], P[1], P[2]);
+      const bob = a.path.length ? 1 + Math.sin(now * 12 + a.seed * 40) * 0.05 : 1;
+      m4.compose(v3, qa, sc.set(1, bob, 1)); im.setMatrixAt(i, m4);
+      if (a.role === 'resident') { tintc.setHSL((a.seed * 7.7) % 1, 0.35, 0.6); im.setColorAt(i, tintc); }
+      if (a.carry && crates < this.crateIM.instanceMatrix.count) { v3.set(0, 0.2, 0.07).applyQuaternion(qa).add(sc.set(P[0], P[1], P[2])); m4.compose(v3, qa, sc.set(1, 1, 1)); this.crateIM.setMatrixAt(crates++, m4); }
     }
+    for (const r of FIGURES) { const im = this.figs[r]; im.count = fig ? count[r] || 0 : 0; im.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true; }
+    this.crateIM.count = crates; this.crateIM.instanceMatrix.needsUpdate = true;
     for (const P of this.evaPos) put(P, ROLE_COL.eva);
     this.agentPts.geometry.setDrawRange(0, n);
     pos.needsUpdate = true; col.needsUpdate = true;
   }
+  _figuresInit() {
+    this.figs = {};
+    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, metalness: 0.05, flatShading: true });
+    for (const r of FIGURES) {
+      const im = new THREE.InstancedMesh(buildFigure(r), mat, r === 'resident' ? 500 : 160);
+      im.count = 0; im.frustumCulled = false; im.visible = false; this.scene.add(im); this.figs[r] = im;
+    }
+    this.crateIM = new THREE.InstancedMesh(new THREE.BoxGeometry(0.09, 0.09, 0.09), new THREE.MeshStandardMaterial({ color: 0xc08a3a, roughness: 0.8, flatShading: true }), 200);
+    this.crateIM.count = 0; this.crateIM.frustumCulled = false; this.crateIM.visible = false; this.scene.add(this.crateIM);
+    this._m4 = new THREE.Matrix4(); this._qa = new THREE.Quaternion(); this._qb = new THREE.Quaternion(); this._sc = new THREE.Vector3(); this._v3 = new THREE.Vector3(); this._col = new THREE.Color();
+    this.peopleOn = false; this.figOn = false;
+  }
+  // ---------------------------------------------------------------- a raid: darts making passes, the station's guns answering
+  _raidInit() {
+    this.raiders = new THREE.Group(); this.scene.add(this.raiders); this.raiders.visible = false;
+    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(64 * 6), 3)); geo.setDrawRange(0, 0);
+    this.tracers = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0xffd98a, transparent: true, opacity: 0.9 })); this.tracers.frustumCulled = false; this.scene.add(this.tracers);
+    const g2 = geo.clone(); this.bolts = new THREE.LineSegments(g2, new THREE.LineBasicMaterial({ color: 0xff5a3a, transparent: true, opacity: 0.9 })); this.bolts.frustumCulled = false; this.scene.add(this.bolts);
+  }
+  _raid(now, dt) {
+    const r = this.st.raid, on = !!r && (r.state === 'fight' || r.t > C.raid.warnSec - 8);
+    this.raiders.visible = on; this.tracers.visible = this.bolts.visible = !!r && r.state === 'fight';
+    if (!on) { if (this.raiders.children.length) this.raiders.clear(); return; }
+    while (this.raiders.children.length < r.n) { const o = buildRaider(); o.traverse((x) => { if (x.userData.role) x.material = this.M[x.userData.role]; }); this.raiders.add(o); }
+    const R = Math.min(60, 14 + this.st.radius * 0.45), fight = r.state === 'fight', inn = fight ? 1 : Math.max(0, 1 - (C.raid.warnSec - r.t) / 8);
+    this.raiders.children.forEach((o, i) => {
+      const ph = r.seed * 6.283 + i * 2.1, w = 0.5 + (i % 3) * 0.12, a = now * w + ph, rr = R * (0.55 + 0.35 * Math.sin(now * 0.37 + i)) + (1 - inn) * 240;
+      const x = Math.cos(a) * rr, z = Math.sin(a) * rr, y = Math.sin(now * 0.6 + i * 1.7) * R * 0.35;
+      o.lookAt(o.position.set(x, y, z).clone().add(new THREE.Vector3(-Math.sin(a), 0, Math.cos(a)))); o.rotateY(-Math.PI / 2);
+    });
+    if (!fight) return;
+    const guns = [...this.st.parts.values()].filter((p) => p.state === 'active' && !p.fault && (p.type === 'turret' || p.type === 'shield')), all = [...this.st.parts.values()];
+    const tp = this.tracers.geometry.attributes.position, bp = this.bolts.geometry.attributes.position;
+    let nt = 0, nb = 0;
+    this.raiders.children.forEach((o, i) => {
+      const k = Math.floor(now * 5 + i * 1.3);
+      if (guns.length && (k + i) % 3 === 0 && nt < 60) { const g = this.st.center(guns[(k + i) % guns.length]), f = (now * 5 + i * 1.3) % 1; tp.setXYZ(nt++, g[0] + (o.position.x - g[0]) * f, g[1] + (o.position.y - g[1]) * f, g[2] + (o.position.z - g[2]) * f); const f2 = Math.min(1, f + 0.12); tp.setXYZ(nt++, g[0] + (o.position.x - g[0]) * f2, g[1] + (o.position.y - g[1]) * f2, g[2] + (o.position.z - g[2]) * f2); }
+      if (k % 4 === 1 && nb < 60) { const t = this.st.center(all[(k * 7 + i) % all.length]), f = (now * 5 + i * 1.3) % 1; bp.setXYZ(nb++, o.position.x + (t[0] - o.position.x) * f, o.position.y + (t[1] - o.position.y) * f, o.position.z + (t[2] - o.position.z) * f); const f2 = Math.min(1, f + 0.1); bp.setXYZ(nb++, o.position.x + (t[0] - o.position.x) * f2, o.position.y + (t[1] - o.position.y) * f2, o.position.z + (t[2] - o.position.z) * f2); }
+    });
+    this.tracers.geometry.setDrawRange(0, nt); this.bolts.geometry.setDrawRange(0, nb); tp.needsUpdate = true; bp.needsUpdate = true;
+    void dt;
+  }
+  // A picture of a part for the build menu: drawn once, in its hull colours, from the game's usual angle.
+  thumb(type) {
+    this.thumbs ||= new Map();
+    if (this.thumbs.has(type)) return this.thumbs.get(type);
+    const W = 168, H = 112;
+    try {
+      if (!this.th) {
+        const sc = new THREE.Scene(); sc.add(new THREE.AmbientLight(0xb8c8c0, 1.1));
+        const sun = new THREE.DirectionalLight(0xfff4e0, 2.6); sun.position.set(-6, 10, 7); sc.add(sun);
+        const rim = new THREE.DirectionalLight(0x7fe9e0, 0.9); rim.position.set(6, -4, -8); sc.add(rim);
+        this.th = { sc, rt: new THREE.WebGLRenderTarget(W, H, { samples: 4 }), cam: new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 400), px: new Uint8Array(W * H * 4), cv: Object.assign(document.createElement('canvas'), { width: W, height: H }) };
+        this.th.rt.texture.colorSpace = THREE.SRGBColorSpace;
+      }
+      const { sc, rt, cam, px, cv } = this.th, M = this.M, R = this.renderer;
+      const g = buildPart(type);
+      g.traverse((o) => { const r = o.userData.role; if (r) o.material = { hull: M.thHull, line: M.hullLine, inner: M.hidden, innerLine: M.hidden, glow: M.glow, glass: M.thGlass, panel: M.thPanel, wire: M.wire, pod: M.thPod, screen: M.glow }[r] || M.hidden; });
+      sc.add(g);
+      const box = new THREE.Box3().setFromObject(g), c = box.getCenter(new THREE.Vector3()), rad = box.getSize(new THREE.Vector3()).length() / 2 || 1;
+      cam.position.copy(c).add(new THREE.Vector3(0.62, 0.52, 0.6).normalize().multiplyScalar(120)); cam.lookAt(c);
+      const a = W / H, k = rad * 0.86; Object.assign(cam, { left: -k * a, right: k * a, top: k, bottom: -k }); cam.updateProjectionMatrix();
+      const cc = new THREE.Color(); R.getClearColor(cc); const ca = R.getClearAlpha();
+      R.setRenderTarget(rt); R.setClearColor(0x000000, 0); R.clear(); R.render(sc, cam);
+      R.readRenderTargetPixels(rt, 0, 0, W, H, px); R.setRenderTarget(null); R.setClearColor(cc, ca);
+      sc.remove(g); g.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
+      const x = cv.getContext('2d'), im = x.createImageData(W, H);
+      for (let y = 0; y < H; y++) im.data.set(px.subarray((H - 1 - y) * W * 4, (H - y) * W * 4), y * W * 4);
+      x.putImageData(im, 0, 0);
+      const url = cv.toDataURL(); this.thumbs.set(type, url); return url;
+    } catch (e) { this.thumbs.set(type, null); return null; }
+  }
+  // The current picture, as a PNG.
+  snapshot(now) { this.render(now); return this.canvas.toDataURL('image/png'); }
   // EVA: suits round parts being built, round faults being fixed, and round warships in the drydock. Nobody manages them.
   _eva(now) {
     const st = this.st, jobs = [];
@@ -591,7 +692,7 @@ export class View {
   }
   // The person nearest to the pointer, within 14 px, when the dots are showing (Life Signs, Cutaway, or editing a part).
   pickAgent(x, y) {
-    if (!this.agentPts.visible) return 0;
+    if (!this.peopleOn) return 0;
     const r = this.canvas.getBoundingClientRect(), now = performance.now() / 1000, v = new THREE.Vector3();
     let best = 0, bd = 14 * 14;
     for (const a of this.st.agents) {
@@ -604,6 +705,16 @@ export class View {
       if (d < bd) { bd = d; best = a.id; }
     }
     return best;
+  }
+  // Where a person is on the screen, and how far from the camera. Null when they are behind it.
+  agentScreen(a, now) {
+    const P = this.agentPos(a, now);
+    if (!P || a.eva) return null;
+    const v = this._v3.set(P[0], P[1] + 0.3, P[2]), d = v.distanceTo(this.camera.position);
+    v.project(this.camera);
+    if (v.z > 1) return null;
+    const r = this.canvas.getBoundingClientRect();
+    return { x: (v.x + 1) / 2 * r.width + r.left, y: (1 - v.y) / 2 * r.height + r.top, d };
   }
   // Move the camera's target to a person, keeping the same angle and distance.
   lookAtAgent(a) {

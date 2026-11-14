@@ -344,6 +344,44 @@ export function buildSuit() {
   return g;
 }
 
+// ---------------------------------------------------------------- people: one small figure per job, about a third of a unit tall.
+// Each is a single geometry with its colours baked in, so the view can draw hundreds of them at once. The torso of a resident is
+// left white: the view tints it per person.
+const tint = (g, hex) => { const c = new THREE.Color(hex), n = g.attributes.position.count, a = new Float32Array(n * 3); for (let i = 0; i < n; i++) { a[i * 3] = c.r; a[i * 3 + 1] = c.g; a[i * 3 + 2] = c.b; } g.setAttribute('color', new THREE.BufferAttribute(a, 3)); return g; };
+const merge = (list) => {
+  const parts = list.map((g) => (g.index ? g.toNonIndexed() : g)), n = parts.reduce((s, g) => s + g.attributes.position.count, 0), out = new THREE.BufferGeometry();
+  for (const name of ['position', 'normal', 'color']) { const a = new Float32Array(n * 3); let o = 0; for (const g of parts) { a.set(g.attributes[name].array, o); o += g.attributes[name].array.length; } out.setAttribute(name, new THREE.BufferAttribute(a, 3)); }
+  return out;
+};
+export const FIGURES = ['resident', 'hauler', 'engineer', 'officer', 'medic', 'aide', 'scientist'];
+export function buildFigure(role) {
+  const bx = (w, h, d, x, y, z, col) => tint(new THREE.BoxGeometry(w, h, d).translate(x, y, z), col);
+  const SKIN = '#d9b08c', look = {
+    resident: { legs: '#4a4f58', torso: '#ffffff' }, hauler: { legs: '#27425e', torso: '#3d7fc4' }, engineer: { legs: '#5a4a1e', torso: '#e0a83a' },
+    officer: { legs: '#17181c', torso: '#22242a' }, medic: { legs: '#d8dcd6', torso: '#f2f4ee' }, aide: { legs: '#3c4438', torso: '#6c7a5e' }, scientist: { legs: '#3a3f4a', torso: '#eef0f4' },
+  }[role] || { legs: '#4a4f58', torso: '#ffffff' };
+  const g = [];
+  for (const x of [-0.025, 0.025]) g.push(bx(0.04, 0.12, 0.05, x, 0.06, 0, look.legs));
+  g.push(bx(0.1, 0.12, 0.06, 0, 0.18, 0, look.torso));
+  for (const x of [-0.065, 0.065]) g.push(bx(0.03, 0.11, 0.04, x, 0.18, 0, look.torso));
+  g.push(bx(0.06, 0.06, 0.06, 0, 0.275, 0, SKIN));
+  if (role === 'hauler') { g.push(bx(0.104, 0.025, 0.064, 0, 0.2, 0, '#f5d547')); g.push(bx(0.066, 0.02, 0.066, 0, 0.31, 0, '#27425e')); }
+  if (role === 'engineer') { g.push(bx(0.085, 0.022, 0.085, 0, 0.312, 0, '#f5d547')); g.push(bx(0.07, 0.09, 0.035, 0, 0.19, -0.047, '#6a6f74')); }
+  if (role === 'officer') { g.push(bx(0.075, 0.03, 0.07, 0, 0.318, 0, '#17181c')); g.push(bx(0.075, 0.008, 0.035, 0, 0.305, 0.05, '#17181c')); g.push(bx(0.03, 0.012, 0.01, 0, 0.322, 0.036, '#f5d547')); g.push(bx(0.11, 0.2, 0.012, 0, 0.14, -0.04, '#a8201a')); g.push(bx(0.104, 0.02, 0.064, 0, 0.215, 0, '#a8201a')); }
+  if (role === 'medic') { g.push(bx(0.012, 0.045, 0.004, 0, 0.19, 0.032, '#e0352b')); g.push(bx(0.04, 0.014, 0.004, 0, 0.19, 0.032, '#e0352b')); g.push(bx(0.066, 0.02, 0.066, 0, 0.31, 0, '#5fbf8a')); }
+  if (role === 'aide') { for (const x of [-0.055, 0.055]) g.push(bx(0.035, 0.012, 0.05, x, 0.243, 0, '#f5d547')); g.push(bx(0.07, 0.022, 0.07, 0, 0.312, 0, '#3c4438')); }
+  if (role === 'scientist') { g.push(bx(0.104, 0.07, 0.064, 0, 0.1, 0, '#eef0f4')); g.push(bx(0.05, 0.02, 0.012, 0, 0.235, 0.03, '#9a6cff')); g.push(bx(0.05, 0.012, 0.012, 0, 0.28, 0.034, '#7fe9e0')); }
+  return merge(g);
+}
+// A raider: a small dark dart with a hot engine.
+export function buildRaider() {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.ConeGeometry(0.45, 2.2, 4).rotateZ(-Math.PI / 2)); body.userData.role = 'raider'; g.add(body);
+  const wing = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.06, 2.2).translate(-0.5, 0, 0)); wing.userData.role = 'raider'; g.add(wing);
+  const eng = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.25, 0.5).translate(-1.12, 0, 0)); eng.userData.role = 'raiderGlow'; g.add(eng);
+  return g;
+}
+
 // ---------------------------------------------------------------- ships. Freighters carry container pods; shuttles are small; warships are long and armoured.
 export function buildShip(kind) {
   const g = new THREE.Group();
@@ -354,9 +392,18 @@ export function buildShip(kind) {
     return m;
   };
   if (kind === 'shuttle') {
-    put(along(new THREE.CylinderGeometry(0.15, 0.55, 2.2, 10)), 'hull');
-    put(new THREE.BoxGeometry(1.0, 0.08, 1.8), 'hull', -0.4, -0.1, 0);
-    put(new THREE.BoxGeometry(0.1, 0.25, 0.5), 'glow', -1.15, 0, 0);
+    // A Pelican, after the one in Orbital Fury: a troop bay with a blunt nose, broad wings, twin tail fins, a jet pod under each wing.
+    const k = 1.25, P = (pts, depth, y) => { const sh = new THREE.Shape(); pts.forEach(([x, z], i) => (i ? sh.lineTo(x * k, z * k) : sh.moveTo(x * k, z * k))); const e = new THREE.ExtrudeGeometry(sh, { depth, bevelEnabled: false }); e.rotateX(Math.PI / 2); e.translate(0, y + depth, 0); return e; };
+    put(P([[1, -0.1], [1, 0.1], [0.78, 0.26], [-0.8, 0.24], [-1, 0.12], [-1, -0.12], [-0.8, -0.24], [0.78, -0.26]], 0.42, -0.2), 'hull');
+    for (const g of [-1, 1]) {
+      put(P([[0.2, g * 0.24], [0.02, g * 0.95], [-0.3, g * 0.95], [-0.36, g * 0.24]], 0.06, 0.12), 'hull');
+      const fin = new THREE.BoxGeometry(0.34 * k, 0.4 * k, 0.04); fin.rotateX(g * -0.35); fin.rotateY(g * -0.25); put(fin, 'hull', -0.9 * k, 0.36, g * 0.26 * k);
+      put(along(new THREE.CylinderGeometry(0.13 * k, 0.15 * k, 0.62 * k, 10)), 'hull', -0.12 * k, 0.02, g * 0.62 * k);
+      put(along(new THREE.CylinderGeometry(0.09 * k, 0.09 * k, 0.05, 10)), 'glow', -0.45 * k, 0.02, g * 0.62 * k);
+      put(new THREE.BoxGeometry(0.05, 0.05, 0.05), 'glow', -0.14 * k, 0.2, g * 0.95 * k);
+    }
+    put(new THREE.BoxGeometry(0.3 * k, 0.16, 0.34 * k), 'glass', 0.74 * k, 0.24, 0);
+    put(new THREE.BoxGeometry(0.5 * k, 0.03, 0.4 * k).rotateZ(0.35), 'hull', -1.08 * k, -0.24, 0);
   } else if (kind === 'warship') {
     const prof = new THREE.Shape(); prof.moveTo(4.2, 0); prof.lineTo(-3, 1.1); prof.lineTo(-3.6, 0.9); prof.lineTo(-3.6, -0.9); prof.lineTo(-3, -1.1); prof.closePath();
     const hull = new THREE.ExtrudeGeometry(prof, { depth: 0.9, bevelEnabled: false }); hull.rotateX(Math.PI / 2); hull.translate(0, 0.45, 0);

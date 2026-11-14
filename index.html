@@ -3,9 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="theme-color" content="#030805">
+<meta name="theme-color" content="#0b0d0c">
 <meta name="description" content="Super Orbital Simulator: build and run a Super Earth space station. A fan-made prototype for the Super Earth Special Forces community.">
 <title>Super Orbital Simulator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Share+Tech+Mono&display=swap">
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -17,14 +19,14 @@
     <!-- Top bar, the Age of Empires way: resources on the left, the age in the middle, the menus on the right. -->
     <header id="top">
       <div class="res">
-        <span class="ri cr" title="Credits: what you spend on building"><i>CR</i><b id="r-cr">0</b></span>
-        <span class="ri cap" title="Capability: what the station adds to the war effort. It is the score, and it opens the upgrade path."><i>CAP</i><b id="r-cap">0</b></span>
+        <span class="ri cap" title="Capability: what the station adds to the war effort. It is the score, and it opens the upgrade path."><b id="r-cap">0</b><i>CAP</i></span>
+        <span class="ri cr" title="Credits: what you spend on building"><b id="r-cr">0</b><i>CR</i></span>
         <span class="ri" title="Power used / supplied"><i>PWR</i><b id="r-pw"></b></span>
         <span class="ri" title="Residents / beds"><i>POP</i><b id="r-pop"></b></span>
         <span class="ri" title="Morale"><i>MRL</i><b id="r-mo"></b></span>
         <span class="ri" title="Ships served · lost"><i>SHIPS</i><b id="r-sh"></b></span>
       </div>
-      <button id="b-age" class="age" type="button" title="The upgrade path (U)"><b id="tier">OUTPOST</b><span id="tier-next"></span></button>
+      <button id="b-age" class="age" type="button" title="The station week, and the upgrade path (U)"><b id="wk">WEEK 1 · DAY 1</b><span class="wbar"><i id="w-fill"></i></span><span class="tl"><span id="tier">OUTPOST</span><span id="tier-next"></span></span></button>
       <div class="menu">
         <button id="b-pause" class="btn icon" type="button" title="Pause (Space)">II</button>
         <button id="b-speed" class="btn icon" type="button" title="Game speed">1×</button>
@@ -45,6 +47,7 @@
         <button class="btn" id="t-warship" type="button">+ WARSHIP</button>
         <button class="btn" id="t-colonists" type="button">+ 10 COLONISTS</button>
         <button class="btn" id="t-fault" type="button">BREAK A PART</button>
+        <button class="btn" id="t-raid" type="button">CALL A RAID</button>
         <button class="btn" id="t-clear" type="button">CLEAR SHIPS</button>
         <button class="btn on" id="t-traffic" type="button">TRAFFIC ON</button>
       </div>
@@ -70,6 +73,9 @@
     </div>
     <button id="c-open" class="btn copen hidden" type="button" title="Open the comms window (C)"><span class="led"></span>COMMS<span id="c-badge" class="badge"></span></button>
 
+    <!-- The desk: what is waiting on the commander's answer. Everything else, the station sorts out itself. -->
+    <div id="desk" class="desk hidden"><div class="ph"><span>ON YOUR DESK</span><span id="dk-n" class="badge"></span></div><div id="dk-list"></div></div>
+
     <div id="tip" class="tip hidden"></div>
     <div id="toast" class="toast"></div>
     <div id="banner" class="banner"></div>
@@ -90,28 +96,31 @@
       </div>
     </footer>
   </div>
-  <button id="b-showui" class="btn showui hidden" type="button" title="Show the interface (H)">SHOW UI <small>H</small></button>
+  <div id="cleanbar" class="showui hidden"><button id="b-photo" class="btn" type="button" title="Save this view as a picture">PHOTO</button><button id="b-showui" class="btn" type="button" title="Show the interface (H)">SHOW UI <small>H</small></button></div>
+  <div id="bubbles"></div>
 
   <section id="s-title" class="screen on">
     <div class="card">
       <div class="eyebrow">Super Earth Ministry of Orbital Affairs</div>
       <h1>SUPER ORBITAL SIMULATOR</h1>
-      <p class="tag">Build and run a space station for the war effort.</p>
+      <p class="tag tagline">Your station. Its people. What happens to them.</p>
       <div class="brief">
         <ol>
-          <li>Pick a part from a group at the bottom left, then click near a <b>port</b> to attach it: little blue dots show the free ports near the pointer. <b>R</b> turns it.</li>
-          <li>Select a built part and press <b>EDIT INSIDE</b> to build out its rooms: quarters, mess halls, workshops, markets, shuttle bays and more. A part does what its rooms do.</li>
-          <li>Your divisions are also the station's <b>factions</b>, and each wants the station laid out its way. Their people have names. Now and then one asks for a room: <b>approve</b> or <b>deny</b> it on the comms or the <b>Commander's channel</b>. Happy factions work faster.</li>
-          <li>Climb the <b>upgrade path</b> from Outpost to Citadel for bigger build zones, hangars and drydocks. <b>H</b> hides the interface for a clean look.</li>
+          <li><b>Lay it out.</b> Pick a part at the bottom left and click near a port to attach it. Select a part and press <b>EDIT INSIDE</b> to set its rooms.</li>
+          <li><b>Then it is theirs.</b> Six factions (Supply, Maintenance, Security, Medical, Command, Science) each want the station their way. They take empty space and set up what they need without asking.</li>
+          <li><b>Only trouble reaches you.</b> Two factions after the same room, a weekly allotment the stores cannot cover, a row between two people with names. It lands <b>on your desk</b> with the choices.</li>
+          <li><b>Supplies, not budgets.</b> Coffee, parts, ammunition and medkits come in by the crate, and each faction draws its share every station week. The score is the station's <b>capability</b>.</li>
         </ol>
       </div>
       <div class="btns">
-        <button id="b-economy" class="btn primary big" type="button">ECONOMY</button>
+        <button id="b-continue" class="btn primary big hidden" type="button">CONTINUE</button>
+        <button id="b-economy" class="btn primary big" type="button">NEW STATION</button>
+        <button id="b-broken" class="btn big" type="button">BROKEN STATION</button>
         <button id="b-free" class="btn big" type="button">FREE PLAY</button>
       </div>
-      <p class="fine"><b>Economy:</b> start with Station Command and 2,500 CR, keep its factions happy, build up its capability, and earn your way up the upgrade path.
-        <b>Free play:</b> every part and room, no costs, the biggest build zone, and controls to call in ships and colonists.
-        Prototype 0.4, nothing is saved yet.<br>
+      <p class="fine"><b>New station:</b> Station Command, 2,500 CR and an Outpost permit. <b>Broken station:</b> take over a dark, stripped station and bring it back.
+        <b>Free play:</b> every part and room, no costs, and controls to call in ships, colonists and raids.
+        Prototype 0.5. The station saves itself as you play.<br>
         An unofficial fan project for the Super Earth Special Forces community, by Robert Troumbley. Not affiliated with or endorsed by Arrowhead Game Studios or Sony Interactive Entertainment.</p>
     </div>
   </section>
@@ -134,6 +143,7 @@
         <span>Port dots · hide interface</span><span>P · H</span>
         <span>Pause</span><span>Space</span>
         <span>Free play controls</span><span>K</span>
+        <span>Saving</span><span>by itself, every few seconds</span>
       </div>
       <div class="btns">
         <button id="b-close" class="btn primary" type="button">BACK TO THE STATION</button>

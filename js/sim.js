@@ -6,6 +6,7 @@
 import { C } from './config.js';
 import { RNG } from './rng.js';
 import { v, q } from './math3.js';
+import { installStory } from './story.js';
 
 const NAMES = ['Honest Work', 'Steady Progress', 'Fair Weather', 'Good Neighbors', 'Quiet Resolve', 'Open Skies', 'Sturdy Ballots',
   'Shared Prosperity', 'Cheerful Compliance', 'Sensible Shoes', 'Unanimous Consent', 'Bright Mornings', 'Fair Play', 'Civic Duty',
@@ -25,21 +26,27 @@ const FIRST = ['Mara', 'Teo', 'Ines', 'Dax', 'Lena', 'Okoye', 'Priya', 'Jonas', 
   'Corin', 'Tala', 'Emeka', 'Rhea', 'Soren', 'Zadie', 'Marek', 'Imani', 'Cass', 'Oren', 'Dilys', 'Pavel'];
 const LAST = ['Voss', 'Marsh', 'Okafor', 'Lindqvist', 'Reyes', 'Tanaka', 'Brandt', 'Halloran', 'Ng', 'Castellan', 'Ibarra', 'Quill', 'Moreau', 'Sato', 'Dunmore',
   'Achebe', 'Petrov', 'Kessler', 'Aldana', 'Fenwick', 'Ruiz', 'Sorensen', 'Bell', 'Nakamura', 'Odum', 'Larkin', 'Vance', 'Mbeki', 'Hart', 'Ivanova'];
-const STAFF = { hauler: 'supply', engineer: 'maintenance', officer: 'security', medic: 'medical' };
-const FACTIONS = ['supply', 'maintenance', 'security', 'medical'];
+export const STAFF = { hauler: 'supply', engineer: 'maintenance', officer: 'security', medic: 'medical', aide: 'command', scientist: 'science' };
+export const FACTIONS = ['supply', 'maintenance', 'security', 'medical', 'command', 'science'];
+// The room each faction calls its own, for telling whose space a room is.
+export const ROOM_OF = { cargostore: 'supply', workshop: 'maintenance', secoffice: 'security', medbay: 'medical', brass: 'command', lab: 'science' };
 const COMPLAIN = {
   supply: ['Commander, my haulers are walking half the station with every crate. {why}', 'Supply is not happy. {why}'],
   maintenance: ['Commander, Maintenance is stretched thin. {why}', 'The engineers are grumbling. {why}'],
   security: ['Commander, the Officers feel exposed. {why}', 'Security is not happy. {why}'],
   medical: ['Commander, Medical cannot reach the people it should. {why}', 'The medics are not happy. {why}'],
+  command: ['Commander, the staff are embarrassed to receive visitors. {why}', 'Command is not happy. {why}'],
+  science: ['Commander, the Directorate cannot do its work like this. {why}', 'The scientists are muttering. {why}'],
 };
 const PRAISE = {
   supply: 'Supply wanted you to know: the cargo flows, and the haulers noticed.',
   maintenance: 'Maintenance reports: good layout, short walks, hands happy. Wrenches up.',
   security: 'Security reports: every bay watched. The Officers are in good spirits.',
   medical: 'Medical reports: the Medbay is where it should be. Spirits are high.',
+  command: 'Command notes: the station is a credit to the Ministry. The brass were impressed.',
+  science: 'Science reports: clean readings, short walks to the instruments. The Directorate is pleased.',
 };
-const STRUCTURAL = new Set(['command', 'core', 'longcore', 'junction', 'truss', 'node', 'tube']);
+export const STRUCTURAL = new Set(['command', 'core', 'longcore', 'junction', 'truss', 'node', 'tube']);
 
 export class Station {
   constructor(seed = 1, mode = 'run') {
@@ -56,20 +63,20 @@ export class Station {
     for (const k of C.divOrder) {
       const d = C.div[k], order = {};
       for (const [o, opts] of Object.entries(d.orders)) order[o] = o === 'rate' ? 'normal' : opts[0][0];
-      this.div[k] = { budget: this.sandbox && d.staff ? C.budgetMax : d.budget ?? 0, order };    // free play starts fully staffed
+      this.div[k] = { allot: this.sandbox && d.staff ? C.allotMax : d.allot ?? 0, order };    // free play starts fully staffed
     }
     this.parts = new Map();
     this.nextId = 1;
     this.agents = []; this.ships = []; this.events = [];
     this.morale = C.morale.base; this.unrest = 0; this.eff = 1; this.supply = 0; this.demand = 0;
-    this.stats = { crates: 0, ships: 0, lost: 0, colonists: 0, left: 0, caught: 0, contraband: 0, repairs: 0, faults: 0 };
+    this.stats = { crates: 0, ships: 0, lost: 0, colonists: 0, left: 0, caught: 0, contraband: 0, repairs: 0, faults: 0, research: 0, raidsWon: 0, raidsLost: 0, auto: 0 };
     this.totals = { trade: 0, tax: 0, income: 0, upkeep: 0, wages: 0, build: 0 };
     this.buckets = Array.from({ length: 60 }, () => ({ s: -1, v: 0 }));
     this.timers = { freighter: 6, shuttle: 12, warship: 40, leave: C.morale.leaveSec, talk: 50 };
     this.traffic = true;
     this.crateTimes = []; this.berthTimes = [];
-    this.staff = { hauler: 0, engineer: 0, officer: 0, medic: 0 };
-    this.homes = { hauler: 0, engineer: 0, officer: 0, medic: 0 };
+    this.staff = {}; this.homes = {};
+    for (const role of Object.keys(STAFF)) { this.staff[role] = 0; this.homes[role] = 0; }
     // Factions: how happy each is (0 to 100), what it thinks is wrong, goodwill from your decisions, and what it has asked for.
     this.sat = {}; this.why = {}; this.favor = {}; this.cool = {}; this.praised = {};
     for (const k of FACTIONS) { this.sat[k] = C.faction.start; this.why[k] = ''; this.favor[k] = 0; this.cool[k] = 30; this.praised[k] = -300; }
@@ -78,7 +85,9 @@ export class Station {
     const cmd = this._make('command', 0, -1, 0, [0, 0, 0], q.id());
     cmd.state = 'active'; cmd.prog = 1;
     this.root = cmd.id;
+    this._storyInit();
     this._refresh();
+    if (mode === 'broken') this._wreck();
   }
 
   // ---------------------------------------------------------------- geometry
@@ -163,11 +172,14 @@ export class Station {
     if (this.credits < r.cost) return { ok: false, why: 'Not enough credits' };
     return { ok: true, why: '' };
   }
-  setRoom(id, slot, room, mark = null) {
+  // `by` is 'player' when the commander paints the room, or a faction when it does so itself or you approved its request.
+  setRoom(id, slot, room, mark = null, by = 'player') {
     const chk = this.canRoom(id, slot, room);
     if (!chk.ok) return chk;
     const p = this.parts.get(id);
     this._money(-C.rooms[room].cost, 'build');
+    const owner = p.marks[slot] || ROOM_OF[p.rooms[slot]];
+    if (by === 'player' && !this.sandbox && owner && owner !== ROOM_OF[room]) this._meddled(owner, p, p.rooms[slot]);
     p.rooms[slot] = room; p.marks[slot] = mark;
     for (const a of this.agents) if (a.home === p.id) a.home = 0;    // anyone housed here finds their place again
     this.events.push({ type: 'room', part: p, slot });
@@ -231,9 +243,10 @@ export class Station {
   // ---------------------------------------------------------------- what the station adds up to
   _refresh() {
     let sup = 0, dem = 0, beds = 0, leisure = 0, income = 0, defence = 0, food = 0, broadcast = 0, ops = 0;
-    const homes = { hauler: 0, engineer: 0, officer: 0, medic: 0 };
+    const homes = {};
     let spires = 0, fuel = 0, refine = 0;
-    this.cargoIds = new Set(); this.homeParts = { hauler: [], engineer: [], officer: [], medic: [] };
+    this.cargoIds = new Set(); this.homeParts = {};
+    for (const role of Object.keys(STAFF)) { homes[role] = 0; this.homeParts[role] = []; }
     for (const p of this.parts.values()) {
       if (p.state !== 'active') continue;
       const d = this.def(p);
@@ -261,7 +274,7 @@ export class Station {
     this.trafficMul = 1 + Math.min(0.4, spires) + 0.1 * Math.min(3, ops);
     this.fuelN = Math.min(3, fuel); this.refineN = Math.min(2, refine);
     this.homes = homes;
-    for (const [role, k] of Object.entries(STAFF)) this.staff[role] = Math.min(homes[role], Math.floor(this.div[k].budget / C.div[k].wage));
+    for (const [role, k] of Object.entries(STAFF)) this.staff[role] = Math.min(homes[role], Math.floor(this.div[k].allot / C.div[k].per));
   }
   beds() { return this.capBeds; }
   residents() { let n = 0; for (const a of this.agents) if (a.role === 'resident') n++; return n; }
@@ -276,11 +289,8 @@ export class Station {
     return Math.max(0, s);
   }
   wages() {
-    let s = 0;
-    for (const [role, k] of Object.entries(STAFF)) s += this.staff[role] * C.div[k].wage;
-    if (this.div.truth.order.broadcast !== 'silence') s += this.div.truth.budget;
-    if (this.div.medical.order.care === 'free' && this.staff.medic) s += 10;
-    return s;
+    // Staff are kept in supplies, not credits: the only wage bill left is free care.
+    return this.div.medical.order.care === 'free' && this.staff.medic ? 10 : 0;
   }
   incomePerMin() {
     let s = this.residents() ? this.income : 0;
@@ -289,12 +299,12 @@ export class Station {
   }
   taxPerMin() { return this.residents() * this.tax * C.econ.taxPerPct; }
   setTax(x) { this.tax = Math.max(0, Math.min(30, Math.round(x))); }
-  setBudget(k, x) { this.div[k].budget = Math.max(0, Math.min(C.budgetMax, Math.round(x))); this._refresh(); }
+  setAllot(k, x) { this.div[k].allot = Math.max(0, Math.min(C.allotMax, Math.round(x))); this._refresh(); }
   setOrder(k, o, val) { this.div[k].order[o] = val; this._refresh(); this.events.push({ type: 'order', from: k, text: this.ack(k, o, val) }); }
   broadcastBoost() {
     const o = this.div.truth.order.broadcast;
     if (o !== 'patriotic') return 0;
-    return Math.min(8, (this.div.truth.budget / 10) * (1 + 0.5 * this.broadcast));
+    return Math.min(8, 2 + 2 * this.broadcast);
   }
   moraleParts() {
     const M = C.morale, sh = this.div.supply.order.shift === 'double', care = this.div.medical.order.care;
@@ -303,7 +313,7 @@ export class Station {
     return {
       base: M.base, tax, leisure: Math.max(-10, Math.min(M.leisureMax, this.leisure)), power: -M.power * (1 - this.eff),
       unrest: -this.unrest, faults: -M.faulty * faulty, medical: this.staff.medic ? (care === 'free' ? 4 : -2) : 0,
-      broadcast: this.broadcastBoost(), shifts: sh ? -5 : 0, broke: this.credits < 0 ? -15 : 0,
+      broadcast: this.broadcastBoost(), shifts: sh ? -5 : 0, broke: this.credits < 0 ? -15 : 0, rations: this.short.rations ? -10 : 0,
     };
   }
   _money(x, cat) {
@@ -403,9 +413,24 @@ export class Station {
       const dm = this.distMap(bays), d = avg(beds.map((b) => dm.get(b) ?? 60));
       out.medical = { t: clamp(100 - d * 3), why: `The Medbay is ${Math.round(d)} units from the average bed.` };
     }
+    if (this.tier >= 1 && fb.length && offices.length && this.defence < this.raidStrength() - 2) { out.security.t = Math.max(5, out.security.t - 15); out.security.why = `The hull is under-gunned: defence ${this.defence} against raids of about ${this.raidStrength()}. ${out.security.why}`; }
+    const suites = this._withRoom('brass');
+    if (!suites.length) out.command = { t: 25, why: 'There is no Brass Suite to receive visiting officers.' };
+    else {
+      const dm = this.distMap(suites), d = dm.get(this.root) ?? 60, shortN = Object.values(this.short).filter(Boolean).length;
+      out.command = { t: clamp(100 - d * 3 - Math.min(30, faults * 10) - shortN * 8), why: faults ? `${faults} part${faults > 1 ? 's are' : ' is'} out of order. Command likes everything working.` : shortN ? 'The stores are running short. Command likes them full.' : `The Brass Suite is ${Math.round(d)} units from Station Command.` };
+    }
+    const labs = this._withRoom('lab'), gear = act.filter((p) => !p.fault && ['spire', 'dish', 'dome', 'blister'].includes(p.type)).map((p) => p.id);
+    if (!labs.length) out.science = { t: 25, why: 'There is no Laboratory.' };
+    else if (!gear.length) out.science = { t: 45, why: 'There is no antenna, dome or observation blister to work with.' };
+    else {
+      const dm = this.distMap(gear), d = avg(labs.map((b) => dm.get(b) ?? 60));
+      out.science = { t: clamp(100 - d * 3), why: `The labs are ${Math.round(d)} units from the nearest instruments.` };
+    }
     // A faction cannot be blamed for a room the Ministry has not allowed yet.
     for (const k of FACTIONS) if (!this.roomOpen(C.factions[k].room)) out[k] = { t: 55, why: `The Ministry has not yet allowed ${C.factions[k].ask.replace(/^an? /, '')}s.` };
-    for (const [role, k] of Object.entries(STAFF)) if (this.homes[role] > 0 && this.staff[role] === 0) { out[k].t = Math.max(5, out[k].t - 20); out[k].why = `No one is on the budget to staff it. ${out[k].why}`; }
+    for (const [role, k] of Object.entries(STAFF)) if (this.homes[role] > 0 && this.staff[role] === 0) { out[k].t = Math.max(5, out[k].t - 20); out[k].why = `There is no allotment to keep anyone on duty. ${out[k].why}`; }
+    for (const k of FACTIONS) if (this.short[k]) { out[k].t = Math.max(5, out[k].t - C.faction.short); out[k].why = `We are out of ${C.supplies[C.div[k].uses].name.toLowerCase()}. ${out[k].why}`; }
     return out;
   }
   _factions(dt) {
@@ -428,7 +453,8 @@ export class Station {
   capability() {
     const K = C.capability, sat = FACTIONS.reduce((s, k) => s + this.sat[k], 0) / FACTIONS.length;
     const staff = Object.values(this.staff).reduce((s, x) => s + x, 0);
-    const raw = this.stats.crates * K.crate + this.stats.ships * K.ship + this.residents() * K.resident + this.defence * K.defence + (this.stats.repairs || 0) * K.repair + staff * K.staff;
+    const raw = this.stats.crates * K.crate + this.stats.ships * K.ship + this.residents() * K.resident + this.defence * K.defence + (this.stats.repairs || 0) * K.repair + staff * K.staff
+      + this.stats.research * K.research + this.stats.raidsWon * K.raid;
     return Math.round(raw * (0.7 + 0.6 * sat / 100));
   }
   crew(k) { return this.agents.filter((a) => a.role === C.div[k].staff); }
@@ -440,94 +466,12 @@ export class Station {
       case 'fix': return 'heading out to a fault';
       case 'drydock': return 'heading to the drydock';
       case 'inspect': return 'inspecting a ship';
-      case 'rounds': return 'doing rounds';
+      case 'rounds': return a.role === 'aide' ? 'inspecting the station' : a.role === 'scientist' ? 'taking readings' : 'doing rounds';
       case 'leave': return 'leaving the station';
       case 'out': return 'out for a walk';
       case 'back': return 'heading home';
       default: return a.role === 'resident' ? 'at home' : 'on station';
     }
-  }
-
-  // ---------------------------------------------------------------- requests: a faction asks for a room, you approve or deny
-  // The place it would like: the part furthest from what it has (or the first it has none for), and the nearest free slot to that.
-  _needPoint(k) {
-    const act = this._active(), fb = this.berths('freighter').map((p) => p.id);
-    let have, subjects;
-    if (k === 'supply') { have = [...this.cargoIds]; subjects = fb; }
-    else if (k === 'maintenance') { have = this._withRoom('workshop'); subjects = act.filter((p) => !STRUCTURAL.has(p.type)).map((p) => p.id); }
-    else if (k === 'security') { have = this._withRoom('secoffice'); subjects = fb; }
-    else { have = this._withRoom('medbay'); subjects = this.residents() ? act.filter((p) => p.rooms.some((r) => C.rooms[r].beds)).map((p) => p.id) : []; }
-    if (!subjects.length) return null;
-    if (!have.length) return { part: subjects[0], far: Infinity };
-    const dm = this.distMap(have);
-    let worst = null;
-    for (const id of subjects) { const d = dm.get(id) ?? 99; if (!worst || d > worst.far) worst = { part: id, far: d }; }
-    return worst.far > C.faction.farUnits ? worst : null;
-  }
-  _freeSlot(p) {
-    const taken = new Set(this.requests.filter((r) => r.part === p.id).map((r) => r.slot));
-    let slot = p.rooms.findIndex((r, i) => r === 'empty' && !taken.has(i));
-    if (slot >= 0) return slot;
-    const beds = p.rooms.reduce((s, r) => s + (C.rooms[r].beds || 0), 0);
-    const housed = this.agents.filter((a) => a.role === 'resident' && a.home === p.id && !a.leaving).length;
-    return beds - housed >= 2 ? p.rooms.findIndex((r, i) => r === 'quarters' && !taken.has(i)) : -1;
-  }
-  _propose() {
-    const order = FACTIONS.filter((k) => !this.requests.some((r) => r.k === k)).sort((a, b) => this.sat[a] - this.sat[b]);
-    for (const k of order) {
-      const room = C.factions[k].room, cost = C.rooms[room].cost;
-      if (!this.roomOpen(room) || this.credits < cost) continue;
-      const need = this._needPoint(k);
-      if (!need) continue;
-      const dm = this.distMap([need.part]);
-      let best = null;
-      for (const p of this._active()) {
-        if (p.fault || !dm.has(p.id)) continue;
-        const slot = this._freeSlot(p);
-        if (slot >= 0 && (!best || dm.get(p.id) < best.d)) best = { p, slot, d: dm.get(p.id) };
-      }
-      if (!best || best.d > need.far * 0.6) continue;
-      const F = C.factions[k], req = { id: this.nextId++, k, part: best.p.id, slot: best.slot, room, was: best.p.rooms[best.slot], cost, t: 0 };
-      this.requests.push(req);
-      this.say(k, need.far === Infinity
-        ? `Commander, ${F.who} has nothing of its own yet. We request ${F.ask} in ${this.name(best.p)} (${cost} CR).`
-        : `Commander, ${F.who} requests ${F.ask} in ${this.name(best.p)} (${cost} CR). ${this.why[k]}`, { request: req.id });
-      return true;
-    }
-    return false;
-  }
-  _requests(dt) {
-    if (this.sandbox) return;
-    const F = C.faction;
-    for (const r of [...this.requests]) {
-      r.t += dt;
-      if (r.t >= F.ttl) { this._close(r, 'expired'); this.favor[r.k] += F.ignore; this.say(r.k, `No answer on our request, Commander. We will remember that.`, { warn: true }); }
-    }
-    if ((this.timers.request -= dt) <= 0) {
-      this.timers.request = this.rng.range(F.requestSec[0], F.requestSec[1]);
-      if (this.requests.length < F.pending) this._propose();
-    }
-  }
-  _close(r, outcome) { this.requests.splice(this.requests.indexOf(r), 1); this.reqLog.push({ k: r.k, outcome, t: this.t }); this.events.push({ type: 'request', id: r.id, outcome }); }
-  approve(id) {
-    const r = this.requests.find((x) => x.id === id);
-    if (!r) return { ok: false, why: 'That request has closed.' };
-    const p = this.parts.get(r.part);
-    if (!p || p.state !== 'active' || p.rooms[r.slot] !== r.was) { this._close(r, 'void'); return { ok: false, why: 'That space is no longer free.' }; }
-    const res = this.setRoom(r.part, r.slot, r.room, r.k);
-    if (!res.ok) return res;
-    this._close(r, 'approved');
-    this.favor[r.k] = Math.min(25, this.favor[r.k] + C.faction.approve);
-    this.say(r.k, `Thank you, Commander. ${C.factions[r.k].ask[0].toUpperCase()}${C.factions[r.k].ask.slice(1)} is going into ${this.name(p)}, marked for ${C.factions[r.k].who}.`, { gold: true });
-    return { ok: true, why: '' };
-  }
-  deny(id) {
-    const r = this.requests.find((x) => x.id === id);
-    if (!r) return { ok: false, why: 'That request has closed.' };
-    this._close(r, 'denied');
-    this.favor[r.k] = Math.max(-25, this.favor[r.k] + C.faction.deny);
-    this.say(r.k, 'Understood, Commander. The answer is no. We will make do.', { dim: true });
-    return { ok: true, why: '' };
   }
 
   // ---------------------------------------------------------------- the step
@@ -559,6 +503,7 @@ export class Station {
     this.unrest = Math.max(0, this.unrest - dt * C.morale.contraband / C.morale.unrestDecaySec);
     this._factions(dt);
     this._requests(dt);
+    this._story(dt);
     this._tiers();
     if ((this.timers.talk -= dt) <= 0) {
       this.timers.talk = 70 + this.rng.range(0, 40);
@@ -578,8 +523,10 @@ export class Station {
   }
   _spawn(role, at, home) {
     const a = { id: this.nextId++, role, at, home, path: [], s: 0, wait: this.rng.range(0, 1), task: null, carry: false, ship: 0, seed: this.rng.next(), eva: false,
-      name: `${this.rng.pick(FIRST)} ${this.rng.pick(LAST)}`, since: this.t };
-    this.agents.push(a); return a;
+      name: `${this.rng.pick(FIRST)} ${this.rng.pick(LAST)}`, since: this.t, story: [], n: 0 };
+    this.agents.push(a);
+    this.note(a, role === 'resident' ? 'Came aboard as a colonist.' : `Reported for duty with ${C.factions[STAFF[role]].who}.`);
+    return a;
   }
   _drop(a) {
     if (a.task === 'pick') { const s = this.ships.find((x) => x.id === a.ship); if (s) s.reserved = Math.max(0, s.reserved - 1); }
@@ -660,6 +607,14 @@ export class Station {
       return this._goHome(a, [3, 7]);
     }
     if (a.role === 'officer') return this._goHome(a, [2, 5]);
+    if (a.role === 'aide' || a.role === 'scientist') {
+      if (a.task !== 'rounds' && this.rng.chance(0.5)) {
+        const spots = a.role === 'aide' ? this.list((d, p) => p.type === 'command' || this.has(p, 'ops') || this.has(p, 'mess') || d.berth)
+          : this.list((d, p) => ['spire', 'dish', 'dome', 'blister'].includes(p.type) || this.has(p, 'lounge') || this.has(p, 'hydro'));
+        if (spots.length) { const t = this.rng.pick(spots).id; if (t !== a.at && this._go(a, (p) => p.id === t, 'rounds')) return; }
+      }
+      return this._goHome(a, [4, 9]);
+    }
     if (a.leaving) { if (!this._go(a, (p) => this.works(p) && this.def(p).berth, 'leave')) this._gone(a); return; }
     // Residents: home, then somewhere social, then home again.
     const goHome = a.task === 'back' || this.rng.next() >= 0.6;
@@ -706,7 +661,7 @@ export class Station {
     const W = C.walk;
     if (a.task === 'pick') { a.wait = W.pickSec; a.pending = 'pick'; return; }
     if (a.task === 'drop') { a.wait = W.dropSec; a.pending = 'drop'; return; }
-    if (a.task === 'fix') { a.wait = W.repairSec / (0.5 + 0.5 * this.eff) / this.mood(a.role); a.pending = 'fix'; a.eva = true; return; }
+    if (a.task === 'fix') { a.wait = W.repairSec / (0.5 + 0.5 * this.eff) / this.mood(a.role) * (this.take('parts', C.supply.repairParts) ? 1 : 2.5); a.pending = 'fix'; a.eva = true; return; }
     if (a.task === 'drydock') { a.wait = 8; a.pending = 'drydock'; a.eva = true; return; }
     if (a.task === 'inspect') { a.wait = W.inspectSec; a.pending = 'inspect'; return; }
     if (a.task === 'leave') { this.stats.left++; this._gone(a); return; }
@@ -719,17 +674,20 @@ export class Station {
     if (what === 'pick') {
       const s = this.ships.find((x) => x.id === a.ship);
       a.task = null;
-      if (s && s.state === 'docked' && s.crates > 0) { s.crates--; a.carry = true; }
+      if (s && s.state === 'docked' && s.crates > 0) { s.crates--; a.carry = true; a.cargo = (s.manifest && s.manifest.pop()) || 'rations'; }
       if (s) s.reserved = Math.max(0, s.reserved - 1);
     } else if (what === 'drop') {
       a.carry = false; a.task = null;
       this._money(C.econ.crateFee + this.refineN * C.parts.refinery.refine, 'trade'); this.stats.crates++; this.crateTimes.push(this.t);
+      this.stock[a.cargo || 'rations'] = (this.stock[a.cargo || 'rations'] || 0) + 1; this.weekIn++;
+      if (++a.n % 25 === 0) this.note(a, `Carried a ${a.n}th crate to the stores.`);
       this.events.push({ type: 'crate', part: a.at });
     } else if (what === 'fix') {
       const p = this.parts.get(a.target);
       a.task = null;
       if (p && p.fixer === a.id) {
         p.fault = false; p.fixer = 0; this.stats.fixed = (this.stats.fixed || 0) + 1; this._refresh();
+        this.note(a, `Went out on the hull and repaired ${this.name(p)}.`);
         this.say('maintenance', `${this.name(p)} is back online. Hull integrity restored, Commander.`);
       }
     } else if (what === 'drydock') {
@@ -823,6 +781,7 @@ export class Station {
     }
     if (s.kind === 'warship') { this.say('traffic', `${s.name} is in the drydock. Engineers to EVA stations.`); return; }
     s.crates = this.def(p).crates || 6;
+    s.manifest = this.manifest(s.crates);
     this.say(this.rng.chance(0.5) ? 'captain' : 'traffic', this.rng.chance(0.5) ? `${s.name}, clamps locked at ${this.name(p)}. ${s.crates} crates of liberty for you.` : `${s.name} has docked at ${this.name(p)} with ${s.crates} crates.`);
     // Democracy Officers check freighters at bays near a Security Office.
     const every = this.div.security.order.checks === 'every';
@@ -834,7 +793,7 @@ export class Station {
         this.stats.caught++; this._money(C.econ.fine, 'trade');
         this.say('security', `Unapproved goods seized from ${s.name}. A ${C.econ.fine} CR fine has been collected. Democracy is safe.`, { gold: true });
         const off = this.agents.find((a) => a.role === 'officer' && !a.task);
-        if (off) this._go(off, (x) => x.id === p.id, 'inspect');
+        if (off) { this._go(off, (x) => x.id === p.id, 'inspect'); this.note(off, `Seized unapproved goods from ${s.name}.`); }
       } else {
         this.stats.contraband++; this.unrest += C.morale.contraband;
         this.say('security', `Unapproved goods from ${s.name} have reached the residents. ${post ? 'Our spot check missed it.' : 'No officers were near that bay.'}`, { warn: true });
@@ -853,10 +812,12 @@ export class Station {
     const st = this.staff, open = [...this.parts.values()].filter((p) => p.fault);
     switch (k) {
       case 'supply': { const b = this.busy('hauler'); return `Haulers on shift: ${st.hauler} of ${this.homes.hauler} places, ${b.busy} carrying right now. Crates this minute: ${this.cratesPerMin().toFixed(0)}. Ships waiting: ${this.ships.filter((s) => s.state === 'hold').length}. ${this.cargoIds.size ? 'Every crate accounted for, Commander.' : 'We have nowhere to put cargo. Build a Cargo Store.'}`; }
-      case 'maintenance': return `Engineers on staff: ${st.engineer} of ${this.homes.engineer} places. Open faults: ${open.length}${open.length ? ` (${open.slice(0, 3).map((p) => this.name(p)).join(', ')})` : ''}. Faults fixed: ${this.stats.fixed || 0}. ${st.engineer ? 'Suits charged and ready.' : 'Give us a Workshop and a budget and we\'ll keep her flying.'}`;
+      case 'maintenance': return `Engineers on staff: ${st.engineer} of ${this.homes.engineer} places. Open faults: ${open.length}${open.length ? ` (${open.slice(0, 3).map((p) => this.name(p)).join(', ')})` : ''}. Faults fixed: ${this.stats.fixed || 0}. ${st.engineer ? 'Suits charged and ready.' : 'Give us a Workshop and an allotment of parts and we\'ll keep her flying.'}`;
       case 'security': return `Officers on duty: ${st.officer} of ${this.homes.officer} places. Smugglers caught: ${this.stats.caught}, slipped through: ${this.stats.contraband}. ${this.homes.officer ? 'Bays near a Security Office are watched.' : 'Without a Security Office, every bay is unwatched.'}`;
       case 'medical': return `Medics: ${st.medic} of ${this.homes.medic} places. ${st.medic ? (this.div.medical.order.care === 'free' ? 'Free care for every citizen: morale is up.' : 'Fees are being collected at the door.') : 'No Medbay, no medics. Citizens are treating themselves.'}`;
       case 'traffic': { const bf = this.berths('freighter').length; return `Berths: ${bf} for freighters, ${this.berths('shuttle').length} for shuttles, ${this.berths('warship').length} drydock. Ships served: ${this.stats.ships}, lost: ${this.stats.lost}. Average time at berth: ${this.avgBerth() == null ? 'no data yet' : this.avgBerth().toFixed(0) + ' s'}.`; }
+      case 'command': return `Aides on staff: ${st.aide} of ${this.homes.aide} places. Open faults: ${open.length}. Stores running short: ${Object.entries(this.short).filter(([, x]) => x).map(([k2]) => k2).join(', ') || 'none'}. ${this.homes.aide ? 'The suite is ready for inspection at any hour.' : 'We have nowhere fit to receive the brass, Commander.'}`;
+      case 'science': return `Scientists: ${st.scientist} of ${this.homes.scientist} places. Research logged: ${Math.floor(this.stats.research)}. ${this.homes.scientist ? 'Readings are coming in.' : 'Give us a Laboratory and we will tell you things about this planet you will wish you did not know.'}`;
       case 'truth': return this.div.truth.order.broadcast === 'silence' ? 'The Ministry is silent, by your order. Citizens are left alone with their thoughts.' : `Broadcasting ${this.div.truth.order.broadcast === 'patriotic' ? 'the Patriotic Hour' : 'the Recruitment Drive'} on every screen. Morale from broadcasts: +${this.broadcastBoost().toFixed(0)}. Truth Offices aboard: ${this.broadcast}.`;
     }
     return '';
@@ -874,3 +835,5 @@ export class Station {
     return (lines[o] && lines[o][val]) || 'Orders received.';
   }
 }
+
+installStory(Station);

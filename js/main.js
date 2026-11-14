@@ -9,9 +9,20 @@ const $ = (id) => document.getElementById(id);
 const qs = new URLSearchParams(location.search);
 const KEYS = ['q', 'w', 'e', 't', 'y', 'a', 's', 'd'];          // the parts of the open group, left to right
 const GROUP_SHORT = { structure: 'STRUCT', habitation: 'HAB', docking: 'DOCK', industry: 'INDUS', power: 'POWER', defence: 'DEF', comms: 'COMMS' };
-const ROLE = { hauler: 'haulers', engineer: 'engineers', officer: 'officers', medic: 'medics' };
-const ROLE_ONE = { hauler: 'Hauler', engineer: 'Engineer', officer: 'Democracy Officer', medic: 'Medic', resident: 'Resident' };
-const PLACES = { hauler: 'Cargo Stores, Cargo Racks and Station Command', engineer: 'Workshops', officer: 'Security Offices', medic: 'Medbays' };
+const ROLE = { hauler: 'haulers', engineer: 'engineers', officer: 'officers', medic: 'medics', aide: 'aides', scientist: 'scientists' };
+const ROLE_ONE = { hauler: 'Hauler', engineer: 'Engineer', officer: 'Democracy Officer', medic: 'Medic', aide: 'Aide', scientist: 'Scientist', resident: 'Resident' };
+const PLACES = { hauler: 'Cargo Stores, Cargo Racks and Station Command', engineer: 'Workshops', officer: 'Security Offices', medic: 'Medbays', aide: 'Brass Suites', scientist: 'Laboratories' };
+const SAVE_KEY = 'sos.save.05';
+// What people say, in a bubble over their head, when you are close enough to see them.
+const CHAT = {
+  hauler: ['Mind your toes.', 'Another crate of liberty.', 'Who labelled this?', 'Coffee first. Then crates.', 'This one rattles.'],
+  engineer: ['It was like that when I got here.', 'Hand me the big wrench.', 'Hull is load-bearing. Mostly.', 'Who signed off on this weld?', 'Parts. I need parts.'],
+  officer: ['Papers, citizen.', 'Move along.', 'Report unpatriotic activity.', 'I am watching that crate.', 'Democracy never sleeps. Neither do I.'],
+  medic: ['Next.', 'Take two and report for gratitude.', 'That will heal. Probably.', 'Wash your hands, citizen.', 'I need more medkits.'],
+  aide: ['The admiral will notice that.', 'This corridor is a disgrace.', 'Has anyone seen the good cutlery?', 'Smile. There is an inspection.', 'File it in triplicate.'],
+  scientist: ['Fascinating.', 'That reading cannot be right.', 'Do not touch that.', 'The planet is doing something.', 'I will need a bigger dish.'],
+  resident: ['Long queue at the mess again.', 'Lovely view of the war today.', 'Have you paid your Liberty Contribution?', 'They moved the bar again.', 'I heard a rumour about the coffee.', 'My bunk hums.'],
+};
 const ORDER_NAMES = { shift: 'SHIFTS', plan: 'MAINTENANCE PLAN', checks: 'SHIP INSPECTIONS', care: 'MEDICAL CARE', mix: 'TRAFFIC MIX', rate: 'TRAFFIC VOLUME', broadcast: 'BROADCAST' };
 // Radio channels: who is talking, on which channel, in which colour, and how they sign off.
 const CH = {
@@ -23,6 +34,8 @@ const CH = {
   truth:       { n: 6, name: 'MINISTRY OF TRUTH', col: C.div.truth.col, off: ['This message has been approved.', 'Truth out.'] },
   colonists:   { n: 7, name: 'CIVILIAN BAND', col: '#b9e6c8', off: ['', 'Thank you for your service.'] },
   medical:     { n: 8, name: 'MEDICAL CORPS', col: C.div.medical.col, off: ['Corps out.', 'Stay healthy, stay free.'] },
+  command:     { n: 10, name: 'COMMAND STAFF', col: C.div.command.col, off: ['By your leave, Commander.', 'Staff out.'] },
+  science:     { n: 11, name: 'SCIENCE DIRECTORATE', col: C.div.science.col, off: ['Directorate out.', 'More data soon.'] },
   captain:     { n: 9, name: 'SHIP-TO-STATION', col: '#7fc8ff', off: ['Over.', 'Over and out.', 'For democracy, over.'] },
 };
 const audio = new Audio();
@@ -52,9 +65,10 @@ view.controls.autoRotate = true; view.controls.autoRotateSpeed = 0.5;
 view.camera.position.set(34, 16, 40);
 
 // ---------------------------------------------------------------- start
-function start(mode) {
+function start(mode, saved) {
   audio.unlock();
-  st = new Station(Number(qs.get('seed')) || (Date.now() % 100000), mode);
+  st = saved || new Station(Number(qs.get('seed')) || (Date.now() % 100000), mode);
+  mode = st.mode;
   window.__st = st; window.__ui = ui;
   view.setStation(st);
   view.controls.autoRotate = false;
@@ -68,18 +82,25 @@ function start(mode) {
   closeFloats(null);
   simPanel(free && innerHeight > 520, true);
   $('t-traffic').classList.add('on'); $('t-traffic').textContent = 'TRAFFIC ON';
-  $('c-list').innerHTML = ''; typing.length = 0; reqEls.clear(); setComms(true);
-  if (free) radio('ministry', 'Free play, Commander. Every part and every room is open to you, and none of it costs a credit. Build whatever you like.');
-  else radio('ministry', `Welcome aboard, Commander. The Ministry grants you an Outpost permit and ${C.start.credits.toLocaleString('en-US')} CR. Start with a Docking Port, and somewhere to put the cargo.`);
-  radio('ministry', 'Your divisions answer on the Commander\'s channel (O). Select a part and press EDIT INSIDE (I) to build out its rooms.', { dim: true });
+  $('c-list').innerHTML = ''; typing.length = 0; reqEls.clear(); deskSig = ''; setComms(true); clearBubbles();
+  if (saved) radio('ministry', `Welcome back, Commander. Week ${st.week()}, day ${st.dow()}. The station kept your seat warm.`);
+  else if (free) radio('ministry', 'Free play, Commander. Every part and every room is open to you, and none of it costs a credit. Build whatever you like.');
+  else if (mode === 'run') radio('ministry', `Welcome aboard, Commander. The Ministry grants you an Outpost permit and ${C.start.credits.toLocaleString('en-US')} CR. Start with a Docking Port, and somewhere to put the cargo.`);
+  if (!saved) radio('ministry', free ? 'Your divisions answer on the Commander\'s channel (O). Select a part and press EDIT INSIDE (I) to build out its rooms.' : 'Lay the station out, then let your people at it. They will change it to suit themselves, and only trouble will reach your desk.', { dim: true });
   buildGrid(); hud(); info();
 }
+const readSave = () => { try { return Station.load(JSON.parse(localStorage.getItem(SAVE_KEY))); } catch (e) { return null; } };
+function writeSave() { if (!ui.started || st.sandbox) return; try { localStorage.setItem(SAVE_KEY, JSON.stringify(st.save())); } catch (e) { /* no storage here: the game plays on without saving */ } }
+function titleButtons() { $('b-continue').classList.toggle('hidden', !readSave()); $('b-economy').classList.toggle('primary', !readSave()); }
+titleButtons();
 $('b-economy').onclick = () => start('run');
+$('b-broken').onclick = () => start('broken');
 $('b-free').onclick = () => start('sandbox');
+$('b-continue').onclick = () => { const s = readSave(); if (s) start(s.mode, s); else titleButtons(); };
 $('b-restart').onclick = () => {
   $('s-menu').classList.remove('on'); endEdit(); setTool(null);
   closeFloats(null); $('simpanel').classList.add('hidden');
-  ui.started = false; setClean(false); $('hud').classList.add('hidden'); $('s-title').classList.add('on');
+  writeSave(); ui.started = false; setClean(false); $('hud').classList.add('hidden'); $('s-title').classList.add('on'); clearBubbles(); titleButtons();
   st = demoStation(); view.setStation(st); view.setMode('hull'); view.setCutaway(false); view.controls.autoRotate = true; view.camera.position.set(34, 16, 40); view.controls.target.set(0, 0, 0);
 };
 
@@ -97,7 +118,8 @@ function buildGrid() {
   partsOf(ui.group).forEach((t, i) => {
     const b = document.createElement('button'), d = C.parts[t];
     b.className = 'cb'; b.type = 'button'; b.dataset.t = t;
-    b.innerHTML = `${partIcon(t)}<kbd>${KEYS[i].toUpperCase()}</kbd>`;
+    const pic = view.thumb(t);
+    b.innerHTML = `${pic ? `<img src="${pic}" alt="">` : partIcon(t)}<kbd>${KEYS[i].toUpperCase()}</kbd><span class="cn">${d.name}</span><span class="cc">${d.cost}</span>`;
     b.title = `${d.name} · ${d.cost} CR`;
     b.onclick = () => { audio.unlock(); setTool(ui.tool === t ? null : t); };
     b.onpointerenter = () => { if (!ui.tool) info({ part: t }); };
@@ -211,13 +233,16 @@ $('b-dots').onclick = () => { audio.play('click'); setDots(); };
 function setClean(on) {
   ui.clean = on;
   $('app').classList.toggle('clean', on); view.setOverlay(!on);
-  $('b-showui').classList.toggle('hidden', !on); hideTip(); $('app').classList.remove('peek'); peekT = 0;
+  $('cleanbar').classList.toggle('hidden', !on); hideTip(); if (on) clearBubbles(); $('app').classList.remove('peek'); peekT = 0;
   if (on && ui.tool) setTool(null);
   if (on && ui.edit) endEdit();
   if (on) { select(null); closeFloats(null); $('simpanel').classList.add('hidden'); view.showPorts(null); view.setGhost(null, null, 0); }
 }
 $('b-hide').onclick = () => { audio.play('click'); setClean(true); };
 $('b-showui').onclick = () => { audio.play('click'); setClean(false); };
+$('b-photo').onclick = () => {
+  const a = document.createElement('a'); a.href = view.snapshot(performance.now() / 1000); a.download = `super-orbital-simulator-week-${st.week()}.png`; a.click(); audio.play('place');
+};
 
 // ---------------------------------------------------------------- pointer: a short press is a click, anything longer orbits
 const cv = $('view');
@@ -316,6 +341,7 @@ addEventListener('keydown', (e) => {
   if (k === 'r') { ui.rot = (ui.rot + 1) % 8; audio.play('click'); if (ui.tool) { ui.portsDirty = true; view.ghostKey = ''; view.setGhost(ui.tool, ui.hot, ui.rot); } info(); }
   else if (k === 'x') demolishSel();
   else if (k === 'f' && ui.sel) view.focus(ui.sel);
+  else if (k === 'f' && ui.person) { const a = st.agents.find((x) => x.id === ui.person); if (a) view.lookAtAgent(a); }
   else if (k === 'i') { if (ui.edit) endEdit(); else if (ui.sel && canEdit(ui.sel)) startEdit(ui.sel); }
   else if (k === 'escape') {
     if ($('s-menu').classList.contains('on')) menu(false);
@@ -343,19 +369,32 @@ function demolishSel() {
 function pause(on = !ui.paused) { ui.paused = on; $('b-pause').textContent = on ? '▶' : 'II'; $('b-pause').classList.toggle('on', on); audio.play('click'); }
 $('b-pause').onclick = () => pause();
 $('b-speed').onclick = () => {
-  const steps = st.sandbox ? [1, 2, 4, 8, 16] : [1, 2, 4];
+  const steps = st.sandbox ? [1, 2, 4, 8, 16] : [1, 2, 4, 8];
   ui.speed = steps[(steps.indexOf(ui.speed) + 1) % steps.length] || 1; $('b-speed').textContent = `${ui.speed}×`; audio.play('click');
 };
 
 // ---------------------------------------------------------------- station comms: every channel, typed out as it comes in
 const typing = [], reqEls = new Map();
 const OUTCOME = { approved: 'APPROVED', denied: 'DENIED', expired: 'NO ANSWER', void: 'NO LONGER POSSIBLE' };
-// Answer a faction's request, from the comms window or from its tab in the Commander's channel.
-function answer(id, yes) {
-  const r = yes ? st.approve(id) : st.deny(id);
+// Answer what is on the desk: `i` is the place of the choice in the request's options.
+function answer(id, i) {
+  const r = st.answer(id, i);
   if (!r.ok) { audio.play('deny'); if (r.why) toast(r.why); }
-  else audio.play(yes ? 'place' : 'click');
-  info(); if (!$('cmdr').classList.contains('hidden')) drawFac();
+  else audio.play(i === 0 ? 'place' : 'click');
+  drawDesk(); info(); if (!$('cmdr').classList.contains('hidden')) drawFac();
+}
+// The desk: one card for each thing waiting on an answer, with its choices.
+let deskSig = '';
+function drawDesk() {
+  const sig = st.requests.map((r) => r.id).join(','), box = $('desk');
+  box.classList.toggle('hidden', !st.requests.length);
+  $('dk-n').textContent = st.requests.length || '';
+  if (sig !== deskSig) {
+    deskSig = sig;
+    $('dk-list').innerHTML = st.requests.map((r) => { const d = C.div[r.k]; return `<div class="dk" style="--c:${d.col}" data-id="${r.id}"><i>${r.kind === 'dilemma' ? 'A MATTER OF PEOPLE' : r.kind === 'conflict' ? `${C.factions[r.k].who.toUpperCase()} AGAINST ${C.factions[r.other].who.toUpperCase()}` : r.kind === 'allot' ? `${d.short} · WEEKLY ALLOTMENT` : `${d.short} · REQUEST`}<em></em></i><p>${r.text}</p><div class="dk-b">${r.options.map((o, i) => `<button type="button" class="btn${i === 0 ? ' primary' : ''}" data-i="${i}">${o}</button>`).join('')}</div></div>`; }).join('');
+    for (const b of $('dk-list').querySelectorAll('button')) b.onclick = () => answer(+b.closest('.dk').dataset.id, +b.dataset.i);
+  }
+  for (const el of $('dk-list').children) { const r = st.requests.find((x) => x.id === +el.dataset.id); if (r) el.querySelector('em').textContent = `${Math.max(0, Math.round(C.faction.ttl - r.t))} s`; }
 }
 const clock = (t) => `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
 function radio(from, text, o = {}) {
@@ -366,12 +405,10 @@ function radio(from, text, o = {}) {
   const bars = 2 + Math.floor(Math.random() * 3), off = ch.off[Math.floor(Math.random() * ch.off.length)];
   el.innerHTML = `<div class="cmh"><span class="led"></span><b>CH ${ch.n} · ${ch.name}</b><span class="sig">${'▂▄▆█'.slice(0, bars)}<s>${'▂▄▆█'.slice(bars)}</s></span><time>${ui.started ? clock(st.t) : ''}</time></div><div class="cmt"></div>${off ? `<div class="cms">— ${off}</div>` : ''}`;
   const body = (from === 'captain' || from === 'colonists') && Math.random() < 0.3 ? `*kssht* ${text}` : text;
-  // A faction asking for something carries its answer buttons right in the message.
+  // Something that needs an answer is marked: the choices are on the desk.
   if (o.request) {
     const bar = document.createElement('div');
-    bar.className = 'rq-bar';
-    bar.innerHTML = '<button type="button" class="btn primary" data-a="ok">APPROVE</button><button type="button" class="btn" data-a="no">DENY</button>';
-    bar.onclick = (ev) => { const b = ev.target.closest('button'); if (b) answer(o.request, b.dataset.a === 'ok'); };
+    bar.className = 'rq-bar'; bar.innerHTML = '<span class="rq-out wait">ON YOUR DESK</span>';
     el.appendChild(bar); reqEls.set(o.request, bar);
   }
   typing.push({ el: el.querySelector('.cmt'), wrap: el, full: body, i: 0 });
@@ -425,13 +462,14 @@ function drawCmdr() {
   }
   const k = ui.div, d = C.div[k], ch = CH[k], div = st.div[k];
   let h = `<div class="dh" style="--c:${d.col}"><b>CH ${ch.n} · ${d.name.toUpperCase()}</b><span class="sig">▂▄▆█</span></div><div class="rep" id="cm-rep"></div><div id="cm-fac"></div>`;
-  if (d.budget != null) h += `<div class="brow"><span class="bl">${d.staff ? 'BUDGET FOR WAGES' : 'BROADCAST BUDGET'}</span><span class="bv" id="cm-bv"></span>`
-    + `<input id="cm-budget" type="range" min="0" max="${C.budgetMax}" step="2" value="${div.budget}"><span class="bn" id="cm-bn"></span></div>`;
+  if (d.uses) h += `<div class="brow"><span class="bl">WEEKLY ALLOTMENT · ${C.supplies[d.uses].name.toUpperCase()}</span><span class="bv" id="cm-bv"></span>`
+    + `<input id="cm-budget" type="range" min="0" max="${C.allotMax}" step="1" value="${div.allot}"><span class="bn" id="cm-bn"></span></div>`;
+  if (k === 'supply') h += '<div class="stores" id="cm-stores"></div>';
   for (const [o, opts] of Object.entries(d.orders)) {
     h += `<div class="ord"><span class="ol">${ORDER_NAMES[o] || o.toUpperCase()}</span><div class="obs">${opts.map(([v, l]) => `<button type="button" class="btn ob${div.order[o] === v ? ' on' : ''}" data-o="${o}" data-v="${v}">${l}</button>`).join('')}</div></div>`;
   }
   $('cm-main').innerHTML = h; facSig = '';
-  if ($('cm-budget')) $('cm-budget').oninput = (e) => { st.setBudget(k, +e.target.value); cmdrText(); };
+  if ($('cm-budget')) $('cm-budget').oninput = (e) => { st.setAllot(k, +e.target.value); cmdrText(); };
   for (const b of $('cm-main').querySelectorAll('.ob')) b.onclick = () => {
     if (st.div[k].order[b.dataset.o] === b.dataset.v) return;
     st.setOrder(k, b.dataset.o, b.dataset.v); audio.play('click');
@@ -447,16 +485,15 @@ function drawFac() {
   const box = $('cm-fac'); if (!box) return;
   const k = ui.div, F = C.factions[k];
   if (!F) { box.innerHTML = ''; facSig = ''; return; }
-  const crew = st.crew(k), req = st.requests.find((r) => r.k === k), shown = crew.slice(0, 8);
+  const crew = st.crew(k), req = st.requests.find((r) => r.k === k && r.kind !== 'dilemma'), shown = crew.slice(0, 8);
   const sig = `${k}|${req ? req.id : 0}|${shown.map((a) => a.id).join(',')}|${crew.length}`;
   if (sig !== facSig) {
     facSig = sig;
-    const where = req && st.parts.get(req.part);
     box.innerHTML = `<div class="fac"><div class="fh"><b>${F.who.toUpperCase()} · MOOD</b><span class="fs"></span></div><div class="fbar"><i></i></div>`
       + `<p class="fw"><b>Wants:</b> ${F.wants}</p><p class="fy"></p>`
-      + (req ? `<div class="freq"><span>REQUEST: ${F.ask} in ${where ? st.name(where) : 'a part'} · ${req.cost} CR · <em class="ft"></em></span><button type="button" class="btn primary" data-a="ok">APPROVE</button><button type="button" class="btn" data-a="no">DENY</button></div>` : '')
+      + (req ? `<div class="freq"><span>${req.text} <em class="ft"></em></span>${req.options.map((o, i) => `<button type="button" class="btn${i === 0 ? ' primary' : ''}" data-i="${i}">${o}</button>`).join('')}</div>` : '')
       + `<div class="crew"><b>${ROLE[C.div[k].staff].toUpperCase()} ON STATION (${crew.length})</b>${shown.map((a) => `<button type="button" class="pp" data-id="${a.id}">${a.name}<small></small></button>`).join('')}${crew.length > shown.length ? `<em>+${crew.length - shown.length} more</em>` : ''}</div></div>`;
-    for (const b of box.querySelectorAll('.freq button')) b.onclick = () => answer(req.id, b.dataset.a === 'ok');
+    for (const b of box.querySelectorAll('.freq button')) b.onclick = () => answer(req.id, +b.dataset.i);
     for (const b of box.querySelectorAll('.pp')) b.onclick = () => { const a = st.agents.find((x) => x.id === +b.dataset.id); if (a) { pickPerson(a.id); view.lookAtAgent(a); } };
   }
   const sat = Math.round(st.sat[k]), cls = sat >= 65 ? 'ok' : sat >= C.faction.low ? 'mid' : 'bad';
@@ -473,13 +510,12 @@ function cmdrText() {
   }
   const k = ui.div, d = C.div[k], div = st.div[k];
   if ($('cm-bv')) {
-    $('cm-bv').textContent = `${div.budget} CR/min`;
-    if (d.staff) {
-      const r = d.staff, afford = Math.floor(div.budget / d.wage);
-      $('cm-bn').textContent = `${st.staff[r]} ${ROLE[r]} on staff at ${d.wage} CR/min each · ${st.homes[r]} places in ${PLACES[r]}.`
-        + (afford > st.homes[r] ? ' The budget would pay for more: build more places.' : afford < st.homes[r] ? ` Raise the budget to fill ${st.homes[r] - afford} more.` : '');
-    } else $('cm-bn').textContent = st.div.truth.order.broadcast === 'silence' ? 'Nothing is spent while the Ministry is silent.' : `Morale from broadcasts: +${st.broadcastBoost().toFixed(0)}. Truth Offices make them carry further.`;
+    const r = d.staff, sup = C.supplies[d.uses], can = Math.floor(div.allot / d.per);
+    $('cm-bv').textContent = `${div.allot} ${sup.unit} a week`;
+    $('cm-bn').textContent = `${st.staff[r]} ${ROLE[r]} on duty at ${d.per} ${sup.unit} each a week · ${st.homes[r]} places in ${PLACES[r]} · ${Math.floor(st.stock[d.uses])} in the stores.`
+      + (st.short[k] ? ' The stores are empty: they are going without.' : can > st.homes[r] ? ' More than the places need: build more places, or lower it.' : can < st.homes[r] ? ` Raise it to fill ${st.homes[r] - can} more.` : '');
   }
+  if ($('cm-stores')) $('cm-stores').innerHTML = '<b>THE STORES</b>' + Object.entries(C.supplies).map(([t, S]) => { const need = st.weeklyNeed(t), have = Math.floor(st.stock[t]); return `<span class="${have < need / 7 ? 'bad' : have < need ? 'warn' : ''}"><i>${S.name}</i>${st.sandbox ? '∞' : have}<small> · ${Math.round(need)} a week</small></span>`; }).join('') + `<em>${st.weekIn} crates in so far this week, ${st.lastWeek.in} last week. Freighters bring more of whatever is short.</em>`;
   if (!cmType) { const r = $('cm-rep'); if (r) r.textContent = st.report(k); }
 }
 function cmTick(dt) {
@@ -537,6 +573,7 @@ $('t-freighter').onclick = () => callIn('freighter', 'A freighter is');
 $('t-shuttle').onclick = () => callIn('shuttle', 'A colonist shuttle is');
 $('t-warship').onclick = () => callIn('warship', 'A damaged warship is');
 $('t-colonists').onclick = () => { const n = st.addColonists(10); if (n) { audio.play('click'); radio('colonists', `${n} citizens came aboard at Station Command and went looking for their quarters.`); } else { audio.play('deny'); toast('No free beds: build Quarters inside a Hab, a Ring or a Drum.'); } };
+$('t-raid').onclick = () => { if (st.raid) { audio.play('deny'); toast('A raid is already under way.'); } else { st.callRaid(); audio.play('click'); } };
 $('t-fault').onclick = () => { if (st.breakPart()) audio.play('fault'); else { audio.play('deny'); toast('Nothing that can break yet.'); } };
 $('t-clear').onclick = () => { st.clearShips(); audio.play('click'); radio('traffic', 'All ships waved off. The lanes are clear.'); };
 $('t-traffic').onclick = () => { st.traffic = !st.traffic; $('t-traffic').classList.toggle('on', st.traffic); $('t-traffic').textContent = st.traffic ? 'TRAFFIC ON' : 'TRAFFIC OFF'; audio.play('click'); };
@@ -549,7 +586,8 @@ function simStats() {
     ['Ships wait · in · docked', `${by('hold')} · ${by('approach')} · ${by('docked')}`],
     ['Avg time at berth', ab == null ? '—' : `${ab.toFixed(1)} s`],
     ['Haulers busy', `${h.busy} / ${h.all}`],
-    ['Staff H · E · O · M', `${s.hauler} · ${s.engineer} · ${s.officer} · ${s.medic}`],
+    ['Staff H · E · O · M · A · S', `${s.hauler} · ${s.engineer} · ${s.officer} · ${s.medic} · ${s.aide} · ${s.scientist}`],
+    ['Week · day', `${st.week()} · ${st.dow()}`],
     ['Berths F · S · W', `${st.berths('freighter').length} · ${st.berths('shuttle').length} · ${st.berths('warship').length}`],
     ['Pop / beds', `${st.residents()} / ${st.beds()}`],
     ['Power use / supply', `${st.demand} / ${st.supply} (${Math.round(st.eff * 100)}%)`],
@@ -572,13 +610,14 @@ function menuText() {
   $('bn-tax').textContent = `+${Math.round(st.taxPerMin())} CR/min from ${st.residents()} residents · morale ${p.tax >= 0 ? '+' : ''}${Math.round(p.tax)}`;
   const net = st.netPerMin(), row = (k, v, c) => `<span>${k}</span><span class="${c}">${v}</span>`;
   $('ledger').innerHTML = row('Tax', `+${Math.round(st.taxPerMin())} /min`, 'up') + row('Shops and bars', `+${Math.round(st.incomePerMin())} /min`, 'up')
-    + row('Upkeep', `−${Math.round(st.upkeep())} /min`, 'down') + row('Wages and broadcasts', `−${Math.round(st.wages())} /min`, 'down')
+    + row('Upkeep', `−${Math.round(st.upkeep())} /min`, 'down') + row('Free care', `−${Math.round(st.wages())} /min`, 'down')
     + row('Trade so far', `+${Math.round(st.totals.trade)}`, 'up')
     + `<span><b>Running profit, last minute</b></span><span class="${net >= 0 ? 'up' : 'down'}"><b>${net >= 0 ? '+' : '−'}${Math.abs(Math.round(net))} /min</b></span>`;
 }
 
 // ---------------------------------------------------------------- events from the simulation
 let bannerT = 0;
+function showBanner(title, sub, sec, bad = false) { const b = $('banner'); b.innerHTML = `${title}<small>${sub}</small>`; b.classList.toggle('bad', bad); b.classList.add('show'); bannerT = sec; }
 function drain() {
   for (const e of st.events) {
     if (!ui.started) continue;
@@ -587,12 +626,18 @@ function drain() {
       case 'crate': audio.play('crate'); break;
       case 'comms': radio(e.from, e.text, e); if (e.from === 'maintenance' && e.warn) audio.play('fault'); break;
       case 'order': radio(e.from, e.text); break;
-      case 'request': { const bar = reqEls.get(e.id); if (bar) { bar.innerHTML = `<span class="rq-out ${e.outcome}">${OUTCOME[e.outcome] || ''}</span>`; reqEls.delete(e.id); } break; }
+      case 'request': { const bar = reqEls.get(e.id); if (bar) { bar.innerHTML = `<span class="rq-out ${e.outcome}">${e.label || OUTCOME[e.outcome] || ''}</span>`; reqEls.delete(e.id); } drawDesk(); break; }
+      case 'week': audio.play('milestone'); break;
+      case 'raid':
+        if (e.state === 'warn') { audio.play('fault'); showBanner('RAIDERS INBOUND', `Defence ${st._defence()} against about ${st.raid ? st.raid.strength : '?'}. Turrets, shields, fighters and officers all count.`, 5, true); }
+        else if (e.state === 'over') { audio.play(e.hits.length ? 'fault' : 'milestone'); showBanner(e.hits.length ? 'THE RAIDERS GOT THROUGH' : 'RAID DRIVEN OFF', e.hits.length ? `${e.hits.length} part${e.hits.length > 1 ? 's' : ''} damaged. Engineers are on their way.` : 'No damage. Security is very pleased with itself.', 5, e.hits.length > 0); }
+        break;
+      case 'restored': audio.play('milestone'); showBanner('STATION RESTORED', 'Every part lit, the decks refitted, people aboard.', 8); break;
+      case 'auto': audio.play('built'); break;
       case 'tier': {
         audio.play('milestone');
         const T = C.tiers[e.tier], u = st.unlocksOf(e.tier);
-        $('banner').innerHTML = `${T.name} STATUS GRANTED<small>The build zone grows to ${T.radius}. ${[...u.parts, ...u.rooms].length ? `New: ${[...u.parts, ...u.rooms].join(', ')}.` : ''}</small>`;
-        $('banner').classList.add('show'); bannerT = 6; buildGrid();
+        showBanner(`${T.name} STATUS GRANTED`, `The build zone grows to ${T.radius}. ${[...u.parts, ...u.rooms].length ? `New: ${[...u.parts, ...u.rooms].join(', ')}.` : ''}`, 6); buildGrid();
         break;
       }
     }
@@ -605,13 +650,15 @@ function hud() {
   $('r-cr').textContent = st.sandbox ? '∞' : Math.round(st.credits).toLocaleString('en-US');
   $('r-cap').textContent = st.capability().toLocaleString('en-US');
   $('cm-badge').textContent = st.requests.length || '';
+  $('wk').textContent = `WEEK ${st.week()} · DAY ${st.dow()}`; $('w-fill').style.width = `${(st.weekPart() * 100).toFixed(1)}%`;
+  drawDesk();
   $('r-pw').textContent = `${st.demand}/${st.supply}`; $('r-pw').style.color = st.eff < 1 ? 'var(--red)' : '';
   $('r-pop').textContent = `${st.residents()}/${st.beds()}`;
   const mo = Math.round(st.morale); $('r-mo').textContent = mo; $('r-mo').style.color = mo >= 55 ? '' : mo >= 35 ? 'var(--amber)' : 'var(--red)';
   $('r-sh').textContent = `${st.stats.ships} · ${st.stats.lost}`;
   const n = st.next();
   $('tier').textContent = st.sandbox ? 'FREE PLAY' : C.tiers[st.tier].name;
-  $('tier-next').textContent = st.sandbox ? 'every part and room unlocked' : n ? `next: ${n.name} · ${n.items.filter((i) => i.ok).length}/${n.items.length}` : 'the top of the path';
+  $('tier-next').textContent = st.sandbox ? '' : n ? ` · next ${n.items.filter((i) => i.ok).length}/${n.items.length}` : ' · top of the path';
   gridState();
   if (!ui.tool) info();
   if ($('s-menu').classList.contains('on')) menuText();
@@ -622,7 +669,7 @@ function hud() {
 }
 // The comms window sits above the minimap and gives way to the free play panel above it.
 function fitComms() {
-  const panelTop = $('panel').getBoundingClientRect().top, topBar = $('top').getBoundingClientRect().bottom;
+  const panelTop = $('panel').getBoundingClientRect().top, desk = $('desk'), topBar = (desk.classList.contains('hidden') ? $('top') : desk).getBoundingClientRect().bottom;
   $('comms').style.maxHeight = `${Math.max(84, Math.min(innerHeight * (innerHeight < 520 ? 0.3 : 0.4), panelTop - topBar - 24))}px`;
 }
 let infoHTML = '', infoPeek = null;
@@ -680,8 +727,9 @@ function info(peek) {
   }
   const n = st.next();
   setInfo(`<div class="in">${st.sandbox ? 'FREE PLAY' : `STATION OVERVIEW · ${C.tiers[st.tier].name}`}</div>`
-    + `<div class="ia">Pick a part from a group on the left, then click near a port. Select a built part to build out its rooms. Drag to orbit, right-drag to pan, scroll to zoom.</div>`
-    + `<div class="st moods">${['supply', 'maintenance', 'security', 'medical'].map((k) => stat(C.factions[k].who.toUpperCase(), Math.round(st.sat[k]), st.sat[k] < C.faction.low ? 'bad' : st.sat[k] >= 65 ? 'ok' : 'warn')).join('')}</div>`
+    + `<div class="ia">${st.requests.length ? `<b>${st.requests.length} on your desk.</b> ` : ''}Pick a part on the left and click near a port. Select a part to set its rooms. The factions do the rest: their moods are below.</div>`
+    + (st.goal && !st.goal.done ? `<ul class="ms">${st.goalItems().map((i) => `<li class="${i.ok ? 'ok' : ''}">${i.label} ${Math.min(i.have, i.need)}/${i.need}</li>`).join('')}<li class="nx">Bring the station back: every item above.</li></ul>` : '')
+    + `<div class="st moods">${Object.keys(C.factions).filter((k) => st.roomOpen(C.factions[k].room)).map((k) => stat(C.factions[k].who.toUpperCase(), Math.round(st.sat[k]), st.sat[k] < C.faction.low ? 'bad' : st.sat[k] >= 65 ? 'ok' : 'warn')).join('')}</div>`
     + (st.sandbox || !n ? '' : `<ul class="ms">${n.items.map((i) => `<li class="${i.ok ? 'ok' : ''}">${i.label} ${Math.min(i.have, i.need)}/${i.need}</li>`).join('')}<li class="nx">Next: ${n.name}. The full path is under UPGRADES (U).</li></ul>`));
 }
 // One person: who they are, who they work for, and what they are doing right now.
@@ -689,7 +737,8 @@ function personInfo(a) {
   const k = C.divOrder.find((d) => C.div[d].staff === a.role), home = st.parts.get(a.home), at = st.parts.get(a.at);
   setInfo(`<div class="in edit"><span>${a.name.toUpperCase()}</span><button class="btn" id="a-focus" type="button">FOCUS <small>F</small></button><button class="btn primary" id="a-done" type="button">DONE</button></div>`
     + `<div class="ia">${ROLE_ONE[a.role]}${k ? `, ${C.factions[k].who}` : ''}. ${k ? `${C.factions[k].who} is ${st.sat[k] >= 65 ? 'in good spirits' : st.sat[k] >= C.faction.low ? 'getting by' : 'unhappy'}.` : ''}</div>`
-    + `<div class="st">${stat('DOING', st.doing(a))}${stat('IN', at ? st.name(at) : '—')}${stat(a.role === 'resident' ? 'QUARTERS' : 'POSTED', home ? st.name(home) : '—')}${stat('ABOARD', clock(st.t - a.since))}</div>`, () => {
+    + `<div class="st">${stat('DOING', st.doing(a))}${stat('IN', at ? st.name(at) : '—')}${stat(a.role === 'resident' ? 'QUARTERS' : 'POSTED', home ? st.name(home) : '—')}${stat('ABOARD', `${Math.max(1, Math.round((st.t - a.since) / C.time.daySec))} days`)}</div>`
+    + `<ul class="story">${a.story.slice(-3).reverse().map((x) => `<li><i>${x.d}</i>${x.text}</li>`).join('')}</ul>`, () => {
     $('a-focus').onclick = () => view.lookAtAgent(a);
     $('a-done').onclick = () => { audio.play('click'); select(null); };
   });
@@ -720,13 +769,13 @@ function drawMini() {
   const W = mini.width, H = mini.height, R = W / 2 - 6, span = Math.max(20, st.radius) * 1.05, k = R / span;
   mx.clearRect(0, 0, W, H);
   mx.save(); mx.translate(W / 2, H / 2);
-  mx.strokeStyle = 'rgba(157,255,184,0.12)'; mx.lineWidth = 1;
+  mx.strokeStyle = 'rgba(127,233,224,0.14)'; mx.lineWidth = 1;
   for (let i = 1; i <= 4; i++) { mx.beginPath(); mx.arc(0, 0, R * i / 4, 0, 6.283); mx.stroke(); }
   mx.beginPath(); mx.moveTo(-R, 0); mx.lineTo(R, 0); mx.moveTo(0, -R); mx.lineTo(0, R); mx.stroke();
-  mx.setLineDash([4, 4]); mx.strokeStyle = 'rgba(255,230,0,0.6)'; mx.beginPath(); mx.arc(0, 0, st.radius * k, 0, 6.283); mx.stroke(); mx.setLineDash([]);
+  mx.setLineDash([4, 4]); mx.strokeStyle = 'rgba(245,213,71,0.6)'; mx.beginPath(); mx.arc(0, 0, st.radius * k, 0, 6.283); mx.stroke(); mx.setLineDash([]);
   for (const p of st.parts.values()) {
     const c = st.center(p), x = c[0] * k, y = c[2] * k, sel = p.id === ui.sel;
-    mx.strokeStyle = sel ? '#ffe600' : p.fault ? '#ffb020' : p.state === 'active' ? 'rgba(157,255,184,0.9)' : 'rgba(255,230,0,0.6)'; mx.fillStyle = mx.strokeStyle;
+    mx.strokeStyle = sel ? '#f5d547' : p.fault ? '#ff6a4d' : p.state === 'active' ? 'rgba(127,233,224,0.9)' : 'rgba(245,213,71,0.6)'; mx.fillStyle = mx.strokeStyle;
     if (RINGS[p.type]) { mx.beginPath(); mx.arc(x, y, RINGS[p.type] * k, 0, 6.283); mx.stroke(); }
     else if (C.parts[p.type].ports[0][6] === 'L') { const b0 = st.port(p, 0).pos; mx.beginPath(); mx.moveTo(b0[0] * k, b0[2] * k); mx.lineTo(x + (x - b0[0] * k), y + (y - b0[2] * k)); mx.lineWidth = 2; mx.stroke(); mx.lineWidth = 1; }
     else { mx.fillRect(x - 2, y - 2, 4, 4); }
@@ -735,7 +784,7 @@ function drawMini() {
     const o = view.shipObjs.get(s.id); if (!o) continue;
     const x = o.position.x * k, y = o.position.z * k;
     if (Math.hypot(x, y) > R) continue;
-    mx.fillStyle = s.state === 'hold' ? '#ffe600' : s.kind === 'warship' ? '#ff6a5a' : '#4db8ff'; mx.fillRect(x - 2, y - 2, 4, 4);
+    mx.fillStyle = s.state === 'hold' ? '#f5d547' : s.kind === 'warship' ? '#e6eadc' : '#7fe9e0'; mx.fillRect(x - 2, y - 2, 4, 4);
   }
   const cam = view.camera.position, tg = view.controls.target, a = Math.atan2(tg.z - cam.z, tg.x - cam.x), cx = cam.x * k, cy = cam.z * k;
   const d = Math.min(R * 0.9, Math.hypot(cam.x, cam.z) * k), clampR = (v) => Math.max(-R, Math.min(R, v));
@@ -750,20 +799,46 @@ mini.addEventListener('click', (e) => {
   view.controls.target.set(x, view.controls.target.y, z); view.camera.position.copy(view.controls.target).add(d);
 });
 
-// ---------------------------------------------------------------- scanlines, vignette and corner marks over everything (as in Orbital Fury)
+// ---------------------------------------------------------------- four corner brackets frame the view, as in Orbital Fury. Nothing else lies over the scene.
 function fx() {
   const c = $('fx'), dpr = Math.min(devicePixelRatio || 1, 2), W = c.width = Math.round(innerWidth * dpr), H = c.height = Math.round(innerHeight * dpr), g = c.getContext('2d');
-  g.fillStyle = 'rgba(0,0,0,0.16)'; const gap = Math.max(3, Math.round(3 * dpr));
-  for (let y = 0; y < H; y += gap) g.fillRect(0, y, W, Math.max(1, Math.round(dpr)));
-  const v = g.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.4, W / 2, H / 2, Math.hypot(W, H) * 0.6);
-  v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,0.6)'); g.fillStyle = v; g.fillRect(0, 0, W, H);
+  const L = 18 * dpr, m = 6 * dpr, top = 46 * dpr;
+  g.strokeStyle = 'rgba(127,233,224,0.55)'; g.lineWidth = 1.4 * dpr; g.beginPath();
+  for (const [x, y, sx, sy] of [[m, top, 1, 1], [W - m, top, -1, 1], [m, H - m, 1, -1], [W - m, H - m, -1, -1]]) { g.moveTo(x + L * sx, y); g.lineTo(x, y); g.lineTo(x, y + L * sy); }
+  g.stroke();
 }
+// ---------------------------------------------------------------- speech bubbles: people near the camera say something now and then
+let bubbles = [], chatT = 5;
+function clearBubbles() { for (const b of bubbles) b.el.remove(); bubbles = []; }
+function bubbleTick(dt, now) {
+  if (!ui.started || ui.clean || !view.figOn) { if (bubbles.length) clearBubbles(); return; }
+  if ((chatT -= dt) <= 0) {
+    chatT = 4 + Math.random() * 5;
+    const near = st.agents.filter((a) => !a.eva && !bubbles.some((b) => b.id === a.id)).map((a) => ({ a, s: view.agentScreen(a, now) })).filter((x) => x.s && x.s.d < 26 && x.s.x > 60 && x.s.x < innerWidth - 60 && x.s.y > 80 && x.s.y < innerHeight - 200);
+    if (near.length) {
+      const { a } = near[Math.floor(Math.random() * near.length)], pool = CHAT[a.role] || CHAT.resident;
+      const k = C.divOrder.find((d) => C.div[d].staff === a.role);
+      const line = k && st.short[k] && Math.random() < 0.6 ? `We are out of ${C.supplies[C.div[k].uses].name.toLowerCase()}.` : k && st.sat[k] < C.faction.low && Math.random() < 0.5 ? 'Nobody asked us about any of this.' : pool[Math.floor(Math.random() * pool.length)];
+      if (bubbles.length >= 3) { bubbles[0].el.remove(); bubbles.shift(); }
+      const el = document.createElement('div'); el.className = 'bubble'; el.innerHTML = `<i>${a.name}</i>${line}`; $('bubbles').appendChild(el);
+      bubbles.push({ id: a.id, el, t: 4.5 });
+    }
+  }
+  for (const b of bubbles) {
+    b.t -= dt;
+    const a = st.agents.find((x) => x.id === b.id), s = a && view.agentScreen(a, now);
+    if (!s || b.t <= 0) { b.el.remove(); b.dead = true; continue; }
+    b.el.style.transform = `translate(${Math.round(s.x)}px, ${Math.round(s.y)}px) translate(-50%, -100%) translateY(-14px)`; b.el.style.opacity = Math.min(1, b.t * 2);
+  }
+  bubbles = bubbles.filter((b) => !b.dead);
+}
+addEventListener('pagehide', writeSave);
 addEventListener('resize', () => { view.resize(); fx(); if (ui.started) fitComms(); });
 fx();
 
 // ---------------------------------------------------------------- loop
 const STEP = 1 / 30;
-let last = performance.now(), acc = 0, hudT = 0, miniT = 0;
+let last = performance.now(), acc = 0, hudT = 0, miniT = 0, saveT = 15;
 function frame(nowMs) {
   const now = nowMs / 1000, dt = Math.min(0.1, (nowMs - last) / 1000); last = nowMs;
   if (!ui.paused) {
@@ -776,15 +851,16 @@ function frame(nowMs) {
   view.sync(now, dt);
   if (ui.tool && ui.portsDirty) { ui.portsDirty = false; view.showPorts(ui.tool, ui.rot, ui.hot, ui.px, ui.py); }
   view.render(now);
-  typeTick(dt); cmTick(dt);
+  typeTick(dt); cmTick(dt); bubbleTick(dt, now);
   if (ui.started) {
     if ((hudT -= dt) <= 0) { hudT = 0.25; hud(); if (ui.tool) ui.portsDirty = true; }
     if ((miniT -= dt) <= 0) { miniT = 0.1; drawMini(); }
     if (bannerT > 0 && (bannerT -= dt) <= 0) $('banner').classList.remove('show');
     if (toastT > 0 && (toastT -= dt) <= 0) $('toast').classList.remove('show');
     if (peekT > 0 && (peekT -= dt) <= 0) $('app').classList.remove('peek');
+    if ((saveT -= dt) <= 0) { saveT = 15; writeSave(); }
   }
   requestAnimationFrame(frame);
 }
-if (qs.has('economy') || qs.has('run')) start('run'); else if (qs.has('free') || qs.has('sandbox')) start('sandbox');
+if (qs.has('economy') || qs.has('run')) start('run'); else if (qs.has('broken')) start('broken'); else if (qs.has('free') || qs.has('sandbox')) start('sandbox');
 requestAnimationFrame(frame);
