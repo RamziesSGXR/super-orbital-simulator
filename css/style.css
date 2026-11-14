@@ -412,8 +412,9 @@ h1 { text-shadow: none; letter-spacing: 0.1em; } .eyebrow, .panel .ph, .desk .ph
   .groups { width: 56px; } .gt { font-size: 8.5px; min-height: 16px; }
   .comms { width: min(360px, 46vw); }
 }
-@media (max-width: 760px) { .res { gap: 8px; } .ri:nth-child(5) { display: none; } }
-@media (max-width: 700px) { .ri:nth-child(4) { display: none; } }
+@media (max-width: 860px) { .res { gap: 8px; } .ri:nth-child(5) { display: none; } }
+@media (max-width: 780px) { .ri:nth-child(4) { display: none; } .ri.cap, .ri.cr { padding: 1px 6px 1px 5px; gap: 3px; } .ri.cap b { font-size: 16px; } }
+@media (max-width: 640px) { .ri:nth-child(3) { display: none; } .ri.cr i { display: none; } }
 @media (max-width: 480px) { .age, #b-upg, .ri:nth-child(3) { display: none; } .menu { margin-left: auto; gap: 3px; } .menu .btn { padding: 2px 5px; } .res { gap: 7px; } .ri i { margin-right: 3px; } }
 @media (max-height: 520px) {
   #top { height: calc(34px + env(safe-area-inset-top)); }
@@ -424,7 +425,8 @@ h1 { text-shadow: none; letter-spacing: 0.1em; } .eyebrow, .panel .ph, .desk .ph
   .groups { flex-direction: row; width: auto; max-width: 100%; overflow-x: auto; }
   .gt { font-size: 8px; min-height: 15px; padding: 1px 4px; }
   .cmd { grid-template-columns: repeat(8, 50px); grid-template-rows: 42px; } .cb .cn { display: none; } .cb img { padding: 2px; }
-  .desk { top: calc(40px + env(safe-area-inset-top)); max-height: 46vh; } .banner { bottom: calc(118px + env(safe-area-inset-bottom)); font-size: 14px; } .dk p { font-size: 10.5px; } .wbar { display: none; } .age .tl { display: none; }
+  .desk { top: calc(40px + env(safe-area-inset-top)); max-height: calc(100% - 40px - 112px - 10px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }
+  #app.desk-on .comms, #app.desk-on .copen { display: none; }      /* on a short screen the desk comes first; comms return when it is clear */ .banner { bottom: calc(118px + env(safe-area-inset-bottom)); font-size: 14px; } .dk p { font-size: 10.5px; } .wbar { display: none; } .age .tl { display: none; }
   .cmd.pal { grid-template-columns: repeat(9, 38px); grid-template-rows: repeat(2, 38px); }
   .rb i { height: 10px; } .rb b { font-size: 9px; } .rb small { font-size: 8px; }
   .cb { padding: 4px; }

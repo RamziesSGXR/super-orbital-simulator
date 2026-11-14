@@ -388,6 +388,7 @@ let deskSig = '';
 function drawDesk() {
   const sig = st.requests.map((r) => r.id).join(','), box = $('desk');
   box.classList.toggle('hidden', !st.requests.length);
+  $('app').classList.toggle('desk-on', st.requests.length > 0);
   $('dk-n').textContent = st.requests.length || '';
   if (sig !== deskSig) {
     deskSig = sig;
