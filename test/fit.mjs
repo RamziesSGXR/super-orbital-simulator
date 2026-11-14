@@ -41,7 +41,7 @@ function audit() {
     }
   }
   // Panels on top of each other.
-  const boxes = ['#top', '#panel', '#comms', '#c-open', '#cmdr', '#upg', '#simpanel', '#info'].map((q) => [q, document.querySelector(q)]).filter(([, e]) => e && vis(e));
+  const boxes = ['#top', '#panel', '#comms', '#c-open', '#cmdr', '#upg', '#simpanel', '#info', '#desk'].map((q) => [q, document.querySelector(q)]).filter(([, e]) => e && vis(e));
   for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
     const [qa, a] = boxes[i], [qb, b] = boxes[j];
     if (qa === '#panel' && qb === '#info' || qa === '#info' && qb === '#panel') continue;
@@ -72,7 +72,13 @@ for (const [w, h, touch] of SIZES) {
     const s = window.__st, b = (t, h, k, r = 0) => s.build(t, h, k, r).id;
     b('dockport', 1, 2); b('cargo', 1, 3); b('hab', 1, 4); b('hab', 1, 5); const c = b('core', 1, 1); b('reactor', c, 1);
     s.credits = 5000; for (let i = 0; i < 30 * 200; i++) s.step(1 / 30);
-    s.tier = 1; s.radius = 40; s.timers.request = 0; for (let i = 0; i < 60; i++) s.step(1 / 30);
+    s.tier = 1; s.radius = 40; for (let i = 0; i < 60; i++) s.step(1 / 30);
+    // two things on the desk: a request and a matter of people with three answers
+    const hp = [...s.parts.values()].find((x) => x.rooms.includes('quarters'));
+    s.requests.length = 0;
+    s._ask({ k: 'security', kind: 'room', part: hp.id, slot: hp.rooms.indexOf('quarters'), room: 'secoffice', was: 'quarters', cost: 60, text: `Commander, Security wants to turn spare quarters in ${s.name(hp)} into a Security Office (60 CR). There is no Security Office, so every bay is unwatched.` });
+    if (!s.staff.officer) { s.staff.officer = 1; s._spawn('officer', s.root, s.root); }
+    s._dilemma();
     for (let i = 0; i < 6; i++) s.say(['traffic', 'ministry', 'captain', 'maintenance', 'security', 'supply'][i], 'A long message to see how a line of station chatter wraps inside the comms window at this width, Commander.', { warn: i % 2 });
   });
   await page.waitForTimeout(2500);

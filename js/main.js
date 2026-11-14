@@ -730,7 +730,7 @@ function info(peek) {
     + `<div class="ia">${st.requests.length ? `<b>${st.requests.length} on your desk.</b> ` : ''}Pick a part on the left and click near a port. Select a part to set its rooms. The factions do the rest: their moods are below.</div>`
     + (st.goal && !st.goal.done ? `<ul class="ms">${st.goalItems().map((i) => `<li class="${i.ok ? 'ok' : ''}">${i.label} ${Math.min(i.have, i.need)}/${i.need}</li>`).join('')}<li class="nx">Bring the station back: every item above.</li></ul>` : '')
     + `<div class="st moods">${Object.keys(C.factions).filter((k) => st.roomOpen(C.factions[k].room)).map((k) => stat(C.factions[k].who.toUpperCase(), Math.round(st.sat[k]), st.sat[k] < C.faction.low ? 'bad' : st.sat[k] >= 65 ? 'ok' : 'warn')).join('')}</div>`
-    + (st.sandbox || !n ? '' : `<ul class="ms">${n.items.map((i) => `<li class="${i.ok ? 'ok' : ''}">${i.label} ${Math.min(i.have, i.need)}/${i.need}</li>`).join('')}<li class="nx">Next: ${n.name}. The full path is under UPGRADES (U).</li></ul>`));
+    + (st.sandbox || !n || (st.goal && !st.goal.done) ? '' : `<ul class="ms">${n.items.map((i) => `<li class="${i.ok ? 'ok' : ''}">${i.label} ${Math.min(i.have, i.need)}/${i.need}</li>`).join('')}<li class="nx">Next: ${n.name}. The full path is under UPGRADES (U).</li></ul>`));
 }
 // One person: who they are, who they work for, and what they are doing right now.
 function personInfo(a) {
