@@ -29,7 +29,7 @@
       </div>
       <button id="b-age" class="age" type="button" title="The station week, and the upgrade path (U)"><b id="wk">WEEK 1 · DAY 1</b><span class="wbar"><i id="w-fill"></i></span><span class="tl"><span id="tier">OUTPOST</span><span id="tier-next"></span></span></button>
       <div class="menu">
-        <button id="b-pause" class="btn icon" type="button" title="Pause (Space)">II</button>
+        <button id="b-pause" class="btn icon" type="button" title="Pause (P)">II</button>
         <button id="b-speed" class="btn icon" type="button" title="Game speed">1×</button>
         <button id="b-cmdr" class="btn" type="button" title="The Commander's channel: divisions, factions, requests and standing orders (O)"><span class="lg">COMMANDER</span><span class="sm">CMDR</span><span id="cm-badge" class="badge"></span></button>
         <button id="b-upg" class="btn" type="button" title="The upgrade path (U)"><span class="lg">UPGRADES</span><span class="sm">UPG</span></button>
@@ -94,11 +94,12 @@
       <div id="info" class="info"></div>
       <div class="mm">
         <div class="views">
-          <button class="btn vb on" data-v="blueprint" type="button" title="Blueprint (1)">BLUEPRINT</button>
-          <button class="btn vb" data-v="hull" type="button" title="Hull (2)">HULL</button>
-          <button class="btn vb" data-v="life" type="button" title="Life signs (3)">LIFE SIGNS</button>
-          <button class="btn vb" data-v="cut" type="button" title="Cutaway (4)">CUTAWAY</button>
-          <button class="btn vt on" id="b-dots" type="button" title="Little blue dots on the ports near the pointer while building (P)">DOTS ON</button>
+          <button class="btn vb on" data-v="blueprint" type="button" title="Blueprint (V steps through the three views)">BLUEPRINT</button>
+          <button class="btn vb" data-v="hull" type="button" title="Hull (V)">HULL</button>
+          <button class="btn vb" data-v="life" type="button" title="Life signs (V)">LIFE SIGNS</button>
+          <button class="btn vb" data-v="open" type="button" title="Inside: take the hull away and leave its edges, so every deck can be seen from any side (T)">INSIDE</button>
+          <button class="btn vb" data-v="cut" type="button" title="Cutaway: cut away everything nearer than what you are looking at. It follows the camera (G)">CUTAWAY</button>
+          <button class="btn vt on" id="b-dots" type="button" title="Little blue dots on the ports near the pointer while building (J)">DOTS ON</button>
         </div>
         <canvas id="mini" width="300" height="300"></canvas>
       </div>
@@ -128,7 +129,7 @@
       </div>
       <p class="fine"><b>New station:</b> Station Command, 2,500 CR and an Outpost permit. <b>Broken station:</b> take over a dark, stripped station and bring it back.
         <b>Free play:</b> every part and room, no costs, and controls to call in ships, colonists and raids.
-        Prototype 0.8. The station saves itself as you play.<br>
+        Prototype 0.9. The station saves itself as you play.<br>
         An unofficial fan project for the Super Earth Special Forces community, by Robert Troumbley. Not affiliated with or endorsed by Arrowhead Game Studios or Sony Interactive Entertainment.</p>
     </div>
   </section>
@@ -143,15 +144,17 @@
         <input id="in-people" type="range" min="60" max="160" step="10"><span class="bn">How large people are drawn against the station. 100% is true to scale: a person is 1.8 m and a deck unit is 9 m.</span></div>
       <div class="ledger" id="ledger"></div>
       <div class="keys">
-        <span>Parts in the open group</span><span>Q W E T Y A S D Z</span>
+        <span>Move the camera</span><span>W A S D · Space up · Shift down</span>
+        <span>Swing the camera · zoom</span><span>Q E · wheel, toward the pointer</span>
+        <span>Parts in the open group</span><span>1 to 9</span>
         <span>Next group</span><span>Tab</span>
         <span>Turn part</span><span>R</span>
         <span>Edit inside the selected part</span><span>I</span>
         <span>Demolish · focus selected</span><span>X · F</span>
-        <span>Views</span><span>1 Blueprint · 2 Hull · 3 Life signs · 4 Cutaway</span>
+        <span>Views · inside · cutaway</span><span>V · T · G</span>
         <span>Commander · upgrades · comms</span><span>O · U · C</span>
-        <span>Port dots · hide interface</span><span>P · H</span>
-        <span>Pause</span><span>Space</span>
+        <span>Port dots · hide interface</span><span>J · H</span>
+        <span>Pause</span><span>P</span>
         <span>Free play controls</span><span>K</span>
         <span>Saving</span><span>by itself, every few seconds</span>
       </div>

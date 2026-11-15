@@ -46,10 +46,10 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
   await page.keyboard.press('Tab');
   const hab = await page.$$eval('#cmd .cb', (b) => b.map((x) => [x.dataset.t, x.classList.contains('locked')]));
   check('Tab opens the next group, with its later parts locked', hab.length === 9 && hab.filter((g) => g[1]).map((g) => g[0]).join() === 'dronebay,relay,barracks,eaglehangar,pelicanbay,fabshop,lance', JSON.stringify(hab));
-  await page.keyboard.press('e'); await page.waitForTimeout(200);
+  await page.keyboard.press('3'); await page.waitForTimeout(200);
   check('a locked part is refused with the tier that unlocks it', /GARRISON/.test(await page.textContent('#toast')));
 
-  await page.click('#groups .gt[data-g="docking"]'); await page.keyboard.press('q'); await page.waitForTimeout(200);
+  await page.click('#groups .gt[data-g="docking"]'); await page.keyboard.press('1'); await page.waitForTimeout(200);
   check('a group key picks its part', await page.evaluate(() => window.__ui.tool) === 'dockport');
   await page.mouse.move(40, 300); await page.waitForTimeout(200);
   check('no port dots far from the pointer', await page.evaluate(() => window.__view.markers.children.length) === 0);
@@ -61,13 +61,13 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
   check('hovering a port shows a ghost of the part', await page.evaluate(() => !!window.__view.ghost));
   await page.mouse.click(...xy); await page.waitForTimeout(200);
   check('clicking the port builds the docking port', await page.evaluate(() => [...window.__st.parts.values()].some((p) => p.type === 'dockport')));
-  await page.keyboard.press('p'); await page.click('#groups .gt[data-g="industry"]'); await page.keyboard.press('q');
+  await page.keyboard.press('j'); await page.click('#groups .gt[data-g="industry"]'); await page.keyboard.press('1');
   const xy2 = await portXY(page, 'p.part === 1 && p.i === 3');
   await page.mouse.move(...xy2); await page.waitForTimeout(250);
   check('P turns the dots off', await page.evaluate(() => window.__view.markers.children.length) === 0 && /OFF/.test(await page.textContent('#b-dots')));
   await page.mouse.click(...xy2); await page.waitForTimeout(200);
   check('parts still snap to ports with the dots off', await page.evaluate(() => [...window.__st.parts.values()].some((p) => p.type === 'cargo')));
-  await page.keyboard.press('p');
+  await page.keyboard.press('j');
   await page.keyboard.press('r');
   check('R turns the part', await page.evaluate(() => window.__ui.rot) === 1);
   await page.keyboard.press('Escape'); for (let i = 0; i < 7; i++) await page.keyboard.press('r');
@@ -219,16 +219,35 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
   check('and unlocks the rings', !(await page.$eval('#cmd .cb[data-t="ring"]', (b) => b.classList.contains('locked'))));
 
   // Views, the sky, and hiding everything.
-  await page.keyboard.press('2'); await page.waitForTimeout(300);
+  await page.evaluate(() => document.querySelector('.vb[data-v="hull"]').click()); await page.waitForTimeout(300);
   check('2 shows the hull over a planet', await page.evaluate(() => window.__view.mode === 'hull' && window.__view.planet.visible));
   await page.evaluate(() => { window.__view.camera.position.x += 15; window.__view.render(); });
   check('the stars, sun and moons move with the camera, so they never slide', await page.evaluate(() => window.__view.sky.position.distanceTo(window.__view.camera.position) < 1e-6));
-  await page.keyboard.press('4'); await page.waitForTimeout(300);
+  await page.evaluate(() => document.querySelector('.vb[data-v="cut"]').click()); await page.waitForTimeout(300);
   check('4 cuts the station away', await page.evaluate(() => window.__view.cutaway && !!window.__view.M.hull.clippingPlanes));
   await page.waitForFunction(() => window.__view.figOn && (window.__view.figs.hauler.count + window.__view.figsW.hauler.count) > 0, null, { timeout: 20000 }).catch(() => {});
   check('with the hull cut away, people are figures by job', await page.evaluate(() => { const v = window.__view; return v.figOn && [...Object.values(v.figs), ...Object.values(v.figsW)].reduce((n, f) => n + f.count, 0) === window.__st.agents.filter((x) => !x.eva).length && (v.figs.hauler.count + v.figsW.hauler.count) > 0; }), await page.evaluate(() => { const v = window.__view; return JSON.stringify({ fig: v.figOn, counts: Object.fromEntries(Object.entries(v.figs).map(([k, f]) => [k, f.count])), agents: window.__st.agents.filter((x) => !x.eva).length }); }));
   await page.screenshot({ path: 'test/shots/cutaway.png' });
-  await page.keyboard.press('4'); await page.keyboard.press('3'); await page.waitForTimeout(300);
+  // The cut follows the camera; INSIDE takes the hull away; the camera flies on W A S D, Space and Shift.
+  check('the cutaway is one plane facing the camera, just in front of what you look at', await page.evaluate(() => {
+    const v = window.__view; v.camera.position.set(3, 9, -14); v.controls.target.set(1, 0, 2); v.sync(performance.now() / 1000, 0.016);
+    const n = v.clip[0].normal, d = v.controls.target.clone().sub(v.camera.position).normalize();
+    return v.clip.length === 1 && n.distanceTo(d) < 1e-4 && v.clip[0].distanceToPoint(v.controls.target) > 0.2 && v.clip[0].distanceToPoint(v.camera.position) < 0 && v.M.inner.clippingPlanes === v.clip && v.figMat.clippingPlanes === v.clip;
+  }));
+  await page.keyboard.press('t'); await page.waitForTimeout(300);
+  check('T (or INSIDE) takes the hull away and shows every deck and the people', await page.evaluate(() => { const v = window.__view; return v.open && v.mat('hull', 'active') === v.M.hidden && v.mat('line', 'active') === v.M.hullLine && v.mat('inner', 'active') === v.M.inner && v.mat('hull', 'active', false, false, true) === v.M.hull && v.figOn && document.querySelector('.vb[data-v="open"]').classList.contains('on'); }));
+  await page.screenshot({ path: 'test/shots/inside.png' });
+  await page.keyboard.press('t');
+  const fly = async (key, ms = 350) => { const a = await page.evaluate(() => [...window.__view.controls.target.toArray(), ...window.__view.camera.position.toArray()]); await page.keyboard.down(key); await page.waitForTimeout(ms); await page.keyboard.up(key); await page.waitForTimeout(120); const b = await page.evaluate(() => [...window.__view.controls.target.toArray(), ...window.__view.camera.position.toArray()]); return b.map((x, i) => x - a[i]); };
+  const fw = await fly('w'), fu = await fly(' '), fd = await fly('Shift'), fr = await fly('d');
+  check('W flies the camera forward along the deck', Math.hypot(fw[0], fw[2]) > 0.2 && Math.abs(fw[1]) < 1e-6 && Math.abs(fw[0] - fw[3]) < 0.05, JSON.stringify(fw.map((x) => +x.toFixed(2))));
+  check('Space lifts it and Shift lowers it, and Space no longer pauses', fu[1] > 0.2 && fd[1] < -0.2 && !(await page.evaluate(() => window.__ui.paused)), `${fu[1].toFixed(2)} ${fd[1].toFixed(2)}`);
+  check('D flies it to the right', Math.hypot(fr[0], fr[2]) > 0.2 && Math.abs(fw[0] * fr[0] + fw[2] * fr[2]) < 0.2 * Math.hypot(fw[0], fw[2]) * Math.hypot(fr[0], fr[2]) + 0.05);
+  await page.keyboard.press('p'); const wasPaused = await page.evaluate(() => window.__ui.paused); await page.keyboard.press('p');
+  check('P pauses', wasPaused && !(await page.evaluate(() => window.__ui.paused)));
+  check('the wheel zooms toward the pointer, and closer than before', await page.evaluate(() => window.__view.controls.zoomToCursor === true && window.__view.controls.minDistance <= 0.3 && window.__view.controls.zoomSpeed >= 2));
+
+  await page.evaluate(() => document.querySelector('.vb[data-v="cut"]').click()); await page.evaluate(() => document.querySelector('.vb[data-v="life"]').click()); await page.waitForTimeout(300);
   await page.waitForFunction(() => window.__view.mode === 'life' && window.__view.agentPts.geometry.drawRange.count > 0, null, { timeout: 20000 }).catch(() => {});
   check('3 shows life signs', await page.evaluate(() => window.__view.mode === 'life' && window.__view.agentPts.geometry.drawRange.count > 0));
   check('life signs are only people inside the station', await page.evaluate(() => window.__view.agentPts.geometry.drawRange.count <= window.__st.agents.filter((a) => !a.eva).length + window.__view.suits.children.filter((s) => s.visible).length));
@@ -242,7 +261,7 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
   check('clicking a life sign shows who they are', await page.evaluate(() => window.__ui.person > 0) && /DOING/.test(await page.textContent('#info')), await page.textContent('#info'));
   await page.keyboard.press('Escape');
   await page.evaluate(() => { window.__ui.paused = false; });
-  await page.keyboard.press('2'); await page.keyboard.press('h'); await page.waitForTimeout(200);
+  await page.evaluate(() => document.querySelector('.vb[data-v="hull"]').click()); await page.keyboard.press('h'); await page.waitForTimeout(200);
   check('H hides the interface, leaving only the station', !(await page.isVisible('#hud')) && await page.isVisible('#b-showui') && await page.evaluate(() => !window.__view.overlay));
   await page.screenshot({ path: 'test/shots/clean.png' });
   check('hidden means hidden: no panels, tips, toasts or banners', await page.evaluate(() => ['hud', 'tip', 'toast', 'banner', 'fx'].every((id) => getComputedStyle(document.getElementById(id)).display === 'none')));
@@ -250,7 +269,7 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
   check('tapping the station brings the SHOW UI button back for a moment', await page.evaluate(() => document.getElementById('app').classList.contains('peek')));
   await page.keyboard.press('h');
   check('H brings it back', await page.isVisible('#hud'));
-  await page.keyboard.press('1');
+  await page.evaluate(() => document.querySelector('.vb[data-v="blueprint"]').click());
 
   // Demolish.
   await page.evaluate(() => window.__view.frame()); await page.waitForTimeout(400);
@@ -293,7 +312,7 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
   await page.waitForFunction(() => window.__st.agents.some((a) => a.eva), null, { timeout: 30000 }).catch(() => {});
   await page.waitForTimeout(300);
   check('engineers go out on EVA, in suits', await page.evaluate(() => window.__st.agents.some((a) => a.eva) && window.__view.suits.children.some((s) => s.visible)));
-  await page.keyboard.press('2'); await page.waitForTimeout(300);
+  await page.evaluate(() => document.querySelector('.vb[data-v="hull"]').click()); await page.waitForTimeout(300);
   await page.screenshot({ path: 'test/shots/eva.png' });
   for (let i = 0; i < 4; i++) await page.click('#b-speed');
   check('free play runs up to 16×', (await page.textContent('#b-speed')).trim() === '16×');

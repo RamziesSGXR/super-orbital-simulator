@@ -13,6 +13,8 @@ import { RNG } from './rng.js';
 const GREEN = 0x7fe9e0, YELLOW = 0xf5d547, BLUE = 0x7fe9e0;      // the drawing lines are cyan and selections amber, as in the interface
 const ROLE_COL = { resident: [0.85, 1, 0.9], hauler: [0.3, 0.72, 1], engineer: [1, 0.76, 0.25], officer: [1, 0.35, 0.29], medic: [0.6, 1, 0.75], aide: [0.96, 0.84, 0.28], scientist: [0.7, 0.55, 1], gunner: [1, 0.6, 0.23], carry: [1, 0.69, 0.13], eva: [1, 1, 1] };
 const UP = new THREE.Vector3(0, 1, 0);
+const OPEN_HIDE = new Set(['hull', 'trim', 'glass', 'glow', 'decal', 'dark', 'blue', 'pod']);
+const CUT_IN = ['inner', 'innerLine', 'lane', 'tileLine', 'wood', 'white', 'steel', 'sofa', 'fdark', 'fblue', 'fscreen', 'bed', 'locker', 'shell', 'carpet', 'wall', 'craft', 'craftTrim', 'crate', 'plant', 'awning', 'cross', 'alarm', 'spark'];
 const RESIDENTS = ['resident', 'resident2', 'resident3', 'resident4'];
 // The rooms each job stands in when it is in a part that has them, best first.
 const STAND = { resident: ['quarters', 'bunks', 'mess', 'bar', 'lounge', 'market', 'hydro'], hauler: ['cargostore'], engineer: ['workshop'], officer: ['secoffice'], medic: ['medbay'],
@@ -34,9 +36,10 @@ export class View {
     this.camera = new THREE.PerspectiveCamera(42, 1, 0.05, 6000);
     this.camera.position.set(26, 17, 30);
     this.controls = new THREE.OrbitControls(this.camera, canvas);
-    Object.assign(this.controls, { enableDamping: true, dampingFactor: 0.08, minDistance: 0.9, maxDistance: 260, screenSpacePanning: true });
-    this.mode = 'blueprint'; this.cutaway = false; this.overlay = true; this.portMode = 'near'; this.touch = false;
-    this.clip = [new THREE.Plane(new THREE.Vector3(-1, 0, 0), 0), new THREE.Plane(new THREE.Vector3(0, 0, -1), 0)];
+    Object.assign(this.controls, { enableDamping: true, dampingFactor: 0.08, minDistance: 0.3, maxDistance: 260, screenSpacePanning: true, zoomToCursor: true, zoomSpeed: 2.2 });
+    this.mode = 'blueprint'; this.cutaway = false; this.open = false; this.overlay = true; this.portMode = 'near'; this.touch = false;
+    // The cutaway is one plane that faces the camera, just in front of what you are looking at: everything nearer than it is cut.
+    this.clip = [new THREE.Plane(new THREE.Vector3(-1, 0, 0), 0)];
     this._materials();
     this._world();
     this.partObjs = new Map(); this.roomObjs = new Map(); this.shipObjs = new Map();
@@ -259,20 +262,22 @@ export class View {
   }
   // The material a role wears in the current mode. dim: another part while you edit one part's interior.
   // edit: the part being edited, whose hull turns to glass so every room inside shows.
-  mat(role, state, dim, edit) {
+  mat(role, state, dim, edit, solid = false) {
     const M = this.M, m = this.mode;
     if (state === 'building') return role === 'line' || role === 'wire' ? M.build : M.hidden;
     if (state === 'demolish' && (role === 'line' || role === 'wire')) return M.gone;
     if (role === 'decal' && (edit || dim || m !== 'hull')) return M.hidden;
-    if (role === 'lane') return dim || m === 'life' ? M.hidden : m === 'blueprint' && !edit ? M.bpGlow : edit || this.cutaway ? M.lane : M.hidden;
+    if (role === 'lane') return dim || m === 'life' ? M.hidden : m === 'blueprint' && !edit ? M.bpGlow : edit || this.cutaway || this.open ? M.lane : M.hidden;
     if (edit) return { line: M.eLine, wire: M.eLine, innerLine: M.eInnerLine, glow: M.glow, screen: M.screen, panel: M.panel }[role] || M.eHull;
     if (dim) return { line: M.dimLine, wire: M.dimLine, innerLine: M.hidden, inner: M.hidden }[role] || (role === 'glow' ? M.hidden : M.dimHull);
     if (m === 'blueprint') return { trim: M.bpHull, dark: M.bpHull, blue: M.bpGlow, hull: M.bpHull, line: M.bpLine, inner: M.bpInner, innerLine: M.bpInnerLine, glow: M.bpGlow, glass: M.bpHull, panel: M.bpPanel, wire: M.bpLine, pod: M.bpHull, screen: M.bpScreen }[role] || M.bpInner;
     if (m === 'life') return { trim: M.xHull, dark: M.xHull, blue: M.xGlow, hull: M.xHull, line: M.xLine, inner: M.hidden, innerLine: M.xInnerLine, glow: M.xGlow, glass: M.xHull, panel: M.xHull, wire: M.xLine, pod: M.xHull, screen: M.xHull }[role] || M.hidden;
-    const inside = this.cutaway || !!this.edit;
+    const inside = this.cutaway || this.open || !!this.edit;
+    // INSIDE: the hull is taken away and only its edges are left, so every deck can be seen from anywhere. Ships keep their hulls.
+    if (this.open && !solid && OPEN_HIDE.has(role)) return M.hidden;
     return { hull: M.hull, line: M.hullLine, inner: inside ? M.inner : M.hidden, innerLine: inside ? M.innerLine : M.hidden, glow: M.glow, glass: M.glass, panel: M.panel, wire: M.wire, pod: M.pod, screen: M.screen }[role] || M[role] || M.inner;
   }
-  _dress(obj, state, dim = false, edit = false) { obj.traverse((o) => { if (o.userData.role) o.material = this.mat(o.userData.role, state, dim, edit); }); }
+  _dress(obj, state, dim = false, edit = false, solid = false) { obj.traverse((o) => { if (o.userData.role) o.material = this.mat(o.userData.role, state, dim, edit, solid); }); }
   _dressRoom(g, dim, edit = false) {
     const m = edit ? 'hull' : this.mode;
     g.traverse((o) => {
@@ -386,20 +391,35 @@ export class View {
     if (this.sun) { this.sun.visible = hull; this.rim.visible = hull; }
     this._redress();
   }
+  // Fly the camera and what it looks at together. fwd and right run along the deck (never up or down); up is straight up; turn
+  // swings the camera round what it is looking at. Speed grows with distance, so it is fine close in and quick far out.
+  fly(fwd, right, up, turn, dt) {
+    const cam = this.camera.position, tg = this.controls.target, off = this._fo || (this._fo = new THREE.Vector3()), f = this._ff || (this._ff = new THREE.Vector3()), r = this._fr || (this._fr = new THREE.Vector3());
+    off.copy(cam).sub(tg);
+    const dist = off.length(), sp = Math.max(1.2, dist * 0.9) * dt;
+    f.set(-off.x, 0, -off.z); if (f.lengthSq() < 1e-8) f.set(0, 0, -1).applyQuaternion(this.camera.quaternion).setY(0); f.normalize();
+    r.set(-f.z, 0, f.x);
+    const mx = (f.x * fwd + r.x * right) * sp, mz = (f.z * fwd + r.z * right) * sp, my = up * sp;
+    tg.x += mx; tg.z += mz; tg.y += my; cam.x += mx; cam.z += mz; cam.y += my;
+    if (turn) { off.copy(cam).sub(tg).applyAxisAngle(UP, turn * dt * 1.4); cam.copy(tg).add(off); }
+    this.controls.autoRotate = false;
+  }
   setCutaway(on) { this.cutaway = on; this._redress(); }
+  setOpen(on) { this.open = on; this._redress(); }
   setOverlay(on) { this.overlay = on; this.grids.visible = on && this.mode === 'blueprint'; this.markers.visible = on; if (this.selLines) this.selLines.visible = on && !this.edit; if (this.editLbl) this.editLbl.visible = on; }
   _redress() {
     if (!this.partObjs) return;
     for (const [id, o] of this.partObjs) { const p = this.st.parts.get(id); this._dress(o, p ? p.state : 'active', this._dim(id), this.edit === id); }
     for (const [id, r] of this.roomObjs) this._dressRoom(r.group, this._dim(id), this.edit === id);
-    for (const o of this.shipObjs.values()) this._dress(o, 'active', !!this.edit);
+    for (const o of this.shipObjs.values()) this._dress(o, 'active', !!this.edit, false, true);
+    // The cut takes the hull and everything inside it that is nearer than the plane: decks, rooms, fittings and people.
     const planes = this.cutaway && !this.edit ? this.clip : null;
-    for (const k of this.clipped) { this.M[k].clippingPlanes = planes; this.M[k].needsUpdate = true; }
+    for (const m of [...this.clipped.map((k) => this.M[k]), ...CUT_IN.map((k) => this.M[k]), ...Object.values(this.tileMats), this.figMat, this.crateIM && this.crateIM.material]) if (m) { m.clippingPlanes = planes; m.needsUpdate = true; }
     const life = this.mode === 'life';
     this.agentMat.size = life ? 0.9 : 0.55;
-    this.agentMat.depthTest = !life && !this.cutaway && !this.edit;
+    this.agentMat.depthTest = !life && !this.cutaway && !this.open && !this.edit;
     // People show as life signs in the x-ray, and as small figures wherever you can see inside the hull.
-    this.peopleOn = this.mode !== 'hull' || this.cutaway || !!this.edit;
+    this.peopleOn = this.mode !== 'hull' || this.cutaway || this.open || !!this.edit;
     this.figOn = this.peopleOn && !life;
     this.agentPts.visible = this.peopleOn;
     for (const f of [...Object.values(this.figs), ...Object.values(this.figsW)]) f.visible = this.figOn;
@@ -425,7 +445,7 @@ export class View {
     for (const [id, o] of this.shipObjs) if (!st.ships.some((s) => s.id === id)) { this.scene.remove(o); this.shipObjs.delete(id); }
     for (const s of st.ships) {
       let o = this.shipObjs.get(s.id);
-      if (!o) { o = buildShip(s.kind); o.scale.setScalar(C.shipScale[s.kind] || 1); this._dress(o, 'active', !!this.edit); this.scene.add(o); this.shipObjs.set(s.id, o); }
+      if (!o) { o = buildShip(s.kind); o.scale.setScalar(C.shipScale[s.kind] || 1); this._dress(o, 'active', !!this.edit, false, true); this.scene.add(o); this.shipObjs.set(s.id, o); }
       this._placeShip(s, o, now);
     }
     this._eva(now);
@@ -434,11 +454,12 @@ export class View {
     this._shots(dt);
     this._lifts(dt);
     if (this.edit) { const p = st.parts.get(this.edit); if (p && p.rooms.join(',') !== this.editSig) this._editLabels(); }
-    // The cut faces the camera, through what you are looking at.
+    // The cut faces the camera and sits a little in front of what you are looking at, so it works from any side and any distance.
     if (this.cutaway && !this.edit) {
-      const tg = this.controls.target, t = Math.atan2(this.camera.position.z - tg.z, this.camera.position.x - tg.x);
-      this.clip[0].normal.set(-Math.cos(t - Math.PI / 4), 0, -Math.sin(t - Math.PI / 4)); this.clip[0].constant = -this.clip[0].normal.dot(tg);
-      this.clip[1].normal.set(-Math.cos(t + Math.PI / 4), 0, -Math.sin(t + Math.PI / 4)); this.clip[1].constant = -this.clip[1].normal.dot(tg);
+      const tg = this.controls.target, n = this.clip[0].normal.copy(tg).sub(this.camera.position), d = n.length();
+      n.multiplyScalar(1 / Math.max(1e-6, d));
+      const lead = Math.max(0.2, Math.min(2.5, d * 0.12));
+      this.clip[0].constant = -(n.x * tg.x + n.y * tg.y + n.z * tg.z) + lead;
     }
     if (this.selLines) { const o = this.partObjs.get(this.sel); if (o) { this.selLines.position.copy(o.position); this.selLines.quaternion.copy(o.quaternion); } }
     const k = Math.floor(now / 5); if (k !== this.slogan) { this.slogan = k; this._drawSlogan(k); }
@@ -652,7 +673,7 @@ export class View {
   _figuresInit() {
     // figs: people standing; figsW: people in mid-stride (mirrored left and right as they walk, so the material is two-sided)
     this.figs = {}; this.figsW = {};
-    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.75, metalness: 0.02, side: THREE.DoubleSide });
+    const mat = this.figMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.75, metalness: 0.02, side: THREE.DoubleSide });
     for (const r of FIGURES) for (const [set, pose] of [[this.figs, 'stand'], [this.figsW, 'walk']]) {
       const im = new THREE.InstancedMesh(buildFigure(r, pose), mat, 160);
       im.count = 0; im.frustumCulled = false; im.visible = false; this.scene.add(im); set[r] = im;

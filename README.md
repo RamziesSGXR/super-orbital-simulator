@@ -2,7 +2,7 @@
 
 Run a space station and the people aboard it. A browser game for the **Super Earth Special Forces** community, in the same look as [Orbital Fury](https://orbitalfury.com/).
 
-> **Prototype 0.8: connections, people and surfaces.** The station is a dollhouse you set up and then watch. This release adds sliding doors, hatches at every port, lifts with cars and spiral stairs between decks; people who look like people, with a walking stride; and textured floors, walls and fittings. The minimap is hidden for now.
+> **Prototype 0.9: seeing in and flying around.** A new INSIDE view takes the hull away so every deck can be seen from any side. The cutaway now follows the camera and works from any distance. The camera flies on `W A S D`, `Space` and `Shift`, and the wheel zooms toward the pointer.
 
 **Your station. Its people. What happens to them.** It is a space station simulator: think Deep Space Nine in the Helldivers universe, with you as the station's commander. You start with Station Command in empty space, snap parts onto it and set their rooms. Then the people move in, and the station becomes theirs as much as yours.
 
@@ -11,6 +11,29 @@ Run a space station and the people aboard it. A browser game for the **Super Ear
 It runs in your browser on a computer, or on a phone or tablet held sideways. There is nothing to install. Turn the sound on.
 
 **Quick start:** press **NEW STATION**. Open **FIRE** and put a Ship Gun on a side port. Open the **DOCK** group at the bottom left, press `Q` for a Docking Port, move the pointer near Station Command and click when the little dot lights up. Add a Cargo Module from **INDUS** and a Hab Module from **HAB** the same way. Ships and colonists arrive within a minute, and soon after that the first thing lands on your desk.
+
+## What's new in 0.9
+
+- **INSIDE** (`T`, or the button). Takes the hull away and leaves only its edges, so every deck, room and person can be seen from any side and any distance. Visiting ships keep their hulls.
+- **A cutaway that follows the camera** (`G`). It used to cut one fixed wedge out of the station. Now it is a single plane that faces the camera, a little in front of what you are looking at, and it removes everything nearer than that: hull, decks, rooms, fittings and people. Move or turn the camera and the cut moves with it.
+- **Flying the camera.**
+
+  | Key | Does |
+  | --- | --- |
+  | `W` `A` `S` `D` | Fly forward, left, back, right along the deck |
+  | `Space` / `Shift` | Up / down |
+  | `Q` / `E` | Swing round what you are looking at |
+  | Mouse wheel | Zoom toward the pointer, about twice as fast and three times closer than before |
+
+  Speed follows distance: slow when you are close, quick when you are far out.
+- **Keys that moved to make room:**
+
+  | Was | Now |
+  | --- | --- |
+  | `Q W E T Y A S D Z` for parts | `1` to `9` |
+  | `1 2 3` for views, `4` cutaway | `V` steps through the views, `G` cutaway, `T` inside |
+  | `Space` pause | `P` |
+  | `P` port dots | `J` |
 
 ## What's new in 0.8
 
@@ -79,7 +102,7 @@ It runs in your browser on a computer, or on a phone or tablet held sideways. Th
   - **Broken station:** take over a dark, stripped station (about twenty parts, most of them out of order, half the rooms gutted, four people left) and bring it back: every part repaired, the rooms refitted, twenty residents, full power.
   - **Free play:** every part and room, no costs, the biggest build zone, and controls (`K`) to call in freighters, shuttles, warships, colonists and raids. Nothing asks you anything.
   - **Continue** appears on the title once there is a save. The station saves itself every few seconds and when you leave.
-- **Build:** parts come in eight groups: Structure, Fire Support, Habitation, Docking, Industry, Power, Defence and Comms. Each button is a picture of the part with its name and cost. Click a group (or `Tab`), pick a part (`Q W E T Y A S D Z`), and click near a port: small see-through dots show the free ports near the pointer. `R` turns it 45°. Right-click or `Esc` puts it down.
+- **Build:** parts come in eight groups: Structure, Fire Support, Habitation, Docking, Industry, Power, Defence and Comms. Each button is a picture of the part with its name and cost. Click a group (or `Tab`), pick a part (`1` to `9`), and click near a port: small see-through dots show the free ports near the pointer. `R` turns it 45°. Right-click or `Esc` puts it down.
 - **Build inside:** select a part and press **EDIT INSIDE** (`I`). Its hull turns to glass and its rooms show in 3D. Pick a room and click where it goes. A part does what its rooms do.
 - **The factions.** Supply, Maintenance, Security, Medical and, from Garrison, Command and Science. Each has an ideal station and a mood from 0 to 100:
 

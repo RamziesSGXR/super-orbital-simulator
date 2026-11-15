@@ -7,7 +7,10 @@ import { Audio } from './audio.js';
 
 const $ = (id) => document.getElementById(id);
 const qs = new URLSearchParams(location.search);
-const KEYS = ['q', 'w', 'e', 't', 'y', 'a', 's', 'd', 'z'];          // the parts of the open group, left to right
+const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];      // parts in the open group; the letters are for the camera
+const VIEWS = ['blueprint', 'hull', 'life'];
+// Camera keys held down right now: W A S D along the deck, Space up, Shift down, Q and E to swing round.
+const held = new Set(), FLY = new Set(['w', 'a', 's', 'd', 'q', 'e', ' ', 'shift']);          // the parts of the open group, left to right
 const GROUP_SHORT = { platform: 'FIRE', structure: 'STRUCT', habitation: 'HAB', docking: 'DOCK', industry: 'INDUS', power: 'POWER', defence: 'DEF', comms: 'COMMS' };
 const ROLE = { hauler: 'haulers', engineer: 'engineers', officer: 'officers', medic: 'medics', aide: 'aides', scientist: 'scientists', gunner: 'gunners' };
 const ROLE_ONE = { hauler: 'Hauler', engineer: 'Engineer', officer: 'Democracy Officer', medic: 'Medic', aide: 'Aide', scientist: 'Scientist', gunner: 'Gunner', resident: 'Resident' };
@@ -41,7 +44,7 @@ const CH = {
   captain:     { n: 9, name: 'SHIP-TO-STATION', col: '#7fc8ff', off: ['Over.', 'Over and out.', 'For democracy, over.'] },
 };
 const audio = new Audio();
-const ui = { started: false, tool: null, rot: 0, hot: null, sel: null, paused: false, speed: 1, view: 'hull', cut: false, group: 'structure',
+const ui = { started: false, tool: null, rot: 0, hot: null, sel: null, paused: false, speed: 1, view: 'hull', cut: false, open: false, group: 'structure',
   edit: null, room: null, slot: null, px: null, py: null, portsDirty: false, dots: true, clean: false, div: 'supply', comms: true, person: 0 };
 
 // ---------------------------------------------------------------- the title backdrop: an example station, turning slowly
@@ -80,7 +83,7 @@ function start(mode, saved) {
   view.controls.autoRotate = false;
   view.frame();
   Object.assign(ui, { started: true, tool: null, sel: null, hot: null, edit: null, room: null, slot: null, group: 'structure', speed: 1, person: 0 });
-  setView('hull'); setCut(false); setClean(false);
+  setView('hull'); setCut(false); setOpen(false); setClean(false);
   $('s-title').classList.remove('on'); $('hud').classList.remove('hidden');
   $('b-speed').textContent = '1×';
   const free = mode === 'sandbox';
@@ -108,7 +111,7 @@ $('b-restart').onclick = () => {
   $('s-menu').classList.remove('on'); endEdit(); setTool(null);
   closeFloats(null); $('simpanel').classList.add('hidden');
   writeSave(); ui.started = false; setClean(false); $('hud').classList.add('hidden'); $('s-title').classList.add('on'); clearBubbles(); titleButtons();
-  st = demoStation(); view.setStation(st); view.setMode('hull'); view.setCutaway(false); view.controls.autoRotate = true; view.camera.position.set(34, 16, 40); view.controls.target.set(0, 0, 0);
+  st = demoStation(); view.setStation(st); view.setMode('hull'); view.setCutaway(false); view.setOpen(false); view.controls.autoRotate = true; view.camera.position.set(34, 16, 40); view.controls.target.set(0, 0, 0);
 };
 
 // ---------------------------------------------------------------- the build panel: groups of parts, like a corvette builder
@@ -227,10 +230,12 @@ function editClick(x, y) {
 // ---------------------------------------------------------------- views
 function setView(v) {
   ui.view = v; view.setMode(v);
-  for (const b of document.querySelectorAll('.vb')) if (b.dataset.v !== 'cut') b.classList.toggle('on', b.dataset.v === v);
+  for (const b of document.querySelectorAll('.vb')) if (b.dataset.v !== 'cut' && b.dataset.v !== 'open') b.classList.toggle('on', b.dataset.v === v);
 }
 function setCut(on) { ui.cut = on; view.setCutaway(on); document.querySelector('.vb[data-v="cut"]').classList.toggle('on', on); }
-for (const b of document.querySelectorAll('.vb')) b.onclick = () => { audio.play('click'); if (b.dataset.v === 'cut') setCut(!ui.cut); else setView(b.dataset.v); };
+// INSIDE takes the hull away and leaves its edges, so every deck can be seen from any side. It is a way of looking at the hull view.
+function setOpen(on) { ui.open = on; view.setOpen(on); document.querySelector('.vb[data-v="open"]').classList.toggle('on', on); if (on && ui.view !== 'hull') setView('hull'); }
+for (const b of document.querySelectorAll('.vb')) b.onclick = () => { audio.play('click'); if (b.dataset.v === 'cut') setCut(!ui.cut); else if (b.dataset.v === 'open') setOpen(!ui.open); else setView(b.dataset.v); };
 function setDots(on = !ui.dots) {
   ui.dots = on; view.portMode = on ? 'near' : 'off'; ui.portsDirty = true;
   $('b-dots').textContent = on ? 'DOTS ON' : 'DOTS OFF'; $('b-dots').classList.toggle('on', on);
@@ -342,6 +347,7 @@ function toast(text) { const t = $('toast'); t.textContent = text; t.classList.a
 addEventListener('keydown', (e) => {
   if (!ui.started || e.target.tagName === 'INPUT') return;
   const k = e.key.toLowerCase();
+  if (FLY.has(k) && !e.ctrlKey && !e.metaKey && !e.altKey && !document.querySelector('.screen.on')) { held.add(k); if (k === ' ') e.preventDefault(); if (k !== 'shift') return; }
   if (ui.clean) { if (k === 'h' || k === 'escape') setClean(false); return; }
   if (k === 'tab') { e.preventDefault(); if (ui.edit) return; const i = C.groups.findIndex((g) => g.id === ui.group), n = C.groups.length; ui.group = C.groups[(i + (e.shiftKey ? n - 1 : 1)) % n].id; audio.play('click'); buildGrid(); return; }
   const gi = KEYS.indexOf(k), list = partsOf(ui.group);
@@ -358,16 +364,22 @@ addEventListener('keydown', (e) => {
     else if (ui.edit) { if (ui.room) { ui.room = null; paletteState(); info(); } else endEdit(); }
     else { setTool(null); select(null); }
   }
-  else if (k === ' ') { e.preventDefault(); pause(); }
-  else if (k === '1') setView('blueprint'); else if (k === '2') setView('hull'); else if (k === '3') setView('life'); else if (k === '4') setCut(!ui.cut);
+  else if (k === 'p') pause();
+  else if (k === 'v') { audio.play('click'); setView(VIEWS[(VIEWS.indexOf(ui.view) + 1) % VIEWS.length]); }
+  else if (k === 'g') { audio.play('click'); setCut(!ui.cut); }
+  else if (k === 't') { audio.play('click'); setOpen(!ui.open); }
   else if (k === 'm') menu();
   else if (k === 'k') simPanel();
   else if (k === 'o') cmdr();
   else if (k === 'u') upg();
   else if (k === 'c') { setComms(!ui.comms); audio.play('click'); }
-  else if (k === 'p') { setDots(); audio.play('click'); }
+  else if (k === 'j') { setDots(); audio.play('click'); }
   else if (k === 'h') setClean(true);
 });
+addEventListener('keyup', (e) => { const k = e.key.toLowerCase(); held.delete(k); if (k === ' ' && e.target.tagName !== 'INPUT') e.preventDefault(); });
+addEventListener('blur', () => held.clear());
+// A button that has just been clicked keeps the keyboard; let go of it, or Space (up) would press it again.
+addEventListener('click', (e) => { const b = e.target.closest && e.target.closest('button'); if (b) b.blur(); });
 function demolishSel() {
   if (!ui.sel) return;
   if (ui.edit === ui.sel) endEdit();
@@ -901,6 +913,7 @@ function frame(nowMs) {
     if (n >= 20) acc = 0;
   }
   drain();
+  if (held.size && ui.started) view.fly((held.has('w') ? 1 : 0) - (held.has('s') ? 1 : 0), (held.has('d') ? 1 : 0) - (held.has('a') ? 1 : 0), (held.has(' ') ? 1 : 0) - (held.has('shift') ? 1 : 0), (held.has('e') ? 1 : 0) - (held.has('q') ? 1 : 0), dt);
   view.sync(now, dt);
   if (ui.tool && ui.portsDirty) { ui.portsDirty = false; view.showPorts(ui.tool, ui.rot, ui.hot, ui.px, ui.py); }
   view.render(now);
