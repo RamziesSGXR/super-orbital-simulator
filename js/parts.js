@@ -112,6 +112,7 @@ export function doorSide(type, s) {
   return Math.abs(lx) > Math.abs(lz) ? (lx > 0 ? '+x' : '-x') : (lz > 0 ? '+z' : '-z');
 }
 // A slot's room plan (rooms.js works in metres, with the door wall at +Z), and how to bring a point of it into the part's frame.
+const PLAIN = new Set(['crate', 'glow', 'lane', 'screen', 'glass', 'spark', 'blue', 'alarm', 'cross', 'awning']);      // drawn with their own box coordinates, or with none
 const TURN = { '+z': 0, '-z': Math.PI, '+x': Math.PI / 2, '-x': -Math.PI / 2 };
 function slotPlan(type, i, room, variant) {
   const s = SLOTS[type][i], side = doorSide(type, s), m = C.scale.m, sw = side === '+x' || side === '-x';
@@ -154,16 +155,16 @@ function bake(g) {
 }
 
 // Hull pieces get skin coordinates measured in station units (one repeat every 2 units), so plating is the same size on every part.
-function skin(geom) {
+function skin(geom, k = 0.5) {
   const g = geom.index ? geom.toNonIndexed() : geom, P = g.attributes.position, uv = new Float32Array(P.count * 2);
   for (let i = 0; i < P.count; i += 3) {
     const ax = P.getX(i), ay = P.getY(i), az = P.getZ(i), ux = P.getX(i + 1) - ax, uy = P.getY(i + 1) - ay, uz = P.getZ(i + 1) - az, vx = P.getX(i + 2) - ax, vy = P.getY(i + 2) - ay, vz = P.getZ(i + 2) - az;
     const nx = Math.abs(uy * vz - uz * vy), ny = Math.abs(uz * vx - ux * vz), nz = Math.abs(ux * vy - uy * vx);
     for (let j = 0; j < 3; j++) {
       const x = P.getX(i + j), y = P.getY(i + j), z = P.getZ(i + j);
-      if (ny >= nx && ny >= nz) { uv[(i + j) * 2] = x * 0.5; uv[(i + j) * 2 + 1] = z * 0.5; }
-      else if (nx >= nz) { uv[(i + j) * 2] = z * 0.5; uv[(i + j) * 2 + 1] = y * 0.5; }
-      else { uv[(i + j) * 2] = x * 0.5; uv[(i + j) * 2 + 1] = y * 0.5; }
+      if (ny >= nx && ny >= nz) { uv[(i + j) * 2] = x * k; uv[(i + j) * 2 + 1] = z * k; }
+      else if (nx >= nz) { uv[(i + j) * 2] = z * k; uv[(i + j) * 2 + 1] = y * k; }
+      else { uv[(i + j) * 2] = x * k; uv[(i + j) * 2 + 1] = y * k; }
     }
   }
   g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
@@ -174,7 +175,7 @@ export function buildPart(type) {
   const g = new THREE.Group();
   const put = (geom, role, x = 0, y = 0, z = 0, opt = {}) => {
     geom.translate(x, y, z);
-    const m = new THREE.Mesh(role === 'hull' || role === 'trim' ? skin(geom) : geom); m.userData.role = role; g.add(m);
+    const m = new THREE.Mesh(role === 'hull' || role === 'trim' ? skin(geom) : role === 'inner' ? skin(geom, C.scale.m / 2) : geom); m.userData.role = role; g.add(m);
     if ((role === 'hull' || role === 'glass' || role === 'inner') && !opt.noEdges) {
       const e = new THREE.LineSegments(new THREE.EdgesGeometry(geom, opt.angle ?? 28)); e.userData.role = role === 'inner' ? 'innerLine' : 'line'; g.add(e);
     }
@@ -212,7 +213,7 @@ export function buildPart(type) {
     for (let i = 0; i < n; i++) { const a = a0 + i * TAU / n, b = new THREE.BoxGeometry(0.05, h, w); b.rotateY(-a); put(b, 'glow', Math.cos(a) * r, y, Math.sin(a) * r); }
   };
   const decks = (rIn, rOut, ys, seg = 32) => { for (const y of ys) put(new THREE.RingGeometry(rIn, rOut, seg).rotateX(-Math.PI / 2), 'inner', 0, y, 0, { angle: 60 }); };
-  const shaft = (h) => put(new THREE.CylinderGeometry(0.22, 0.22, h, 8), 'inner', 0, 0, 0, { angle: 60 });
+  const shaft = (h) => { for (const [x, z] of [[0.13, 0.13], [-0.13, 0.13], [0.13, -0.13], [-0.13, -0.13]]) put(new THREE.BoxGeometry(0.016, h, 0.016), 'inner', x, 0, z, { noEdges: true }); };
   const box = (w, h, d, role, x, y, z, opt) => put(new THREE.BoxGeometry(w, h, d), role, x, y, z, opt);
 
   switch (type) {
@@ -518,7 +519,25 @@ export function buildPart(type) {
     for (const y of ys) { const n = Math.round(W.R * 5); for (let i = 0; i < n; i++) { const a = i * TAU / n, b = new THREE.BoxGeometry(0.035, 0.012, 0.22); b.rotateY(-a); put(b, 'lane', Math.cos(a) * W.R, y + 0.004, Math.sin(a) * W.R); } }
     for (const a of W.spokes || []) for (let r = 1.5; r < W.R - 0.2; r += 0.5) { const b = new THREE.BoxGeometry(0.22, 0.012, 0.035); b.rotateY(-a); put(b, 'lane', Math.cos(a) * r, W.y + 0.004, Math.sin(a) * r); }
   } else if (W && W.k === 'shaft' && lay) {
-    for (const y of new Set(lay.map((s) => s.p[1]))) { put(flat(new THREE.TorusGeometry(0.28, 0.012, 4, 20)), 'lane', 0, y + 0.045, 0); for (const [x, z, w, d] of [[0, 0.225, 0.14, 0.02], [0, -0.225, 0.14, 0.02], [0.225, 0, 0.02, 0.14], [-0.225, 0, 0.02, 0.14]]) box(w, 0.24, d, 'lane', x, y + 0.16, z); }
+    // A lift stop on every deck (a lit ring and four door frames), and a spiral stair round the lift from each deck to the next.
+    // The stair leaves each deck just past the +Z side and climbs away from it, so the ways in to the lift from +Z and −Z stay clear.
+    const ys = [...new Set(lay.map((s) => s.p[1]))].sort((a, b) => a - b);
+    for (const y of ys) { put(flat(new THREE.TorusGeometry(0.28, 0.012, 4, 20)), 'lane', 0, y + 0.045, 0); for (const [x, z, sx, sz] of [[0, 0.14, 1, 0], [0, -0.14, 1, 0], [0.14, 0, 0, 1], [-0.14, 0, 0, 1]]) {      // a door frame on each side of the lift
+      for (const e of [-0.075, 0.075]) box(0.012, 0.25, 0.012, 'inner', x + sx * e, y + 0.165, z + sz * e, { noEdges: true });
+      box(sx ? 0.162 : 0.012, 0.012, sz ? 0.162 : 0.012, 'inner', x, y + 0.296, z, { noEdges: true }); box(sx ? 0.1 : 0.014, 0.008, sz ? 0.1 : 0.014, 'lane', x, y + 0.286, z);
+    } }
+    for (let i = 0; i + 1 < ys.length; i++) {
+      const y0 = ys[i] + 0.04, rise = ys[i + 1] - ys[i], n = Math.max(12, Math.round(rise * C.scale.m / 0.24)), a0 = 105 * Math.PI / 180, sweep = Math.PI * 3;
+      for (let k = 1; k <= n; k++) { const a = a0 + sweep * k / n, st = new THREE.BoxGeometry(0.105, 0.008, 0.06); st.rotateY(-a); put(st, 'inner', Math.cos(a) * 0.205, y0 + rise * k / n - 0.004, Math.sin(a) * 0.205, { noEdges: true }); if (k % 3 === 0) { const b = new THREE.BoxGeometry(0.006, 0.1, 0.006); put(b, 'inner', Math.cos(a) * 0.255, y0 + rise * k / n + 0.05, Math.sin(a) * 0.255, { noEdges: true }); } }
+    }
+  }
+  // A hatch at every port: a door frame standing on the deck just inside the hull, or a ring in the deck for a port above or below.
+  if (W && C.parts[type]) for (const [x, y, z, dx, dy, dz] of C.parts[type].ports) {
+    if (Math.abs(dy) > 0.7) { put(flat(new THREE.TorusGeometry(0.2, 0.014, 4, 16)), 'inner', x, y - dy * 0.08, z, { noEdges: true }); put(flat(new THREE.TorusGeometry(0.16, 0.008, 4, 16)), 'lane', x, y - dy * 0.08, z); continue; }
+    const a = Math.atan2(dx, dz), fy = floorY(type, y), px = x - dx * 0.12, pz = z - dz * 0.12;
+    const hb = (w, h, d, lx, ly, role) => { const b = new THREE.BoxGeometry(w, h, d); b.translate(lx, ly, 0); b.rotateY(a); put(b, role, px, fy, pz, { noEdges: true }); };
+    for (const sx of [-1, 1]) { hb(0.03, 0.27, 0.05, sx * 0.125, 0.135, 'inner'); hb(0.07, 0.25, 0.02, sx * 0.175, 0.125, 'inner'); }
+    hb(0.28, 0.03, 0.05, 0, 0.285, 'inner'); hb(0.2, 0.006, 0.07, 0, 0.004, 'lane'); hb(0.12, 0.012, 0.055, 0, 0.262, 'lane');
   }
   return bake(g);
 }
@@ -528,7 +547,8 @@ export function buildPart(type) {
 // or null for an open deck round a lift. The plan is in metres; here it is shrunk to station units and turned to face the door.
 export function buildRoom(room, w, d, door = null, variant = 0) {
   const g = new THREE.Group(), f = new THREE.Group(), m = C.scale.m;
-  const add = (grp, geom, role, x, y, z) => { geom.translate(x, y, z); const o = new THREE.Mesh(geom); o.userData.role = role; grp.add(o); return o; };
+  // fittings and the floor get skin coordinates in metres (one repeat every 2 m), so wood, steel and deck plate are the same size everywhere
+  const add = (grp, geom, role, x, y, z) => { geom.translate(x, y, z); const o = new THREE.Mesh(grp === f && !PLAIN.has(role) ? skin(geom, 0.5) : role === 'tile' ? skin(geom, m / 2) : geom); o.userData.role = role; grp.add(o); return o; };
   const tile = add(g, new THREE.BoxGeometry(w * 0.96, 0.04, d * 0.96), 'tile', 0, 0.02, 0);
   tile.userData.room = room;
   const e = new THREE.LineSegments(new THREE.EdgesGeometry(tile.geometry)); e.userData.role = 'tileLine'; g.add(e);
@@ -594,29 +614,60 @@ const merge = (list) => {
   for (const name of ['position', 'normal', 'color']) { const a = new Float32Array(n * 3); let o = 0; for (const g of parts) { a.set(g.attributes[name].array, o); o += g.attributes[name].array.length; } out.setAttribute(name, new THREE.BufferAttribute(a, 3)); }
   return out;
 };
-export const FIGURES = ['resident', 'hauler', 'engineer', 'officer', 'medic', 'aide', 'scientist', 'gunner', 'trooper', 'pilot'];
-export function buildFigure(role) {
-  const bx = (w, h, d, x, y, z, col) => tint(new THREE.BoxGeometry(w, h, d).translate(x, y, z), col);
-  const SKIN = '#d9b08c', look = {
-    resident: { legs: '#4a4f58', torso: '#ffffff' }, hauler: { legs: '#27425e', torso: '#3d7fc4' }, engineer: { legs: '#5a4a1e', torso: '#e0a83a' },
-    officer: { legs: '#17181c', torso: '#22242a' }, medic: { legs: '#d8dcd6', torso: '#f2f4ee' }, aide: { legs: '#3c4438', torso: '#6c7a5e' }, scientist: { legs: '#3a3f4a', torso: '#eef0f4' },
-    gunner: { legs: '#3a3026', torso: '#c7652a' }, trooper: { legs: '#3f4a34', torso: '#5d6a4a' }, pilot: { legs: '#555c66', torso: '#6b737e' },
-  }[role] || { legs: '#4a4f58', torso: '#ffffff' };
-  const g = [];
-  for (const x of [-0.025, 0.025]) g.push(bx(0.04, 0.12, 0.05, x, 0.06, 0, look.legs));
-  g.push(bx(0.1, 0.12, 0.06, 0, 0.18, 0, look.torso));
-  for (const x of [-0.065, 0.065]) g.push(bx(0.03, 0.11, 0.04, x, 0.18, 0, look.torso));
-  g.push(bx(0.06, 0.06, 0.06, 0, 0.275, 0, SKIN));
-  if (role === 'hauler') { g.push(bx(0.104, 0.025, 0.064, 0, 0.2, 0, '#f5d547')); g.push(bx(0.066, 0.02, 0.066, 0, 0.31, 0, '#27425e')); }
-  if (role === 'engineer') { g.push(bx(0.085, 0.022, 0.085, 0, 0.312, 0, '#f5d547')); g.push(bx(0.07, 0.09, 0.035, 0, 0.19, -0.047, '#6a6f74')); }
-  if (role === 'officer') { g.push(bx(0.075, 0.03, 0.07, 0, 0.318, 0, '#17181c')); g.push(bx(0.075, 0.008, 0.035, 0, 0.305, 0.05, '#17181c')); g.push(bx(0.03, 0.012, 0.01, 0, 0.322, 0.036, '#f5d547')); g.push(bx(0.11, 0.2, 0.012, 0, 0.14, -0.04, '#a8201a')); g.push(bx(0.104, 0.02, 0.064, 0, 0.215, 0, '#a8201a')); }
-  if (role === 'medic') { g.push(bx(0.012, 0.045, 0.004, 0, 0.19, 0.032, '#e0352b')); g.push(bx(0.04, 0.014, 0.004, 0, 0.19, 0.032, '#e0352b')); g.push(bx(0.066, 0.02, 0.066, 0, 0.31, 0, '#5fbf8a')); }
-  if (role === 'aide') { for (const x of [-0.055, 0.055]) g.push(bx(0.035, 0.012, 0.05, x, 0.243, 0, '#f5d547')); g.push(bx(0.07, 0.022, 0.07, 0, 0.312, 0, '#3c4438')); }
-  if (role === 'scientist') { g.push(bx(0.104, 0.07, 0.064, 0, 0.1, 0, '#eef0f4')); g.push(bx(0.05, 0.02, 0.012, 0, 0.235, 0.03, '#9a6cff')); g.push(bx(0.05, 0.012, 0.012, 0, 0.28, 0.034, '#7fe9e0')); }
-  if (role === 'gunner') { g.push(bx(0.07, 0.03, 0.07, 0, 0.312, 0, '#22262a')); for (const x of [-0.036, 0.036]) g.push(bx(0.015, 0.04, 0.04, x, 0.28, 0, '#f5d547')); g.push(bx(0.104, 0.02, 0.064, 0, 0.13, 0, '#22262a')); }
-  if (role === 'trooper') { g.push(bx(0.075, 0.045, 0.075, 0, 0.305, 0, '#4c5a3c')); g.push(bx(0.065, 0.015, 0.02, 0, 0.275, 0.034, '#f5d547')); g.push(bx(0.108, 0.07, 0.068, 0, 0.2, 0, '#3f4a34')); g.push(bx(0.02, 0.02, 0.16, 0.05, 0.17, 0.06, '#1c1e20')); g.push(bx(0.08, 0.1, 0.035, 0, 0.19, -0.05, '#3f4a34')); }
-  if (role === 'pilot') { g.push(bx(0.075, 0.06, 0.075, 0, 0.29, 0, '#e8eaec')); g.push(bx(0.06, 0.025, 0.02, 0, 0.285, 0.035, '#f5a020')); g.push(bx(0.104, 0.03, 0.064, 0, 0.215, 0, '#f5d547')); }
-  return merge(g);
+// ---------------------------------------------------------------- people
+// A figure is modelled in metres as a 1.8 m person from rounded parts (tapered limbs, a head, hair, hands and shoes), coloured by
+// vertex, then shrunk to the 0.33 units the view scales from. Each has a standing pose and a mid-stride pose; the view mirrors the
+// stride left and right to make a walk. Residents come in four looks; every job has its own clothes and kit.
+export const FIGURES = ['resident', 'resident2', 'resident3', 'resident4', 'hauler', 'engineer', 'officer', 'medic', 'aide', 'scientist', 'gunner', 'trooper', 'pilot'];
+const LOOKS = {
+  resident: { skin: '#e0b48c', hair: '#3a2a1c', top: '#d9dde0', legs: '#4a4f58' },
+  resident2: { skin: '#8d5a3c', hair: '#17120e', top: '#c9744a', legs: '#33415a', style: 'long' },
+  resident3: { skin: '#f0c8a4', hair: '#b98a4a', top: '#5f8f7a', legs: '#6a5a48', style: 'bun', skirt: true },
+  resident4: { skin: '#b97f58', hair: '#8a8a90', top: '#7a6aa8', legs: '#2e3238', style: 'bald' },
+  hauler: { skin: '#c99670', hair: '#2a2019', top: '#3d7fc4', legs: '#27425e', style: 'hat' }, engineer: { skin: '#e0b48c', hair: '#5a3a22', top: '#e0a83a', legs: '#5a4a1e', style: 'hat' },
+  officer: { skin: '#a87552', hair: '#17120e', top: '#22242a', legs: '#17181c', style: 'hat' }, medic: { skin: '#f0c8a4', hair: '#7a4a2a', top: '#f2f4ee', legs: '#d8dcd6', shoes: '#e8eaec', style: 'hat' },
+  aide: { skin: '#d9a67c', hair: '#2a2019', top: '#6c7a5e', legs: '#3c4438', style: 'hat' }, scientist: { skin: '#8d5a3c', hair: '#17120e', top: '#eef0f4', legs: '#3a3f4a', style: 'bun' },
+  gunner: { skin: '#e0b48c', hair: '#3a2a1c', top: '#c7652a', legs: '#b0561f' }, trooper: { skin: '#c99670', hair: '#2a2019', top: '#5d6a4a', legs: '#3f4a34', shoes: '#22261e', style: 'hat' },
+  pilot: { skin: '#e0b48c', hair: '#3a2a1c', top: '#6b737e', legs: '#5d646e', style: 'hat' },
+};
+export function buildFigure(key, pose = 'stand') {
+  const L = LOOKS[key] || LOOKS.resident, g = [], sw = pose === 'walk' ? 0.5 : 0, shoes = L.shoes || '#26262a';
+  const done = (geo, hex) => { geo.computeVertexNormals(); g.push(tint(geo, hex)); };
+  const bx = (w, h, d, x, y, z, hex) => done(new THREE.BoxGeometry(w, h, d).translate(x, y, z), hex);
+  const cyl = (rt, rb, h, x, y, z, hex, sz = 1, seg = 8) => done(new THREE.CylinderGeometry(rt, rb, h, seg).scale(1, 1, sz).translate(x, y, z), hex);
+  const ball = (r, x, y, z, hex, sx = 1, sy = 1, sz = 1, ws = 8, hs = 6, th = Math.PI) => done(new THREE.SphereGeometry(r, ws, hs, 0, TAU, 0, th).scale(sx, sy, sz).translate(x, y, z), hex);
+  // a limb hangs from its joint and swings about X; `end` is something at its far end (a hand, a shoe)
+  const limb = (rt, rb, len, px, py, ang, lean, hex, end) => {
+    const c = new THREE.CylinderGeometry(rt, rb, len, 6, 1, true); c.translate(0, -len / 2, 0); c.rotateZ(lean); c.rotateX(ang); c.translate(px, py, 0); done(c, hex);
+    if (end) { const e = end(); e.translate(0, -len, 0); e.rotateZ(lean); e.rotateX(ang); e.translate(px, py, 0); done(e, end.hex); }
+  };
+  const shoe = () => new THREE.SphereGeometry(0.075, 6, 4).scale(1, 0.62, 1.75).translate(0, 0.02, 0.05); shoe.hex = shoes;
+  const hand = () => new THREE.SphereGeometry(0.05, 6, 4).translate(0, -0.02, 0); hand.hex = L.skin;
+  limb(0.088, 0.062, 0.84, -0.1, 0.9, sw, 0, L.legs, shoe); limb(0.088, 0.062, 0.84, 0.1, 0.9, -sw, 0, L.legs, shoe);
+  cyl(0.158, 0.15, 0.18, 0, 0.88, 0, L.legs, 0.72);
+  cyl(0.2, 0.158, 0.56, 0, 1.16, 0, L.top, 0.62, 10);
+  for (const s of [-1, 1]) ball(0.085, s * 0.2, 1.4, 0, L.top, 1, 0.9, 0.9, 6, 4);
+  limb(0.056, 0.044, 0.6, -0.235, 1.41, -sw * 0.8, -0.1, L.top, hand); limb(0.056, 0.044, 0.6, 0.235, 1.41, sw * 0.8, 0.1, L.top, hand);
+  cyl(0.05, 0.056, 0.1, 0, 1.47, 0, L.skin);
+  ball(0.118, 0, 1.63, 0, L.skin, 1, 1.12, 1, 10, 7);
+  for (const s of [-1, 1]) bx(0.026, 0.03, 0.02, s * 0.045, 1.65, 0.108, '#1c1a1a');
+  if (L.style !== 'bald' && L.style !== 'hat') ball(0.126, 0, 1.655, -0.018, L.hair, 1, 1.1, 1, 10, 5, 1.7);
+  if (L.style === 'hat') ball(0.122, 0, 1.63, -0.02, L.hair, 1, 1.1, 1, 8, 4, 2.0);
+  if (L.style === 'long') bx(0.2, 0.3, 0.07, 0, 1.5, -0.1, L.hair);
+  if (L.style === 'bun') ball(0.06, 0, 1.76, -0.09, L.hair, 1, 1, 1, 6, 4);
+  if (L.skirt) cyl(0.16, 0.25, 0.46, 0, 0.7, 0, L.top, 0.78, 10);
+  switch (key) {
+    case 'hauler': cyl(0.206, 0.166, 0.34, 0, 1.2, 0, '#f5d547', 0.64, 10); cyl(0.208, 0.2, 0.04, 0, 1.2, 0, '#d0d4d8', 0.64, 10); cyl(0.124, 0.124, 0.07, 0, 1.745, 0, '#27425e'); bx(0.17, 0.016, 0.12, 0, 1.715, 0.13, '#27425e'); break;
+    case 'engineer': ball(0.136, 0, 1.69, 0, '#f5d547', 1, 0.95, 1.05, 10, 4, Math.PI / 2); cyl(0.16, 0.16, 0.014, 0, 1.692, 0.01, '#f5d547', 1.1, 10); cyl(0.17, 0.168, 0.07, 0, 0.93, 0, '#3a3026', 0.74); bx(0.08, 0.1, 0.06, 0.15, 0.9, 0.06, '#6a4a2a'); bx(0.24, 0.34, 0.12, 0, 1.2, -0.17, '#6a6f74'); break;
+    case 'officer': cyl(0.126, 0.118, 0.07, 0, 1.745, 0, '#17181c'); cyl(0.145, 0.132, 0.03, 0, 1.795, 0, '#17181c'); bx(0.17, 0.016, 0.1, 0, 1.715, 0.13, '#17181c'); bx(0.05, 0.03, 0.01, 0, 1.75, 0.123, '#f5d547'); bx(0.4, 0.95, 0.02, 0, 0.98, -0.14, '#a8201a'); cyl(0.172, 0.17, 0.05, 0, 0.94, 0, '#a8201a', 0.74); bx(0.05, 0.05, 0.01, -0.09, 1.3, 0.122, '#f5d547'); break;
+    case 'medic': bx(0.03, 0.11, 0.01, 0, 1.25, 0.126, '#e0352b'); bx(0.1, 0.035, 0.01, 0, 1.25, 0.126, '#e0352b'); cyl(0.124, 0.124, 0.06, 0, 1.745, 0, '#5fbf8a'); bx(0.2, 0.16, 0.1, -0.2, 0.92, 0.02, '#e8eaec'); bx(0.03, 0.06, 0.01, -0.2, 0.92, 0.072, '#e0352b'); break;
+    case 'aide': for (const s of [-1, 1]) bx(0.1, 0.03, 0.12, s * 0.21, 1.475, 0, '#f5d547'); ball(0.128, 0.015, 1.74, 0, '#3c4438', 1.05, 0.42, 1.05, 8, 4); bx(0.16, 0.22, 0.02, 0.16, 1.05, 0.14, '#e8e2c8'); break;
+    case 'scientist': cyl(0.205, 0.215, 0.5, 0, 0.72, -0.01, '#eef0f4', 0.66, 10); bx(0.21, 0.045, 0.03, 0, 1.655, 0.1, '#7fe9e0'); bx(0.05, 0.08, 0.01, 0.1, 1.3, 0.124, '#9a6cff'); break;
+    case 'gunner': for (const s of [-1, 1]) { const c = new THREE.CylinderGeometry(0.055, 0.055, 0.05, 8).rotateZ(Math.PI / 2).translate(s * 0.125, 1.63, 0); done(c, '#f5d547'); } bx(0.25, 0.02, 0.035, 0, 1.765, 0, '#22262a'); cyl(0.172, 0.17, 0.06, 0, 0.94, 0, '#22262a', 0.74); for (const s of [-1, 1]) bx(0.1, 0.1, 0.03, s * 0.1, 0.5, 0.075, '#22262a'); break;
+    case 'trooper': ball(0.142, 0, 1.65, -0.005, '#4c5a3c', 1, 1.06, 1.06, 10, 6, 2.1); bx(0.2, 0.05, 0.04, 0, 1.62, 0.115, '#f5d547'); cyl(0.215, 0.18, 0.36, 0, 1.24, 0, '#3f4a34', 0.72, 10); for (const s of [-1, 1]) { ball(0.1, s * 0.235, 1.43, 0, '#3f4a34', 1, 0.8, 1, 6, 4); bx(0.1, 0.11, 0.03, s * 0.1, 0.5, 0.075, '#3f4a34'); } bx(0.26, 0.36, 0.14, 0, 1.22, -0.19, '#3f4a34'); bx(0.05, 0.09, 0.72, 0.17, 1.05, 0.2, '#1c1e20'); bx(0.04, 0.14, 0.06, 0.17, 0.96, 0.22, '#1c1e20'); break;
+    case 'pilot': ball(0.138, 0, 1.65, -0.005, '#e8eaec', 1, 1.06, 1.06, 10, 6, 2.2); bx(0.21, 0.07, 0.05, 0, 1.65, 0.105, '#f5a020'); cyl(0.205, 0.195, 0.12, 0, 1.37, 0, '#f5d547', 0.66, 10); for (const s of [-1, 1]) bx(0.04, 0.4, 0.02, s * 0.09, 1.15, 0.122, '#2a2e34'); bx(0.16, 0.1, 0.08, 0.2, 0.92, 0.04, '#2a2e34'); break;
+  }
+  return merge(g).scale(0.33 / 1.8, 0.33 / 1.8, 0.33 / 1.8);
 }
 // A raider: a small dark dart with a hot engine.
 export function buildRaider() {

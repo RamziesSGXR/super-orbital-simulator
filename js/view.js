@@ -13,6 +13,7 @@ import { RNG } from './rng.js';
 const GREEN = 0x7fe9e0, YELLOW = 0xf5d547, BLUE = 0x7fe9e0;      // the drawing lines are cyan and selections amber, as in the interface
 const ROLE_COL = { resident: [0.85, 1, 0.9], hauler: [0.3, 0.72, 1], engineer: [1, 0.76, 0.25], officer: [1, 0.35, 0.29], medic: [0.6, 1, 0.75], aide: [0.96, 0.84, 0.28], scientist: [0.7, 0.55, 1], gunner: [1, 0.6, 0.23], carry: [1, 0.69, 0.13], eva: [1, 1, 1] };
 const UP = new THREE.Vector3(0, 1, 0);
+const RESIDENTS = ['resident', 'resident2', 'resident3', 'resident4'];
 // The rooms each job stands in when it is in a part that has them, best first.
 const STAND = { resident: ['quarters', 'bunks', 'mess', 'bar', 'lounge', 'market', 'hydro'], hauler: ['cargostore'], engineer: ['workshop'], officer: ['secoffice'], medic: ['medbay'],
   aide: ['brass', 'ops'], scientist: ['lab'], gunner: ['guncrew', 'barrack', 'eaglepad', 'pelicanpad', 'dronerack', 'fab', 'mess', 'bar'] };
@@ -84,7 +85,7 @@ export class View {
       wire: L({ color: 0xaab6b0 }),
       pod: S({ color: 0xb08a3a, metalness: 0.3, roughness: 0.7, flatShading: true }),
       crate: S({ color: 0xc08a3a, roughness: 0.8, flatShading: true }),
-      plant: B({ color: 0x4fcf5a }), awning: B({ color: 0xd06a8a }), cross: B({ color: 0xff4a4a }), alarm: B({ color: 0xff3a2a }), spark: B({ color: 0xbfe8ff }),
+      plant: S({ color: 0x4fae58, roughness: 0.9 }), awning: B({ color: 0xd06a8a }), cross: B({ color: 0xff4a4a }), alarm: B({ color: 0xff3a2a }), spark: B({ color: 0xbfe8ff }),
       suit: S({ color: 0xeeeeea, roughness: 0.6 }), visor: B({ color: 0xffb020 }),
       trim: S({ color: 0xf5d547, metalness: 0.35, roughness: 0.55, flatShading: true, side: THREE.DoubleSide }),
       decal: B({ color: 0xffffff, side: THREE.DoubleSide }),
@@ -130,7 +131,59 @@ export class View {
     this.decalCv = document.createElement('canvas'); this.decalCv.width = 512; this.decalCv.height = 256;
     this.decalTex = new THREE.CanvasTexture(this.decalCv); this.decalTex.colorSpace = THREE.SRGBColorSpace; M.decal.map = this.decalTex;
     this.plateTex = {}; this.peopleK = 1;
+    this._surfaces();
     this.setLivery({ ...C.livery.def });
+  }
+  // ---------------------------------------------------------------- surfaces: what fittings, floors and walls are made of
+  // Each is painted once in near-white, so the material's own colour tints it. Fittings are skinned in metres (parts.js), one
+  // repeat every 2 m, so a 256-pixel tile is 128 pixels to the metre.
+  _paint(kind) {
+    const N = 256, cv = document.createElement('canvas'); cv.width = cv.height = N;
+    const c = cv.getContext('2d'), r = new RNG(kind.length * 131 + kind.charCodeAt(0));
+    c.fillStyle = '#f2f2f0'; c.fillRect(0, 0, N, N);
+    const line = (x0, y0, x1, y1, col, w = 1) => { c.strokeStyle = col; c.lineWidth = w; c.beginPath(); c.moveTo(x0, y0); c.lineTo(x1, y1); c.stroke(); };
+    const speck = (n, a0, a1, w = 2, h = 1) => { for (let i = 0; i < n; i++) { c.fillStyle = `rgba(${r.chance(0.5) ? '0,0,0' : '255,255,255'},${r.range(a0, a1)})`; c.fillRect(r.int(N), r.int(N), 1 + r.int(w), 1 + r.int(h)); } };
+    if (kind === 'deck') {      // deck plate: 1 m plates with seams, corner bolts and a non-slip stipple
+      speck(900, 0.03, 0.1, 2, 2);
+      for (const o of [0, 128]) { line(o + 1, 0, o + 1, N, 'rgba(0,0,0,0.5)', 2); line(0, o + 1, N, o + 1, 'rgba(0,0,0,0.5)', 2); line(o + 3, 0, o + 3, N, 'rgba(255,255,255,0.35)'); line(0, o + 3, N, o + 3, 'rgba(255,255,255,0.35)'); }
+      c.fillStyle = 'rgba(0,0,0,0.45)'; for (const x of [10, 118, 138, 246]) for (const y of [10, 118, 138, 246]) { c.beginPath(); c.arc(x, y, 2.2, 0, 6.3); c.fill(); }
+      for (let y = 24; y < N; y += 16) for (let x = 24 + (y % 32 ? 8 : 0); x < N; x += 16) if ((x % 128 > 16 && x % 128 < 112) && (y % 128 > 16 && y % 128 < 112)) { c.fillStyle = 'rgba(0,0,0,0.12)'; c.fillRect(x, y, 5, 2); }
+    } else if (kind === 'wood') {      // boards with a running grain
+      for (let y = 0; y < N; y += 32) { c.fillStyle = `rgba(90,50,10,${r.range(0.02, 0.1)})`; c.fillRect(0, y, N, 32); line(0, y + 0.5, N, y + 0.5, 'rgba(40,20,0,0.22)'); const j = r.int(N); line(j, y, j, y + 32, 'rgba(40,20,0,0.18)'); }
+      for (let i = 0; i < 260; i++) { const y = r.int(N), x = r.int(N), l = 20 + r.int(90); c.strokeStyle = `rgba(60,30,0,${r.range(0.04, 0.12)})`; c.lineWidth = 1; c.beginPath(); c.moveTo(x, y); c.bezierCurveTo(x + l * 0.3, y + r.range(-2, 2), x + l * 0.6, y + r.range(-2, 2), x + l, y); c.stroke(); }
+    } else if (kind === 'steel') {      // brushed, with a seam and rivets
+      for (let i = 0; i < 1400; i++) { c.fillStyle = `rgba(${r.chance(0.5) ? '0,0,0' : '255,255,255'},${r.range(0.03, 0.12)})`; c.fillRect(r.int(N), r.int(N), 10 + r.int(60), 1); }
+      line(0, 127.5, N, 127.5, 'rgba(0,0,0,0.3)'); line(0, 129.5, N, 129.5, 'rgba(255,255,255,0.4)'); c.fillStyle = 'rgba(0,0,0,0.35)'; for (let x = 16; x < N; x += 32) { c.beginPath(); c.arc(x, 120, 1.6, 0, 6.3); c.fill(); }
+    } else if (kind === 'cloth') {      // a weave
+      for (let y = 0; y < N; y += 4) for (let x = 0; x < N; x += 4) { c.fillStyle = `rgba(0,0,0,${((x + y) / 4) % 2 ? 0.16 : 0.04})`; c.fillRect(x, y, 4, 4); c.fillStyle = 'rgba(255,255,255,0.12)'; c.fillRect(x, y, 2, 1); }
+      speck(500, 0.02, 0.1, 3, 3);
+    } else if (kind === 'wall') {      // wall panels 1 m wide, a rail at 1 m, a kick strip at the floor
+      for (const x of [0, 128]) { line(x + 1, 0, x + 1, N, 'rgba(0,0,0,0.35)', 2); line(x + 3.5, 0, x + 3.5, N, 'rgba(255,255,255,0.4)'); }
+      c.fillStyle = 'rgba(0,0,0,0.22)'; c.fillRect(0, N - 14, N, 14); c.fillStyle = 'rgba(0,0,0,0.3)'; c.fillRect(0, 122, N, 5); c.fillStyle = 'rgba(255,255,255,0.4)'; c.fillRect(0, 120, N, 2);
+      for (const x of [64, 192]) { c.fillStyle = 'rgba(0,0,0,0.2)'; c.fillRect(x - 10, 60, 20, 12); c.fillStyle = 'rgba(255,255,255,0.3)'; c.fillRect(x - 10, 60, 20, 2); }
+      speck(300, 0.02, 0.06, 3, 1);
+    } else if (kind === 'plastic') {      // moulded panels
+      for (const o of [0, 128]) { line(o + 0.5, 0, o + 0.5, N, 'rgba(0,0,0,0.18)'); line(0, o + 0.5, N, o + 0.5, 'rgba(0,0,0,0.18)'); }
+      speck(200, 0.02, 0.05, 2, 2);
+    } else if (kind === 'locker') {      // sheet metal doors with vents and a handle line
+      for (let x = 0; x < N; x += 64) { line(x + 0.5, 0, x + 0.5, N, 'rgba(0,0,0,0.5)'); line(x + 2.5, 0, x + 2.5, N, 'rgba(255,255,255,0.25)'); for (let i = 0; i < 4; i++) { c.fillStyle = 'rgba(0,0,0,0.45)'; c.fillRect(x + 16, 30 + i * 8, 32, 3); c.fillRect(x + 16, 158 + i * 8, 32, 3); } }
+      line(0, 127.5, N, 127.5, 'rgba(0,0,0,0.4)'); speck(400, 0.02, 0.08, 8, 1);
+    } else if (kind === 'crate') {      // one face of a crate: a frame, a brace and a stencil
+      c.fillStyle = 'rgba(0,0,0,0.1)'; c.fillRect(0, 0, N, N); c.strokeStyle = 'rgba(0,0,0,0.5)'; c.lineWidth = 22; c.strokeRect(11, 11, N - 22, N - 22); c.strokeStyle = 'rgba(255,255,255,0.25)'; c.lineWidth = 2; c.strokeRect(24, 24, N - 48, N - 48);
+      line(24, N - 24, N - 24, 24, 'rgba(0,0,0,0.4)', 18); c.fillStyle = 'rgba(0,0,0,0.55)'; c.font = 'bold 34px ui-monospace, Menlo, monospace'; c.textAlign = 'center'; c.fillText('SE-710', N / 2, 70);
+    } else if (kind === 'brass') {      // a shell case: turned bands
+      for (let y = 0; y < N; y += 2) { c.fillStyle = `rgba(0,0,0,${r.range(0, 0.1)})`; c.fillRect(0, y, N, 1); } for (const y of [40, 46, 200]) { c.fillStyle = 'rgba(0,0,0,0.35)'; c.fillRect(0, y, N, 3); }
+    } else if (kind === 'leaf') { for (let i = 0; i < 500; i++) { c.fillStyle = `rgba(${r.chance(0.6) ? '0,40,0' : '220,255,160'},${r.range(0.1, 0.4)})`; c.beginPath(); c.ellipse(r.int(N), r.int(N), 3 + r.int(7), 2 + r.int(3), r.range(0, 3.1), 0, 6.3); c.fill(); } }
+    const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+    return t;
+  }
+  _surfaces() {
+    const M = this.M, T = {}; for (const k of ['deck', 'wood', 'steel', 'cloth', 'wall', 'plastic', 'locker', 'crate', 'brass', 'leaf']) T[k] = this._paint(k);
+    const set = (m, t) => { m.map = t; m.needsUpdate = true; };
+    set(M.inner, T.deck); for (const m of Object.values(this.tileMats)) set(m, T.deck);
+    set(M.wood, T.wood); set(M.steel, T.steel); set(M.locker, T.locker); set(M.wall, T.wall); set(M.white, T.plastic); set(M.crate, T.crate); set(M.shell, T.brass); set(M.plant, T.leaf);
+    for (const m of [M.sofa, M.bed, M.carpet]) set(m, T.cloth);
+    this.surf = T;
   }
   // ---------------------------------------------------------------- livery: colours, hull plating, interior fit-out, lights, emblem
   // Hull plating is painted once per style, in greys, and the hull colour tints it. One tile is 2 units (10 m) square.
@@ -349,7 +402,7 @@ export class View {
     this.peopleOn = this.mode !== 'hull' || this.cutaway || !!this.edit;
     this.figOn = this.peopleOn && !life;
     this.agentPts.visible = this.peopleOn;
-    for (const f of Object.values(this.figs)) f.visible = this.figOn;
+    for (const f of [...Object.values(this.figs), ...Object.values(this.figsW)]) f.visible = this.figOn;
     this.crateIM.visible = this.figOn;
   }
 
@@ -379,6 +432,7 @@ export class View {
     this._agents(now);
     this._raid(now, dt);
     this._shots(dt);
+    this._lifts(dt);
     if (this.edit) { const p = st.parts.get(this.edit); if (p && p.rooms.join(',') !== this.editSig) this._editLabels(); }
     // The cut faces the camera, through what you are looking at.
     if (this.cutaway && !this.edit) {
@@ -500,16 +554,18 @@ export class View {
     if (from.door) { pts.push(from.spot); for (const x of from.via || []) pts.push(x); }
     for (const x of WALK[p.type] ? walkPath(p.type, A, B) : [A, B]) pts.push(x);
     if (to.door) { for (const x of [...(to.via || [])].reverse()) pts.push(x); pts.push(to.spot); }
+    // the stretches straight up or down the middle of a part with a lift are the ride
+    const ride = WALK[p.type] && WALK[p.type].k === 'shaft' ? pts.map((l, i) => i > 0 && Math.hypot(l[0], l[2]) < 0.02 && Math.hypot(pts[i - 1][0], pts[i - 1][2]) < 0.02 && Math.abs(l[1] - pts[i - 1][1]) > 0.05) : null;
     const out = pts.map((l) => addRot(p.pos, p.quat, [l[0], l[1] + 0.04, l[2]])), len = [0];
     for (let i = 1; i < out.length; i++) len.push(len[i - 1] + Math.hypot(out[i][0] - out[i - 1][0], out[i][1] - out[i - 1][1], out[i][2] - out[i - 1][2]));
-    return { pts: out, len };
+    return { pts: out, len, ride, pid: p.id };
   }
   _along(L, f) {
     const total = L.len[L.len.length - 1], want = Math.max(0, Math.min(1, f)) * total;
     let i = 1; while (i < L.len.length - 1 && L.len[i] < want) i++;
     const a = L.pts[i - 1], b = L.pts[i], seg = L.len[i] - L.len[i - 1], t = seg > 1e-6 ? (want - L.len[i - 1]) / seg : 0;
     const dx = b[0] - a[0], dz = b[2] - a[2];
-    return [a[0] + dx * t, a[1] + (b[1] - a[1]) * t, a[2] + dz * t, Math.hypot(dx, dz) > 1e-4 ? Math.atan2(dx, dz) : null];
+    return [a[0] + dx * t, a[1] + (b[1] - a[1]) * t, a[2] + dz * t, Math.hypot(dx, dz) > 1e-4 ? Math.atan2(dx, dz) : null, null, L.ride && L.ride[i] ? L.pid : 0];
   }
   // Where a person is, as [x, y, z, heading]. Heading is null when they are standing.
   agentPos(a, now) {
@@ -534,6 +590,27 @@ export class View {
     const w = addRot(p.pos, p.quat, [r[0], r[1] + 0.04, r[2]]);
     return [w[0], w[1], w[2], null, rs.face ?? null];
   }
+  // A lift car in every part with a lift. It goes to whoever is riding and waits where it last stopped.
+  _lifts(dt) {
+    const st = this.st, show = this.figOn;
+    for (const [id, c] of this.lifts) if (!st.parts.has(id)) { this.scene.remove(c.obj); this.lifts.delete(id); }
+    for (const p of st.parts.values()) {
+      const lay = SLOTS[p.type];
+      if (!WALK[p.type] || WALK[p.type].k !== 'shaft' || !lay || lay.length < 2 || p.state !== 'active') continue;
+      let c = this.lifts.get(p.id);
+      if (!c) {
+        const g = new THREE.Group(), M = this.M, add = (w, h, d, m, x, y, z) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y, z); g.add(o); };
+        add(0.23, 0.012, 0.23, M.locker, 0, -0.006, 0); add(0.23, 0.012, 0.23, M.locker, 0, 0.27, 0); add(0.16, 0.006, 0.16, M.lane, 0, 0.262, 0);
+        for (const [x, z] of [[0.108, 0.108], [-0.108, 0.108], [0.108, -0.108], [-0.108, -0.108]]) add(0.012, 0.27, 0.012, M.steel, x, 0.132, z);
+        for (const [x, z, w, d] of [[0.112, 0, 0.006, 0.2], [-0.112, 0, 0.006, 0.2]]) add(w, 0.1, d, M.thGlass, x, 0.06, z);
+        this.scene.add(g);
+        c = { obj: g, y: p.pos[1] + Math.min(...lay.map((s) => s.p[1])) + 0.04 }; this.lifts.set(p.id, c);
+      }
+      const want = this.liftRider.get(p.id);
+      if (want !== undefined) c.y += Math.max(-dt * 6, Math.min(dt * 6, want - c.y));
+      c.obj.position.set(p.pos[0], c.y, p.pos[2]); c.obj.visible = show;
+    }
+  }
   // How big a figure is drawn: the standard height (C.scale) over the height it was modelled at, times the player's own setting.
   personK() { return C.scale.person / C.scale.m / 0.33 * this.peopleK; }
   _agents(now) {
@@ -542,6 +619,7 @@ export class View {
     const put = (P, c) => { if (n >= pos.count) return; pos.setXYZ(n, P[0], P[1] + 0.1, P[2]); col.setXYZ(n, c[0], c[1], c[2]); n++; };
     const count = {}, fig = this.figOn, m4 = this._m4, qa = this._qa, qb = this._qb, sc = this._sc, v3 = this._v3, tintc = this._col;
     let crates = 0;
+    this.liftRider.clear();
     for (const a of this.st.agents) {
       if (a.eva) continue;
       const P = this.agentPos(a, now);
@@ -550,32 +628,36 @@ export class View {
       // A figure stands on the deck of the part it is in, turned the way it walks (or a way of its own when it is standing).
       // A gunner is drawn by where they live: a trooper from a barrack room, a pilot from a pad, a gun crew otherwise.
       let fk = a.role;
+      if (fk === 'resident') fk = RESIDENTS[Math.floor(a.seed * 4) % 4];
+      if (P[5]) this.liftRider.set(P[5], P[1]);
       if (fk === 'gunner') { const hp = this.st.parts.get(a.home), ht = hp ? hp.type : ''; fk = ht === 'barracks' ? 'trooper' : ht === 'eaglehangar' || ht === 'pelicanbay' ? (a.seed < 0.5 ? 'pilot' : 'gunner') : 'gunner'; }
-      const im = this.figs[fk] || this.figs.resident, i = count[fk] = (count[fk] || 0), part = this.st.parts.get(a.at);
+      const walking = a.path.length > 0 && !P[5], ck = walking ? `w${fk}` : fk;
+      const im = (walking ? this.figsW : this.figs)[fk] || this.figs.resident, i = count[ck] = (count[ck] || 0), part = this.st.parts.get(a.at);
       if (i >= im.instanceMatrix.count) continue;
-      count[fk] = i + 1;
+      count[ck] = i + 1;
       if (P[3] !== null && P[3] !== undefined) qa.setFromAxisAngle(UP, P[3] + Math.sin(now * 9 + a.seed * 30) * 0.1);
       else { qa.set(...part.quat); qb.setFromAxisAngle(UP, P[4] !== null && P[4] !== undefined ? P[4] + Math.sin(now * 0.4 + a.seed * 20) * 0.25 : a.seed * 6.283); qa.multiply(qb); }
       v3.set(P[0], P[1], P[2]);
-      const bob = a.path.length ? 1 + Math.sin(now * 12 + a.seed * 40) * 0.05 : 1;
+      const step = Math.sin(now * 7 + a.seed * 40), bob = walking ? 1 - Math.abs(step) * 0.03 : 1;
       const ps = this.personK();
-      m4.compose(v3, qa, sc.set(ps, ps * bob, ps)); im.setMatrixAt(i, m4);
-      if (a.role === 'resident') { tintc.setHSL((a.seed * 7.7) % 1, 0.35, 0.6); im.setColorAt(i, tintc); }
+      m4.compose(v3, qa, sc.set(walking && step < 0 ? -ps : ps, ps * bob, ps)); im.setMatrixAt(i, m4);
       if (a.carry && crates < this.crateIM.instanceMatrix.count) { v3.set(0, 0.2 * ps, 0.08 * ps).applyQuaternion(qa).add(sc.set(P[0], P[1], P[2])); m4.compose(v3, qa, sc.set(ps * 1.3, ps * 1.3, ps * 1.3)); this.crateIM.setMatrixAt(crates++, m4); }
     }
-    for (const r of FIGURES) { const im = this.figs[r]; im.count = fig ? count[r] || 0 : 0; im.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true; }
+    for (const r of FIGURES) { const im = this.figs[r], iw = this.figsW[r]; im.count = fig ? count[r] || 0 : 0; im.instanceMatrix.needsUpdate = true; iw.count = fig ? count[`w${r}`] || 0 : 0; iw.instanceMatrix.needsUpdate = true; }
     this.crateIM.count = crates; this.crateIM.instanceMatrix.needsUpdate = true;
     for (const P of this.evaPos) put(P, ROLE_COL.eva);
     this.agentPts.geometry.setDrawRange(0, n);
     pos.needsUpdate = true; col.needsUpdate = true;
   }
   _figuresInit() {
-    this.figs = {};
-    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, metalness: 0.05, flatShading: true });
-    for (const r of FIGURES) {
-      const im = new THREE.InstancedMesh(buildFigure(r), mat, r === 'resident' ? 500 : 160);
-      im.count = 0; im.frustumCulled = false; im.visible = false; this.scene.add(im); this.figs[r] = im;
+    // figs: people standing; figsW: people in mid-stride (mirrored left and right as they walk, so the material is two-sided)
+    this.figs = {}; this.figsW = {};
+    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.75, metalness: 0.02, side: THREE.DoubleSide });
+    for (const r of FIGURES) for (const [set, pose] of [[this.figs, 'stand'], [this.figsW, 'walk']]) {
+      const im = new THREE.InstancedMesh(buildFigure(r, pose), mat, 160);
+      im.count = 0; im.frustumCulled = false; im.visible = false; this.scene.add(im); set[r] = im;
     }
+    this.lifts = new Map(); this.liftRider = new Map();
     this.crateIM = new THREE.InstancedMesh(new THREE.BoxGeometry(0.09, 0.09, 0.09), new THREE.MeshStandardMaterial({ color: 0xc08a3a, roughness: 0.8, flatShading: true }), 200);
     this.crateIM.count = 0; this.crateIM.frustumCulled = false; this.crateIM.visible = false; this.scene.add(this.crateIM);
     this._m4 = new THREE.Matrix4(); this._qa = new THREE.Quaternion(); this._qb = new THREE.Quaternion(); this._sc = new THREE.Vector3(); this._v3 = new THREE.Vector3(); this._col = new THREE.Color();

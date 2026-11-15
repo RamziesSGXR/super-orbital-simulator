@@ -2,7 +2,7 @@
 
 Run a space station and the people aboard it. A browser game for the **Super Earth Special Forces** community, in the same look as [Orbital Fury](https://orbitalfury.com/).
 
-> **Prototype 0.7: rooms at real size.** People and ships are now small against a much bigger station: one unit is 9 m and a person is 1.8 m. Every room is furnished in metres from the things a home and a real space station hold, with a little science fiction on top, and nobody stands in or walks through any of it. You can rearrange a room, and set how large people are drawn.
+> **Prototype 0.8: connections, people and surfaces.** The station is a dollhouse you set up and then watch. This release adds sliding doors, hatches at every port, lifts with cars and spiral stairs between decks; people who look like people, with a walking stride; and textured floors, walls and fittings. The minimap is hidden for now.
 
 **Your station. Its people. What happens to them.** It is a space station simulator: think Deep Space Nine in the Helldivers universe, with you as the station's commander. You start with Station Command in empty space, snap parts onto it and set their rooms. Then the people move in, and the station becomes theirs as much as yours.
 
@@ -11,6 +11,14 @@ Run a space station and the people aboard it. A browser game for the **Super Ear
 It runs in your browser on a computer, or on a phone or tablet held sideways. There is nothing to install. Turn the sound on.
 
 **Quick start:** press **NEW STATION**. Open **FIRE** and put a Ship Gun on a side port. Open the **DOCK** group at the bottom left, press `Q` for a Docking Port, move the pointer near Station Command and click when the little dot lights up. Add a Cargo Module from **INDUS** and a Hab Module from **HAB** the same way. Ships and colonists arrive within a minute, and soon after that the first thing lands on your desk.
+
+## What's new in 0.8
+
+- **Between rooms.** Every room door is a sliding door, drawn open, with lit edges and a hazard stripe. Every port has a hatch: a door frame on the deck just inside the hull, or a ring in the deck for a port above or below.
+- **Between floors.** Each lift is an open frame with a car. The car goes to whoever is riding and waits where it last stopped. A spiral stair with a handrail runs round the lift from each deck to the next. (People ride the lift; nobody takes the stairs yet.)
+- **People.** Figures are rounded 1.8 m people with heads, hair, hands and shoes, in a standing pose and a walking stride. Residents come in four looks. Each job has its own clothes and kit: a hauler's hi-vis vest, an engineer's hard hat and pack, an officer's peaked cap and cape, a medic's bag, an aide's beret and papers, a scientist's lab coat, a gunner's ear defenders, a SEAF trooper's armour and rifle, a pilot's flight helmet.
+- **Surfaces.** Deck plate on floors, panelled walls, wood grain, brushed steel, woven cloth, vented lockers, stencilled crates, turned brass shells and leaves. Each is the same size everywhere: one repeat every 2 m.
+- **Minimap hidden.** It is switched off by one constant (`MINIMAP` in `js/main.js`).
 
 ## What's new in 0.7
 

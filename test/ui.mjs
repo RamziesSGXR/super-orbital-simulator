@@ -74,8 +74,9 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
 
   // Comms: a closeable window above the minimap.
   check('station comms come in over the minimap, on channels', await page.isVisible('#comms') && /CH 1 · MINISTRY OF ORBITAL AFFAIRS/.test(await page.textContent('#c-list')));
-  const cb = await page.$eval('#comms', (e) => { const r = e.getBoundingClientRect(), m = document.getElementById('mini').getBoundingClientRect(); return r.right >= m.right - 2 && r.bottom <= m.top; });
-  check('the comms window sits on the right, above the minimap', cb);
+  const cb = await page.$eval('#comms', (e) => { const r = e.getBoundingClientRect(), m = document.getElementById('panel').getBoundingClientRect(); return r.right >= innerWidth - 40 && r.bottom <= m.top; });
+  check('the comms window sits on the right, above the bottom panel', cb);
+  check('the minimap is hidden for now', !(await page.isVisible('#mini')));
   await page.click('#c-x');
   check('the comms window closes', !(await page.isVisible('#comms')) && await page.isVisible('#c-open'));
   await page.evaluate(() => window.__st.say('traffic', 'A message while the window is closed.'));
@@ -107,7 +108,7 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
   check('calls come up from the ground and the platform answers', await page.evaluate(() => (window.__st.stats.calls || 0) >= 1), await page.evaluate(() => `${window.__st.stats.calls} answered, ${window.__st.stats.missed} missed`));
   check('people walk the corridors: a walker is on a deck, not in mid air', await page.evaluate(() => {
     const s = window.__st, v = window.__view, now = performance.now() / 1000;
-    for (let i = 0; i < 400; i++) { s.step(1 / 30); const a = s.agents.find((x) => x.path.length && !x.eva); if (a) { const P = v.agentPos(a, now); return !!P && P.length === 4 && Number.isFinite(P[1]); } }
+    for (let i = 0; i < 400; i++) { s.step(1 / 30); const a = s.agents.find((x) => x.path.length && !x.eva); if (a) { const P = v.agentPos(a, now); return !!P && P.length >= 4 && Number.isFinite(P[1]); } }
     return false;
   }));
   await page.click('#b-liv'); await page.waitForTimeout(200);
@@ -121,6 +122,14 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
     const s = window.__st, v = window.__view, a = s.agents.find((x) => !x.path.length && !x.eva && s.parts.get(x.at) && s.parts.get(x.at).rooms.length);
     if (!a) return false; const r = v._rest(a, s.parts.get(a.at)); return !!r.door && Array.isArray(r.via) && r.spot.length === 3;
   }));
+  check('people come in a standing and a walking pose, and residents in four looks', await page.evaluate(() => { const v = window.__view; return ['resident', 'resident2', 'resident3', 'resident4', 'trooper', 'pilot'].every((k) => v.figs[k] && v.figsW[k]) && v.figs.resident.geometry.attributes.position.count > 600; }));
+  check('Station Command has a lift car, and it goes to whoever rides', await page.evaluate(() => {
+    const s = window.__st, v = window.__view; v._lifts(0.016);
+    const c = v.lifts.get(1); if (!c) return false;
+    v.liftRider.set(1, c.y + 0.5); v._lifts(1); const moved = Math.abs(c.obj.position.y - (c.y)) < 1e-6 && c.y > s.parts.get(1).pos[1] - 1; v.liftRider.clear();
+    return moved;
+  }));
+  check('fittings and floors are textured', await page.evaluate(() => { const M = window.__view.M; return [M.wood, M.steel, M.wall, M.inner, M.locker, M.sofa].every((m) => !!m.map) && Object.values(window.__view.tileMats).every((m) => !!m.map); }));
   check('painting the same room again rearranges it', await page.evaluate(() => {
     const s = window.__st, p = [...s.parts.values()].find((x) => x.type === 'hab'), was = (p.fit && p.fit[0]) || 0;
     const r = s.setRoom(p.id, 0, p.rooms[0]); const f = s.refit(p.id, 0);
@@ -216,8 +225,8 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
   check('the stars, sun and moons move with the camera, so they never slide', await page.evaluate(() => window.__view.sky.position.distanceTo(window.__view.camera.position) < 1e-6));
   await page.keyboard.press('4'); await page.waitForTimeout(300);
   check('4 cuts the station away', await page.evaluate(() => window.__view.cutaway && !!window.__view.M.hull.clippingPlanes));
-  await page.waitForFunction(() => window.__view.figOn && window.__view.figs.hauler.count > 0, null, { timeout: 20000 }).catch(() => {});
-  check('with the hull cut away, people are figures by job', await page.evaluate(() => { const v = window.__view; return v.figOn && Object.values(v.figs).reduce((n, f) => n + f.count, 0) === window.__st.agents.filter((x) => !x.eva).length && v.figs.hauler.count > 0; }), await page.evaluate(() => { const v = window.__view; return JSON.stringify({ fig: v.figOn, counts: Object.fromEntries(Object.entries(v.figs).map(([k, f]) => [k, f.count])), agents: window.__st.agents.filter((x) => !x.eva).length }); }));
+  await page.waitForFunction(() => window.__view.figOn && (window.__view.figs.hauler.count + window.__view.figsW.hauler.count) > 0, null, { timeout: 20000 }).catch(() => {});
+  check('with the hull cut away, people are figures by job', await page.evaluate(() => { const v = window.__view; return v.figOn && [...Object.values(v.figs), ...Object.values(v.figsW)].reduce((n, f) => n + f.count, 0) === window.__st.agents.filter((x) => !x.eva).length && (v.figs.hauler.count + v.figsW.hauler.count) > 0; }), await page.evaluate(() => { const v = window.__view; return JSON.stringify({ fig: v.figOn, counts: Object.fromEntries(Object.entries(v.figs).map(([k, f]) => [k, f.count])), agents: window.__st.agents.filter((x) => !x.eva).length }); }));
   await page.screenshot({ path: 'test/shots/cutaway.png' });
   await page.keyboard.press('4'); await page.keyboard.press('3'); await page.waitForTimeout(300);
   await page.waitForFunction(() => window.__view.mode === 'life' && window.__view.agentPts.geometry.drawRange.count > 0, null, { timeout: 20000 }).catch(() => {});

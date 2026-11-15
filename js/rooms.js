@@ -226,6 +226,9 @@ export function roomPlan(room, W, D, door, variant = 0) {
     const gap = 1.2, wl = (W - gap) / 2;
     items.push(['b', 'wall', W, H, t, 0, H / 2, -hd + t / 2], ['b', 'wall', t, H, D, -hw + t / 2, H / 2, 0], ['b', 'wall', t, H, D, hw - t / 2, H / 2, 0]);
     for (const s of [-1, 1]) items.push(['b', 'wall', wl, H, t, s * (gap / 2 + wl / 2), H / 2, hd - t / 2], ['b', 'locker', 0.1, 2.1, t + 0.06, s * (gap / 2 + 0.05), 1.05, hd - t / 2]);
+    // a sliding door, drawn open: its two leaves stand aside on the corridor face of the wall, each with a lit edge
+    for (const s of [-1, 1]) items.push(['b', 'steel', 0.6, 2.05, 0.05, s * (gap / 2 + 0.34), 1.025, hd + 0.03], ['b', 'lane', 0.04, 1.5, 0.06, s * (gap / 2 + 0.07), 1.0, hd + 0.03], ['b', 'alarm', 0.5, 0.08, 0.055, s * (gap / 2 + 0.34), 1.0, hd + 0.03]);
+    items.push(['b', 'locker', gap + 1.5, 0.08, 0.1, 0, 2.14, hd + 0.03]);
     items.push(['b', 'locker', gap + 0.2, 0.1, t + 0.06, 0, 2.15, hd - t / 2], ['b', 'lane', gap - 0.2, 0.02, t + 0.1, 0, 0.01, hd - t / 2], ['b', 'glow', 0.5, 0.08, t + 0.08, 0, 2.15, hd - t / 2]);
   }
   const x0 = -hw + t + 0.12, x1 = hw - t - 0.12, zb = -hd + t, zf = hd - t, depth = zf - zb, G = lift ? 2.5 : 0.9;
@@ -274,7 +277,7 @@ export function roomPlan(room, W, D, door, variant = 0) {
     }
   }
   // people with nothing to stand at stand in the aisles (on a pad: along its front edge and at its corners)
-  for (const a of aisles) for (let x = x0 + 0.9; x <= x1 - 0.9 + 1e-6; x += 2.3) if (!(lift && Math.abs(x) < 1.6 && Math.abs(a) < 1.6)) spots.push({ x, z: a, face: null, via: [[0, a]], idle: true });
+  for (const a of aisles) for (let x = x0 + 0.9; x <= x1 - 0.9 + 1e-6; x += 2.3) if (!(lift && Math.abs(x) < 3.0 && Math.abs(a) < 3.0)) spots.push({ x, z: a, face: null, via: [[0, a]], idle: true });
   if (pad && room !== 'empty') for (const s of [-1, 1]) spots.push({ x: s * hw * 0.92, z: -hd * 0.86, face: null, via: [[s * hw * 0.92, hd * 0.86], [0, hd * 0.86]], idle: true });
   if (!spots.length) spots.push({ x: 0, z: aisles[0] || 0, face: null, via: [], idle: true });
   cache.set(key, out);

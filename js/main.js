@@ -814,7 +814,11 @@ function editInfo(peekRoom) {
 // ---------------------------------------------------------------- minimap: the station from above
 const mini = $('mini'), mx = mini.getContext('2d');
 const RINGS = { ring: 7, bigring: 12.5, disc: 5.6, drum: 4.7 };
+// The minimap is switched off for now (the player asked for it hidden). Set MINIMAP to true to bring it back.
+const MINIMAP = false;
+mini.classList.toggle('hidden', !MINIMAP);
 function drawMini() {
+  if (!MINIMAP) return;
   const W = mini.width, H = mini.height, R = W / 2 - 6, span = Math.max(20, st.radius) * 1.05, k = R / span;
   mx.clearRect(0, 0, W, H);
   mx.save(); mx.translate(W / 2, H / 2);
