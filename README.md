@@ -2,7 +2,7 @@
 
 Run a space station and the people aboard it. A browser game for the **Super Earth Special Forces** community, in the same look as [Orbital Fury](https://orbitalfury.com/).
 
-> **Prototype 0.5: the station's people.** You lay the station out; six factions with names and wishes change it to suit themselves, and only trouble reaches your desk. Supplies and weekly allotments replace budgets, the score is the station's capability, raiders test the hull, and there is a Broken Station to bring back. It wears the Orbital Fury interface, and it saves itself as you play.
+> **Prototype 0.6: the fire support platform.** The station now has a job: it is the platform the gunner calls on in Orbital Fury. You build its guns, hangars and barracks; your people keep them crewed and supplied; squads on the planet call for fire and the platform answers. Also new: one gravity for the whole station (every deck is level), rooms with walls and doors on real corridors, a consistent scale, and a livery panel for the station's name, colours, plating, interior and emblem.
 
 **Your station. Its people. What happens to them.** It is a space station simulator: think Deep Space Nine in the Helldivers universe, with you as the station's commander. You start with Station Command in empty space, snap parts onto it and set their rooms. Then the people move in, and the station becomes theirs as much as yours.
 
@@ -10,7 +10,30 @@ Run a space station and the people aboard it. A browser game for the **Super Ear
 
 It runs in your browser on a computer, or on a phone or tablet held sideways. There is nothing to install. Turn the sound on.
 
-**Quick start:** press **NEW STATION**. Open the **DOCK** group at the bottom left, press `Q` for a Docking Port, move the pointer near Station Command and click when the little dot lights up. Add a Cargo Module from **INDUS** and a Hab Module from **HAB** the same way. Ships and colonists arrive within a minute, and soon after that the first thing lands on your desk.
+**Quick start:** press **NEW STATION**. Open **FIRE** and put a Ship Gun on a side port. Open the **DOCK** group at the bottom left, press `Q` for a Docking Port, move the pointer near Station Command and click when the little dot lights up. Add a Cargo Module from **INDUS** and a Hab Module from **HAB** the same way. Ships and colonists arrive within a minute, and soon after that the first thing lands on your desk.
+
+## What's new in 0.6
+
+- **The fire support platform.** A new part group, **FIRE SUPPORT**, with one part for every line of the Orbital Fury armory:
+
+  | In Orbital Fury | Build on the station | Opens at |
+  | --- | --- | --- |
+  | Ship gun | Ship Gun | Outpost |
+  | Orbital strikes (up to five) | Orbital Battery | Outpost |
+  | UAV scan, strike zone | Drone Bay, Target Relay | Garrison |
+  | SEAF drops | SEAF Barracks, Pelican Bay | Garrison, Fortress |
+  | Eagles | Eagle Hangar | Fortress |
+  | Buildables | Fabrication Shop | Fortress |
+  | Classified | Democracy Lance | Citadel |
+
+- **Readiness.** Each system is ready when it is built, working, crewed and has shells. The top bar shows the whole platform as **RDY**, and Gunnery's page in the Commander's channel lists every system with what is holding it back. The next tier needs a readiness figure as well as people and capability.
+- **Calls from the ground.** Squads on the planet call for gun fire, strikes, scans, Eagles, troops and crates. A ready system answers by itself: you see the shot go down or the craft leave. A call nobody could answer comes up on comms. You build the platform; you never fire it.
+- **Gunnery, the seventh faction.** Gunners, pilots and SEAF troopers draw shells each week, live in Gun Crew Rooms, Barrack Rooms and on the pads, and want a ready platform. Residents do not like sleeping near a magazine.
+- **One gravity.** The deck plates make gravity and it points the same way everywhere: toward the keel, where the planet is. So every deck is level however a part is attached. A spine part on a side port stands beside it; a module on a top port sits on it. Guns go on side ports or underneath. Only parts with nothing to stand on (arrays, dishes, turrets, racks) can still be turned any way.
+- **Rooms you could walk through.** Every part has a walk: a corridor along a module, a ring corridor with spokes to the hub, the promenade round a disc, a lift up a tower. Rooms have walls and a door onto it. People stand in a room that suits their job, leave by the door, follow the corridor to the next part and go in by its door.
+- **One scale.** One unit is 5 m. A person is 1.8 m, a bed 2 m, a door 1 m by 2.1 m, a corridor 2 m wide. A Pelican is about 20 m, a freighter 38 m, a corvette 62 m. Hangars and the drydock were enlarged to fit, and hull plating is the same size on every part.
+- **Livery.** The **LIVERY** button sets the station's name, six colour schemes or your own three colours, five kinds of hull plating, four interiors, four light colours and an emblem. The name and emblem go on nameplates on the hull.
+- **Borrowed from Orbital Fury:** the Pelican, a new Eagle on the hangar pads, SEAF troopers, and the Super Destroyer's look (blue light lines, black drive block) on the visiting warships.
 
 ## How to play
 
@@ -19,7 +42,7 @@ It runs in your browser on a computer, or on a phone or tablet held sideways. Th
   - **Broken station:** take over a dark, stripped station (about twenty parts, most of them out of order, half the rooms gutted, four people left) and bring it back: every part repaired, the rooms refitted, twenty residents, full power.
   - **Free play:** every part and room, no costs, the biggest build zone, and controls (`K`) to call in freighters, shuttles, warships, colonists and raids. Nothing asks you anything.
   - **Continue** appears on the title once there is a save. The station saves itself every few seconds and when you leave.
-- **Build:** parts come in seven groups: Structure, Habitation, Docking, Industry, Power, Defence and Comms. Each button is a picture of the part with its name and cost. Click a group (or `Tab`), pick a part (`Q W E T Y A S D`), and click near a port: small see-through dots show the free ports near the pointer. `R` turns it 45°. Right-click or `Esc` puts it down.
+- **Build:** parts come in eight groups: Structure, Fire Support, Habitation, Docking, Industry, Power, Defence and Comms. Each button is a picture of the part with its name and cost. Click a group (or `Tab`), pick a part (`Q W E T Y A S D Z`), and click near a port: small see-through dots show the free ports near the pointer. `R` turns it 45°. Right-click or `Esc` puts it down.
 - **Build inside:** select a part and press **EDIT INSIDE** (`I`). Its hull turns to glass and its rooms show in 3D. Pick a room and click where it goes. A part does what its rooms do.
 - **The factions.** Supply, Maintenance, Security, Medical and, from Garrison, Command and Science. Each has an ideal station and a mood from 0 to 100:
 

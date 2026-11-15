@@ -24,6 +24,7 @@
         <span class="ri" title="Power used / supplied"><i>PWR</i><b id="r-pw"></b></span>
         <span class="ri" title="Residents / beds"><i>POP</i><b id="r-pop"></b></span>
         <span class="ri" title="Morale"><i>MRL</i><b id="r-mo"></b></span>
+        <span class="ri rdy" title="Platform readiness: how much of the fire support the Ministry expects is built, crewed and supplied"><i>RDY</i><b id="r-rdy"></b></span>
         <span class="ri" title="Ships served · lost"><i>SHIPS</i><b id="r-sh"></b></span>
       </div>
       <button id="b-age" class="age" type="button" title="The station week, and the upgrade path (U)"><b id="wk">WEEK 1 · DAY 1</b><span class="wbar"><i id="w-fill"></i></span><span class="tl"><span id="tier">OUTPOST</span><span id="tier-next"></span></span></button>
@@ -32,6 +33,7 @@
         <button id="b-speed" class="btn icon" type="button" title="Game speed">1×</button>
         <button id="b-cmdr" class="btn" type="button" title="The Commander's channel: divisions, factions, requests and standing orders (O)"><span class="lg">COMMANDER</span><span class="sm">CMDR</span><span id="cm-badge" class="badge"></span></button>
         <button id="b-upg" class="btn" type="button" title="The upgrade path (U)"><span class="lg">UPGRADES</span><span class="sm">UPG</span></button>
+        <button id="b-liv" class="btn" type="button" title="Livery: the station's name, colours, plating, interior and emblem"><span class="lg">LIVERY</span><span class="sm">LIV</span></button>
         <button id="b-sim" class="btn hidden" type="button" title="Free play controls (K)"><span class="lg">CONTROLS</span><span class="sm">CTRL</span></button>
         <button id="b-hide" class="btn" type="button" title="Hide the interface (H)">HIDE</button>
         <button id="b-menu" class="btn" type="button" title="Tax, sound and keys (M)">MENU</button>
@@ -64,6 +66,12 @@
     <div id="upg" class="panel float upg hidden">
       <div class="ph"><span>UPGRADE PATH · MINISTRY OF ORBITAL AFFAIRS</span><button class="x" id="up-x" type="button" title="Close (U)">×</button></div>
       <div id="up-list"></div>
+    </div>
+
+    <!-- Livery: how the station looks. -->
+    <div id="liv" class="panel float liv hidden">
+      <div class="ph"><span>STATION LIVERY</span><button class="x" id="lv-x" type="button" title="Close">×</button></div>
+      <div id="lv-body" class="lv-body"></div>
     </div>
 
     <!-- Station comms, above the minimap. -->
@@ -106,10 +114,10 @@
       <p class="tag tagline">Your station. Its people. What happens to them.</p>
       <div class="brief">
         <ol>
+          <li><b>The station has a job.</b> It is the fire support platform over a planet at war. Build the <b>FIRE SUPPORT</b> parts (a Ship Gun, Orbital Batteries, hangars, barracks) and keep them crewed and supplied. You build it; you never fire it.</li>
           <li><b>Lay it out.</b> Pick a part at the bottom left and click near a port to attach it. Select a part and press <b>EDIT INSIDE</b> to set its rooms.</li>
-          <li><b>Then it is theirs.</b> Six factions (Supply, Maintenance, Security, Medical, Command, Science) each want the station their way. They take empty space and set up what they need without asking.</li>
-          <li><b>Only trouble reaches you.</b> Two factions after the same room, a weekly allotment the stores cannot cover, a row between two people with names. It lands <b>on your desk</b> with the choices.</li>
-          <li><b>Supplies, not budgets.</b> Coffee, parts, ammunition and medkits come in by the crate, and each faction draws its share every station week. The score is the station's <b>capability</b>.</li>
+          <li><b>Then it is theirs.</b> Seven factions (Gunnery, Supply, Maintenance, Security, Medical, Command, Science) each want the station their way. They take empty space and set up what they need without asking.</li>
+          <li><b>Only trouble reaches you.</b> Two factions after the same room, an allotment the stores cannot cover, a call from the ground nobody answered. It lands <b>on your desk</b> or on comms. Supplies come by the crate; the score is the station's <b>capability</b>.</li>
         </ol>
       </div>
       <div class="btns">
@@ -120,7 +128,7 @@
       </div>
       <p class="fine"><b>New station:</b> Station Command, 2,500 CR and an Outpost permit. <b>Broken station:</b> take over a dark, stripped station and bring it back.
         <b>Free play:</b> every part and room, no costs, and controls to call in ships, colonists and raids.
-        Prototype 0.5. The station saves itself as you play.<br>
+        Prototype 0.6. The station saves itself as you play.<br>
         An unofficial fan project for the Super Earth Special Forces community, by Robert Troumbley. Not affiliated with or endorsed by Arrowhead Game Studios or Sony Interactive Entertainment.</p>
     </div>
   </section>

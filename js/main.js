@@ -7,12 +7,12 @@ import { Audio } from './audio.js';
 
 const $ = (id) => document.getElementById(id);
 const qs = new URLSearchParams(location.search);
-const KEYS = ['q', 'w', 'e', 't', 'y', 'a', 's', 'd'];          // the parts of the open group, left to right
-const GROUP_SHORT = { structure: 'STRUCT', habitation: 'HAB', docking: 'DOCK', industry: 'INDUS', power: 'POWER', defence: 'DEF', comms: 'COMMS' };
-const ROLE = { hauler: 'haulers', engineer: 'engineers', officer: 'officers', medic: 'medics', aide: 'aides', scientist: 'scientists' };
-const ROLE_ONE = { hauler: 'Hauler', engineer: 'Engineer', officer: 'Democracy Officer', medic: 'Medic', aide: 'Aide', scientist: 'Scientist', resident: 'Resident' };
-const PLACES = { hauler: 'Cargo Stores, Cargo Racks and Station Command', engineer: 'Workshops', officer: 'Security Offices', medic: 'Medbays', aide: 'Brass Suites', scientist: 'Laboratories' };
-const SAVE_KEY = 'sos.save.05';
+const KEYS = ['q', 'w', 'e', 't', 'y', 'a', 's', 'd', 'z'];          // the parts of the open group, left to right
+const GROUP_SHORT = { platform: 'FIRE', structure: 'STRUCT', habitation: 'HAB', docking: 'DOCK', industry: 'INDUS', power: 'POWER', defence: 'DEF', comms: 'COMMS' };
+const ROLE = { hauler: 'haulers', engineer: 'engineers', officer: 'officers', medic: 'medics', aide: 'aides', scientist: 'scientists', gunner: 'gunners' };
+const ROLE_ONE = { hauler: 'Hauler', engineer: 'Engineer', officer: 'Democracy Officer', medic: 'Medic', aide: 'Aide', scientist: 'Scientist', gunner: 'Gunner', resident: 'Resident' };
+const PLACES = { hauler: 'Cargo Stores, Cargo Racks and Station Command', engineer: 'Workshops', officer: 'Security Offices', medic: 'Medbays', aide: 'Brass Suites', scientist: 'Laboratories', gunner: 'Gun Crew Rooms, Barrack Rooms, pads and racks' };
+const SAVE_KEY = 'sos.save.06', LIVERY_KEY = 'sos.livery';
 // What people say, in a bubble over their head, when you are close enough to see them.
 const CHAT = {
   hauler: ['Mind your toes.', 'Another crate of liberty.', 'Who labelled this?', 'Coffee first. Then crates.', 'This one rattles.'],
@@ -20,6 +20,7 @@ const CHAT = {
   officer: ['Papers, citizen.', 'Move along.', 'Report unpatriotic activity.', 'I am watching that crate.', 'Democracy never sleeps. Neither do I.'],
   medic: ['Next.', 'Take two and report for gratitude.', 'That will heal. Probably.', 'Wash your hands, citizen.', 'I need more medkits.'],
   aide: ['The admiral will notice that.', 'This corridor is a disgrace.', 'Has anyone seen the good cutlery?', 'Smile. There is an inspection.', 'File it in triplicate.'],
+  gunner: ['Shot out.', 'Splash, over.', 'Who moved my ear defenders?', 'Danger close means close.', 'Tell the Tigers it is on the way.', 'More shells. Always more shells.'],
   scientist: ['Fascinating.', 'That reading cannot be right.', 'Do not touch that.', 'The planet is doing something.', 'I will need a bigger dish.'],
   resident: ['Long queue at the mess again.', 'Lovely view of the war today.', 'Have you paid your Liberty Contribution?', 'They moved the bar again.', 'I heard a rumour about the coffee.', 'My bunk hums.'],
 };
@@ -36,6 +37,7 @@ const CH = {
   medical:     { n: 8, name: 'MEDICAL CORPS', col: C.div.medical.col, off: ['Corps out.', 'Stay healthy, stay free.'] },
   command:     { n: 10, name: 'COMMAND STAFF', col: C.div.command.col, off: ['By your leave, Commander.', 'Staff out.'] },
   science:     { n: 11, name: 'SCIENCE DIRECTORATE', col: C.div.science.col, off: ['Directorate out.', 'More data soon.'] },
+  gunnery:     { n: 12, name: 'FIRE SUPPORT COMMAND', col: C.div.gunnery.col, off: ['Guns out.', 'On the way.', 'Standing by for calls.'] },
   captain:     { n: 9, name: 'SHIP-TO-STATION', col: '#7fc8ff', off: ['Over.', 'Over and out.', 'For democracy, over.'] },
 };
 const audio = new Audio();
@@ -48,9 +50,12 @@ function demoStation() {
   const b = (t, h, p, r = 0) => { const x = s.build(t, h, p, r); return x.ok ? x.id : 0; };
   const c1 = b('core', 1, 1), re = b('reactor', c1, 1); b('spire', re, 1);
   b('solar', c1, 2); b('solar', c1, 4); b('dish', c1, 3); b('billboard', c1, 5);
-  const ring = b('ring', 1, 0), c2 = b('core', ring, 1), big = b('bigring', c2, 1), disc = b('disc', big, 1); b('dome', disc, 1);
+  // Below Station Command, toward the planet: a ring, the docking ring, the promenade, and the platform's guns underneath.
+  const ring = b('ring', 1, 0), c2 = b('core', ring, 0), big = b('bigring', c2, 0), disc = b('disc', big, 0), c3 = b('core', disc, 0);
   for (const p of [2, 3, 4, 5]) b('dockport', ring, p);
-  b('pylon', big, 2); b('hangar', big, 3); b('pylon', big, 4); b('drydock', big, 5); b('pylon', big, 6); b('tanks', big, 7);
+  b('pylon', big, 2); b('hangar', big, 3); b('pylon', big, 4); b('drydock', big, 5); b('eaglehangar', big, 6); b('tanks', big, 7);
+  b('battery', c2, 2); b('battery', c2, 4); b('barracks', c2, 3); b('dronebay', c2, 5);
+  b('battery', c3, 2); b('battery', c3, 4); b('gunmount', c3, 0); b('relay', c3, 3); b('fabshop', c3, 5);
   b('cargo', 1, 2); b('hab', 1, 3); b('hab', 1, 4); b('cargo', 1, 5);
   for (let i = 0; i < 44; i++) s.step(0.5);
   s.addColonists(30);
@@ -69,8 +74,9 @@ function start(mode, saved) {
   audio.unlock();
   st = saved || new Station(Number(qs.get('seed')) || (Date.now() % 100000), mode);
   mode = st.mode;
-  window.__st = st; window.__ui = ui;
+  window.__st = st; window.__ui = ui; window.__edit = startEdit;
   view.setStation(st);
+  st.livery = { ...loadLivery(), ...(st.livery || {}) }; view.setLivery(st.livery);
   view.controls.autoRotate = false;
   view.frame();
   Object.assign(ui, { started: true, tool: null, sel: null, hot: null, edit: null, room: null, slot: null, group: 'structure', speed: 1, person: 0 });
@@ -85,10 +91,11 @@ function start(mode, saved) {
   $('c-list').innerHTML = ''; typing.length = 0; reqEls.clear(); deskSig = ''; setComms(true); clearBubbles();
   if (saved) radio('ministry', `Welcome back, Commander. Week ${st.week()}, day ${st.dow()}. The station kept your seat warm.`);
   else if (free) radio('ministry', 'Free play, Commander. Every part and every room is open to you, and none of it costs a credit. Build whatever you like.');
-  else if (mode === 'run') radio('ministry', `Welcome aboard, Commander. The Ministry grants you an Outpost permit and ${C.start.credits.toLocaleString('en-US')} CR. Start with a Docking Port, and somewhere to put the cargo.`);
+  else if (mode === 'run') radio('ministry', `Welcome aboard, Commander. The Ministry grants you an Outpost permit and ${C.start.credits.toLocaleString('en-US')} CR. This station is here to support the troops on the planet below. Start with a Ship Gun from FIRE SUPPORT, a Docking Port, and somewhere to put the cargo.`);
   if (!saved) radio('ministry', free ? 'Your divisions answer on the Commander\'s channel (O). Select a part and press EDIT INSIDE (I) to build out its rooms.' : 'Lay the station out, then let your people at it. They will change it to suit themselves, and only trouble will reach your desk.', { dim: true });
   buildGrid(); hud(); info();
 }
+function loadLivery() { try { return { ...C.livery.def, ...(JSON.parse(localStorage.getItem(LIVERY_KEY)) || {}) }; } catch (e) { return { ...C.livery.def }; } }
 const readSave = () => { try { return Station.load(JSON.parse(localStorage.getItem(SAVE_KEY))); } catch (e) { return null; } };
 function writeSave() { if (!ui.started || st.sandbox) return; try { localStorage.setItem(SAVE_KEY, JSON.stringify(st.save())); } catch (e) { /* no storage here: the game plays on without saving */ } }
 function titleButtons() { $('b-continue').classList.toggle('hidden', !readSave()); $('b-economy').classList.toggle('primary', !readSave()); }
@@ -440,8 +447,8 @@ $('c-open').onclick = () => { audio.play('click'); setComms(true); };
 
 // ---------------------------------------------------------------- the Commander's channel: fund the divisions and give them standing orders
 function closeFloats(except) {
-  for (const id of ['cmdr', 'upg']) if (id !== except) $(id).classList.add('hidden');
-  $('b-cmdr').classList.toggle('on', except === 'cmdr'); $('b-upg').classList.toggle('on', except === 'upg');
+  for (const id of ['cmdr', 'upg', 'liv']) if (id !== except) $(id).classList.add('hidden');
+  $('b-cmdr').classList.toggle('on', except === 'cmdr'); $('b-upg').classList.toggle('on', except === 'upg'); $('b-liv').classList.toggle('on', except === 'liv');
   $('app').classList.toggle('float-open', !!except);
 }
 function cmdr(on = $('cmdr').classList.contains('hidden')) {
@@ -466,6 +473,7 @@ function drawCmdr() {
   if (d.uses) h += `<div class="brow"><span class="bl">WEEKLY ALLOTMENT · ${C.supplies[d.uses].name.toUpperCase()}</span><span class="bv" id="cm-bv"></span>`
     + `<input id="cm-budget" type="range" min="0" max="${C.allotMax}" step="1" value="${div.allot}"><span class="bn" id="cm-bn"></span></div>`;
   if (k === 'supply') h += '<div class="stores" id="cm-stores"></div>';
+  if (k === 'gunnery') h += '<div class="plat" id="cm-plat"></div>';
   for (const [o, opts] of Object.entries(d.orders)) {
     h += `<div class="ord"><span class="ol">${ORDER_NAMES[o] || o.toUpperCase()}</span><div class="obs">${opts.map(([v, l]) => `<button type="button" class="btn ob${div.order[o] === v ? ' on' : ''}" data-o="${o}" data-v="${v}">${l}</button>`).join('')}</div></div>`;
   }
@@ -517,6 +525,11 @@ function cmdrText() {
       + (st.short[k] ? ' The stores are empty: they are going without.' : can > st.homes[r] ? ' More than the places need: build more places, or lower it.' : can < st.homes[r] ? ` Raise it to fill ${st.homes[r] - can} more.` : '');
   }
   if ($('cm-stores')) $('cm-stores').innerHTML = '<b>THE STORES</b>' + Object.entries(C.supplies).map(([t, S]) => { const need = st.weeklyNeed(t), have = Math.floor(st.stock[t]); return `<span class="${have < need / 7 ? 'bad' : have < need ? 'warn' : ''}"><i>${S.name}</i>${st.sandbox ? '∞' : have}<small> · ${Math.round(need)} a week</small></span>`; }).join('') + `<em>${st.weekIn} crates in so far this week, ${st.lastWeek.in} last week. Freighters bring more of whatever is short.</em>`;
+  if ($('cm-plat')) {
+    const P = st.platform();
+    $('cm-plat').innerHTML = `<b>THE PLATFORM · ${Math.round(P.ready * 100)}% READY</b>` + P.sys.map((x) => `<div class="ps${!x.open ? ' off' : x.n ? (x.ready > 0.8 ? ' ok' : x.ready > 0.4 ? ' mid' : ' bad') : ' none'}"><span>${x.name}</span><span class="pn">${x.n}/${x.max}</span><span class="pb"><i style="width:${Math.round(x.ready * 100)}%"></i></span><em>${x.n && !x.why ? 'Ready' : x.why}</em></div>`).join('')
+      + `<em>Calls from the ground answered: ${st.stats.calls || 0}. Missed: ${st.stats.missed || 0}. Shells in the stores: ${st.sandbox ? '∞' : Math.floor(st.stock.shells)}.</em>`;
+  }
   if (!cmType) { const r = $('cm-rep'); if (r) r.textContent = st.report(k); }
 }
 function cmTick(dt) {
@@ -539,7 +552,7 @@ const NUM = ['I', 'II', 'III', 'IV', 'V'];
 function needsText(T) {
   const n = T.needs || {}, out = [];
   if (n.residents) out.push(`${n.residents} residents`); if (n.cap) out.push(`${n.cap} capability`); if (n.crates) out.push(`${n.crates} crates traded`);
-  if (n.power) out.push(`${n.power} power`); if (n.morale) out.push(`morale ${n.morale}`);
+  if (n.power) out.push(`${n.power} power`); if (n.morale) out.push(`morale ${n.morale}`); if (n.ready) out.push(`platform ${n.ready}% ready`);
   for (const r of n.rooms || []) out.push(`a ${C.rooms[r].name}`);
   return out.join(' · ');
 }
@@ -562,6 +575,33 @@ function drawUpg() {
   }).join('');
   if (h !== upgHTML) { upgHTML = h; $('up-list').innerHTML = h; }
 }
+
+// ---------------------------------------------------------------- livery: the station's name, colours, plating, fit-out and emblem
+function livery(on = $('liv').classList.contains('hidden')) {
+  audio.play('click');
+  closeFloats(on ? 'liv' : null);
+  $('liv').classList.toggle('hidden', !on);
+  if (on) drawLivery();
+}
+function setLivery(patch) {
+  st.livery = { ...st.livery, ...patch };
+  view.setLivery(st.livery);
+  try { localStorage.setItem(LIVERY_KEY, JSON.stringify(st.livery)); } catch (e) { /* no storage here */ }
+  buildGrid(); drawLivery();
+}
+function drawLivery() {
+  const L = st.livery, D = C.livery, esc = (x) => String(x).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const pick = (key, opts, label) => `<div class="lv-row"><span class="ol">${label}</span><div class="obs">${Object.entries(opts).map(([k, v]) => `<button type="button" class="btn ob${L[key] === k ? ' on' : ''}" data-key="${key}" data-v="${k}">${typeof v === 'string' && v[0] !== '#' ? v : v.name || k.toUpperCase()}</button>`).join('')}</div></div>`;
+  $('lv-body').innerHTML = `<div class="lv-row"><span class="ol">STATION NAME</span><input id="lv-name" type="text" maxlength="18" placeholder="SUPER EARTH" value="${esc(L.name || '')}"></div>`
+    + `<div class="lv-row"><span class="ol">COLOURS</span><div class="obs">${Object.entries(D.schemes).map(([k, v]) => `<button type="button" class="btn ob sw${L.scheme === k ? ' on' : ''}" data-scheme="${k}"><i style="background:${v.hull}"></i><i style="background:${v.trim}"></i><i style="background:${v.accent}"></i>${v.name}</button>`).join('')}</div></div>`
+    + `<div class="lv-row"><span class="ol">YOUR OWN</span><div class="obs cols"><label>Hull<input type="color" data-col="hull" value="${L.hull}"></label><label>Trim<input type="color" data-col="trim" value="${L.trim}"></label><label>Accent<input type="color" data-col="accent" value="${L.accent}"></label></div></div>`
+    + pick('plating', D.plating, 'HULL PLATING') + pick('interior', D.interior, 'INTERIOR') + pick('lights', Object.fromEntries(Object.keys(D.lights).map((k) => [k, k[0].toUpperCase() + k.slice(1)])), 'LIGHTS') + pick('emblem', D.emblems, 'EMBLEM');
+  $('lv-name').onchange = (e) => setLivery({ name: e.target.value.trim() });
+  for (const b of $('lv-body').querySelectorAll('[data-scheme]')) b.onclick = () => { const S = D.schemes[b.dataset.scheme]; setLivery({ scheme: b.dataset.scheme, hull: S.hull, trim: S.trim, accent: S.accent }); };
+  for (const b of $('lv-body').querySelectorAll('[data-key]')) b.onclick = () => setLivery({ [b.dataset.key]: b.dataset.v });
+  for (const i of $('lv-body').querySelectorAll('[data-col]')) i.onchange = () => setLivery({ scheme: 'own', [i.dataset.col]: i.value });
+}
+$('b-liv').onclick = () => livery(); $('lv-x').onclick = () => livery(false);
 
 // ---------------------------------------------------------------- free play controls
 function simPanel(on = $('simpanel').classList.contains('hidden'), quiet = false) {
@@ -635,6 +675,7 @@ function drain() {
         break;
       case 'restored': audio.play('milestone'); showBanner('STATION RESTORED', 'Every part lit, the decks refitted, people aboard.', 8); break;
       case 'auto': audio.play('built'); break;
+      case 'fire': view.fire(e); audio.play(e.sys === 'gun' || e.sys === 'orbital' || e.sys === 'classified' ? 'fault' : 'crate'); break;
       case 'tier': {
         audio.play('milestone');
         const T = C.tiers[e.tier], u = st.unlocksOf(e.tier);
@@ -657,6 +698,7 @@ function hud() {
   $('r-pop').textContent = `${st.residents()}/${st.beds()}`;
   const mo = Math.round(st.morale); $('r-mo').textContent = mo; $('r-mo').style.color = mo >= 55 ? '' : mo >= 35 ? 'var(--amber)' : 'var(--red)';
   $('r-sh').textContent = `${st.stats.ships} · ${st.stats.lost}`;
+  const rdy = Math.round(st.platform().ready * 100); $('r-rdy').textContent = `${rdy}%`; $('r-rdy').style.color = !st.platformN ? 'var(--red)' : rdy >= 60 ? '' : 'var(--amber)';
   const n = st.next();
   $('tier').textContent = st.sandbox ? 'FREE PLAY' : C.tiers[st.tier].name;
   $('tier-next').textContent = st.sandbox ? '' : n ? ` · next ${n.items.filter((i) => i.ok).length}/${n.items.length}` : ' · top of the path';

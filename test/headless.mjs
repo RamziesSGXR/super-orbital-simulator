@@ -11,6 +11,7 @@ const core = b('core', 1, 1);
 const reactor = b('reactor', core, 1);
 b('spire', reactor, 1);
 b('hab', 1, 4); b('hab', 1, 5);
+b('gunmount', reactor, 2);
 if (layout === 'near') {
   b('dockport', 1, 2); b('cargo', 1, 3);
 } else if (layout === 'far') {
@@ -22,7 +23,7 @@ if (layout === 'near') {
 } else {
   // A big station for free play: a ring, a docking ring with pylons, a hangar, a drydock, and rooms changed inside.
   b('dockport', 1, 2); b('cargo', 1, 3);
-  const ring = b('ring', 1, 0), c2 = b('core', ring, 1), big = b('bigring', c2, 1);
+  const ring = b('ring', 1, 0), c2 = b('core', ring, 0), big = b('bigring', c2, 0);
   for (const p of [2, 3, 4, 5, 6, 7]) b(p % 2 ? 'pylon' : 'dockport', big, p);
   b('hangar', core, 2); b('drydock', core, 3); b('solar', core, 4); b('solar', core, 5);
   for (let i = 0; i < 40; i++) st.step(0.5);

@@ -14,38 +14,185 @@ const flat = (g) => g.rotateX(Math.PI / 2);          // a torus turned to lie in
 
 // ---------------------------------------------------------------- slots: where each room sits inside a part
 // Each slot is a floor tile in the part's own frame: its centre, its turn about Y, and its size (w along its X, d along its Z).
+// Rooms never fill the whole deck: every part keeps a WALK, the way people move through it, and each room opens onto it by a door.
 const around = (n, r, y, w, d, a0 = 0) => Array.from({ length: n }, (_, i) => { const a = a0 + (i + 0.5) * TAU / n; return { p: [Math.cos(a) * r, y, Math.sin(a) * r], ry: -Math.PI / 2 - a, w, d }; });
 const stack = (ys, w, d = w, x = 0) => ys.map((y) => ({ p: [x, y, 0], ry: 0, w, d }));
-const row = (xs, y, w, d) => xs.map((x) => ({ p: [x, y, 0], ry: 0, w, d }));
+const row = (xs, y, w, d, z = 0) => xs.map((x) => ({ p: [x, y, z], ry: 0, w, d }));
+const at = (x, y, z, w, d) => ({ p: [x, y, z], ry: 0, w, d });
 export const SLOTS = {
   command: stack([-0.98, 0.02, 0.92], 1.5),
   core: stack([-0.73, 0.77], 1.5),
   longcore: stack([-2.23, -0.73, 0.77, 2.27], 1.5),
   junction: stack([0.02], 2.1),
-  reactor: [{ p: [1.45, 0.02, 0], ry: 0, w: 1.1, d: 1.6 }],
-  hab: row([1.2, 2.4, 3.6], -0.53, 1.1, 1.5),
-  cargo: row([1.2, 2.4, 3.6], -0.53, 1.1, 1.5),
-  ring: around(12, 7, -0.31, 3.2, 1.25),
-  bigring: around(12, 12, -0.19, 5.6, 0.8),
-  drum: [...around(4, 3.85, -0.73, 2.6, 1.3, Math.PI / 4 - TAU / 8), ...around(4, 3.85, 0.17, 2.6, 1.3, Math.PI / 4 - TAU / 8)],
-  disc: around(8, 3.3, -0.13, 2.1, 1.7),
+  reactor: [{ p: [1.45, 0.02, 0], ry: 0, w: 0.9, d: 1.4 }],
+  hab: row([1.2, 2.4, 3.6], -0.53, 1.1, 1.1, -0.22),
+  cargo: row([1.2, 2.4, 3.6], -0.53, 1.1, 1.1, -0.22),
+  ring: around(12, 7.22, -0.31, 3.3, 1.0),
+  bigring: around(12, 12.14, -0.19, 5.6, 0.6),
+  drum: [...around(4, 4.08, -0.73, 2.7, 0.9, Math.PI / 4 - TAU / 8), ...around(4, 4.08, 0.17, 2.7, 0.9, Math.PI / 4 - TAU / 8)],
+  disc: around(8, 3.0, -0.13, 1.9, 1.7),
   tower: stack([-2.88, -1.73, -0.58, 0.62, 1.77, 2.92], 2.1),
   dome: stack([0.23], 2.8),
   blister: [{ p: [1.4, -0.38, 0], ry: 0, w: 1.4, d: 1.4 }],
-  hangar: row([1.1, 3.0, 4.9], -1.38, 1.8, 3.4),
-  drydock: row([0.55, 1.45], -0.72, 0.85, 2.0),
-  refinery: row([1.2, 2.8], -1.08, 1.4, 1.7),
+  hangar: [at(5.2, -1.58, -0.3, 4.4, 4.0), at(1.55, -1.58, -1.55, 2.3, 1.9), at(1.55, -1.58, 0.45, 2.3, 1.9)],
+  pelicanbay: [at(5.2, -1.58, -0.3, 4.4, 4.0), at(1.55, -1.58, -1.55, 2.3, 1.9), at(1.55, -1.58, 0.45, 2.3, 1.9)],
+  eaglehangar: [at(4.7, -1.38, -1.25, 3.8, 1.9), at(4.7, -1.38, 0.75, 3.8, 1.9), at(1.45, -1.38, -0.3, 2.1, 3.6)],
+  drydock: row([0.55, 1.45], -0.72, 0.85, 1.4, -0.3),
+  refinery: row([1.1, 2.9], -1.08, 1.6, 1.15, -0.3),
+  gunmount: row([0.95, 2.45], -0.62, 1.3, 1.15, -0.28),
+  battery: row([0.9, 2.3, 3.7], -0.62, 1.25, 1.15, -0.28),
+  dronebay: row([0.85, 2.15], -0.62, 1.15, 1.15, -0.28),
+  barracks: row([1.0, 2.6, 4.2], -0.62, 1.45, 1.25, -0.3),
+  fabshop: row([1.2, 3.2], -0.62, 1.8, 1.25, -0.3),
+  lance: row([1.0, 2.6, 4.2], -0.72, 1.45, 1.4, -0.35),
 };
+// How people move through each part. shaft: a lift up the middle, one deck per stop. hall: a corridor along the part at floor
+// height (y) and to one side (z). ring: a corridor round the part at radius R; `spokes` are the angles of the walkways to the hub.
+const deg = (xs) => xs.map((x) => x * Math.PI / 180);
+export const WALK = {
+  command: { k: 'shaft' }, core: { k: 'shaft' }, longcore: { k: 'shaft' }, junction: { k: 'shaft' }, tower: { k: 'shaft' }, dome: { k: 'shaft' },
+  reactor: { k: 'ring', R: 0.95, y: 0.02 },
+  hab: { k: 'hall', y: -0.53, z: 0.6 }, cargo: { k: 'hall', y: -0.53, z: 0.6 },
+  ring: { k: 'ring', R: 6.45, y: -0.31, spokes: deg([0, 90, 180, 270]) }, bigring: { k: 'ring', R: 11.66, y: -0.19, spokes: deg([30, 90, 150, 210, 270, 330]) },
+  drum: { k: 'ring', R: 3.38 }, disc: { k: 'ring', R: 4.55, y: -0.13 },
+  blister: { k: 'hall', y: -0.38, z: 0 }, dockport: { k: 'hall', y: -0.43, z: 0 }, tube: { k: 'hall', y: -0.3, z: 0 }, truss: { k: 'hall', y: -0.28, z: 0 },
+  hangar: { k: 'hall', y: -1.58, z: 2.15 }, pelicanbay: { k: 'hall', y: -1.58, z: 2.15 }, eaglehangar: { k: 'hall', y: -1.38, z: 2.0 },
+  drydock: { k: 'hall', y: -0.72, z: 0.75 }, refinery: { k: 'hall', y: -1.08, z: 0.62 },
+  gunmount: { k: 'hall', y: -0.62, z: 0.62 }, battery: { k: 'hall', y: -0.62, z: 0.62 }, dronebay: { k: 'hall', y: -0.62, z: 0.62 },
+  barracks: { k: 'hall', y: -0.62, z: 0.72 }, fabshop: { k: 'hall', y: -0.62, z: 0.72 }, lance: { k: 'hall', y: -0.72, z: 0.8 },
+};
+// The deck someone stands on at height y inside a part: the highest floor at or just below it.
+export function floorY(type, y) {
+  const W = WALK[type], lay = SLOTS[type];
+  if (W && W.y !== undefined) return W.y;
+  if (!lay || !lay.length) return y;
+  const ys = [...new Set(lay.map((s) => s.p[1]))].sort((a, b) => a - b);
+  let best = ys[0];
+  for (const f of ys) if (f <= y + 0.36) best = f;
+  return best;
+}
+// The point on a part's walk nearest to p (all in the part's own frame).
+export function onWalk(type, p, toward) {
+  const W = WALK[type];
+  if (!W) return null;
+  const y = floorY(type, p[1]);
+  if (W.k === 'shaft') return [0, y, 0];
+  if (W.k === 'hall') return [p[0], y, W.z];
+  let a = Math.atan2(p[2], p[0]);
+  if (Math.hypot(p[0], p[2]) < 0.4 && toward) a = Math.atan2(toward[2], toward[0]);
+  return [Math.cos(a) * W.R, y, Math.sin(a) * W.R];
+}
+// The way from a to b through a part, as a list of points: off the spot, along the walk, onto the other spot.
+export function walkPath(type, a, b) {
+  const W = WALK[type];
+  if (!W) return [a, b];
+  const A = [a[0], floorY(type, a[1]), a[2]], B = [b[0], floorY(type, b[1]), b[2]];
+  const pa = onWalk(type, A, B), pb = onWalk(type, B, A), out = [A];
+  if (W.k === 'ring') {
+    // someone at the hub goes out along a spoke first
+    const hub = (P, Q) => { if (Math.hypot(P[0], P[2]) > 0.4 || !W.spokes) return null; const t = Math.atan2(Q[2], Q[0]); let best = W.spokes[0]; for (const s of W.spokes) if (Math.abs(Math.atan2(Math.sin(s - t), Math.cos(s - t))) < Math.abs(Math.atan2(Math.sin(best - t), Math.cos(best - t)))) best = s; return [Math.cos(best) * W.R, P[1], Math.sin(best) * W.R]; };
+    const ha = hub(A, B), hb = hub(B, A), s = ha || pa, e = hb || pb;
+    out.push(s);
+    let a0 = Math.atan2(s[2], s[0]), d = Math.atan2(e[2], e[0]) - a0; d = Math.atan2(Math.sin(d), Math.cos(d));
+    const n = Math.max(1, Math.ceil(Math.abs(d) / 0.2));
+    for (let i = 1; i <= n; i++) { const t = a0 + d * i / n; out.push([Math.cos(t) * W.R, s[1] + (e[1] - s[1]) * i / n, Math.sin(t) * W.R]); }
+  } else { out.push(pa); out.push(pb); }
+  out.push(B);
+  return out;
+}
+// Which side of a slot its door is on: the side nearest the walk. Null on an open deck round a lift.
+export function doorSide(type, s) {
+  const W = WALK[type];
+  if (!W || W.k === 'shaft') return null;
+  const w = onWalk(type, s.p), dx = w[0] - s.p[0], dz = w[2] - s.p[2], c = Math.cos(s.ry), sn = Math.sin(s.ry);
+  const lx = dx * c - dz * sn, lz = dx * sn + dz * c;      // into the slot's own frame
+  if (Math.hypot(lx, lz) < 0.05) return null;
+  return Math.abs(lx) > Math.abs(lz) ? (lx > 0 ? '+x' : '-x') : (lz > 0 ? '+z' : '-z');
+}
+// A person's spot in a slot, and the slot's door, in the part's frame.
+export function slotSpot(type, i, k) {
+  const s = SLOTS[type][i], c = Math.cos(s.ry), sn = Math.sin(s.ry);
+  const u = (k * 7.31 % 1 - 0.5) * s.w * 0.6, w = (k * 3.77 % 1 - 0.5) * s.d * 0.5;
+  const spot = [s.p[0] + u * c + w * sn, s.p[1], s.p[2] - u * sn + w * c];
+  const side = doorSide(type, s);
+  if (!side) return { spot, door: null };
+  const ox = side === '+x' ? s.w / 2 : side === '-x' ? -s.w / 2 : 0, oz = side === '+z' ? s.d / 2 : side === '-z' ? -s.d / 2 : 0;
+  return { spot, door: [s.p[0] + ox * c + oz * sn, s.p[1], s.p[2] - ox * sn + oz * c] };
+}
+
+// Bake a built group down to one mesh (or one set of lines) per role, so a part or a room costs a handful of draw calls however
+// many pieces it was drawn from. Sub-groups (fittings turned to face a door, a craft on a pad) are folded in where they stand.
+function bake(g) {
+  g.updateMatrixWorld(true);
+  const by = new Map();
+  g.traverse((o) => { if ((o.isMesh || o.isLineSegments) && o.userData.role) { const k = (o.isMesh ? 'm:' : 'l:') + o.userData.role; if (!by.has(k)) by.set(k, []); by.get(k).push(o); } });
+  const out = new THREE.Group();
+  for (const [k, list] of by) {
+    const geos = list.map((o) => { const x = (o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone()); x.applyMatrix4(o.matrixWorld); return x; });
+    const n = geos.reduce((t, x) => t + x.attributes.position.count, 0), mesh = k[0] === 'm', geo = new THREE.BufferGeometry();
+    const names = ['position']; if (mesh) { names.push('normal'); if (geos.every((x) => x.attributes.uv)) names.push('uv'); }
+    for (const name of names) {
+      const size = name === 'uv' ? 2 : 3, arr = new Float32Array(n * size); let off = 0;
+      for (const x of geos) { const at = x.attributes[name]; if (at) arr.set(at.array.subarray(0, at.count * size), off); off += x.attributes.position.count * size; }
+      geo.setAttribute(name, new THREE.BufferAttribute(arr, size));
+    }
+    for (const x of geos) x.dispose();
+    const o = mesh ? new THREE.Mesh(geo) : new THREE.LineSegments(geo);
+    Object.assign(o.userData, list[0].userData); out.add(o);
+  }
+  return out;
+}
+
+// Hull pieces get skin coordinates measured in station units (one repeat every 2 units), so plating is the same size on every part.
+function skin(geom) {
+  const g = geom.index ? geom.toNonIndexed() : geom, P = g.attributes.position, uv = new Float32Array(P.count * 2);
+  for (let i = 0; i < P.count; i += 3) {
+    const ax = P.getX(i), ay = P.getY(i), az = P.getZ(i), ux = P.getX(i + 1) - ax, uy = P.getY(i + 1) - ay, uz = P.getZ(i + 1) - az, vx = P.getX(i + 2) - ax, vy = P.getY(i + 2) - ay, vz = P.getZ(i + 2) - az;
+    const nx = Math.abs(uy * vz - uz * vy), ny = Math.abs(uz * vx - ux * vz), nz = Math.abs(ux * vy - uy * vx);
+    for (let j = 0; j < 3; j++) {
+      const x = P.getX(i + j), y = P.getY(i + j), z = P.getZ(i + j);
+      if (ny >= nx && ny >= nz) { uv[(i + j) * 2] = x * 0.5; uv[(i + j) * 2 + 1] = z * 0.5; }
+      else if (nx >= nz) { uv[(i + j) * 2] = z * 0.5; uv[(i + j) * 2 + 1] = y * 0.5; }
+      else { uv[(i + j) * 2] = x * 0.5; uv[(i + j) * 2 + 1] = y * 0.5; }
+    }
+  }
+  g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  return g;
+}
 
 export function buildPart(type) {
   const g = new THREE.Group();
   const put = (geom, role, x = 0, y = 0, z = 0, opt = {}) => {
     geom.translate(x, y, z);
-    const m = new THREE.Mesh(geom); m.userData.role = role; g.add(m);
+    const m = new THREE.Mesh(role === 'hull' || role === 'trim' ? skin(geom) : geom); m.userData.role = role; g.add(m);
     if ((role === 'hull' || role === 'glass' || role === 'inner') && !opt.noEdges) {
       const e = new THREE.LineSegments(new THREE.EdgesGeometry(geom, opt.angle ?? 28)); e.userData.role = role === 'inner' ? 'innerLine' : 'line'; g.add(e);
     }
     return m;
+  };
+  // A module body with its corners cut: an eight-sided section drawn along +X from x = 0 to L.
+  const oct = (L, w, h, ch = 0.3) => {
+    const sh = new THREE.Shape(), a = w / 2, b = h / 2;
+    sh.moveTo(-a + ch, -b); sh.lineTo(a - ch, -b); sh.lineTo(a, -b + ch); sh.lineTo(a, b - ch); sh.lineTo(a - ch, b); sh.lineTo(-a + ch, b); sh.lineTo(-a, b - ch); sh.lineTo(-a, -b + ch); sh.closePath();
+    return new THREE.ExtrudeGeometry(sh, { depth: L, bevelEnabled: false }).rotateY(Math.PI / 2);
+  };
+  const collar = (r = 0.62) => put(along(new THREE.CylinderGeometry(r, r, 0.3, 16)), 'trim', 0.1, 0, 0);
+  const ports = (n, x0, dx, y, z) => { for (let i = 0; i < n; i++) for (const s of [1, -1]) put(new THREE.BoxGeometry(0.3, 0.16, 0.04), 'glow', x0 + i * dx, y, s * z); };
+  // A nameplate: the station's emblem and name, on a backing plate. It faces +Z (or −Z).
+  const plate = (x, y, z, w = 1.0, h = 0.5, back = false) => {
+    put(new THREE.BoxGeometry(w + 0.08, h + 0.08, 0.04), 'trim', x, y, z - (back ? -0.02 : 0.02), { noEdges: true });
+    const pl = new THREE.PlaneGeometry(w, h); if (back) pl.rotateY(Math.PI);
+    put(pl, 'decal', x, y, z + (back ? -0.006 : 0.006), { noEdges: true });
+  };
+  // An open bay: floor, roof, two walls and a back, with a lit door frame at the far end.
+  const bay = (L, hy, hz) => {
+    put(new THREE.BoxGeometry(L, 0.2, hz * 2), 'hull', L / 2, -hy, 0); put(new THREE.BoxGeometry(L, 0.2, hz * 2), 'hull', L / 2, hy, 0);
+    put(new THREE.BoxGeometry(L, hy * 2 + 0.2, 0.2), 'hull', L / 2, 0, hz); put(new THREE.BoxGeometry(L, hy * 2 + 0.2, 0.2), 'hull', L / 2, 0, -hz); put(new THREE.BoxGeometry(0.2, hy * 2 + 0.2, hz * 2 + 0.2), 'hull', 0.1, 0, 0);
+    for (const z of [hz + 0.11, -hz - 0.11]) for (let i = 0; i < Math.floor(L - 1); i++) put(new THREE.BoxGeometry(0.5, 0.18, 0.04), 'glow', 0.9 + i * 1.1, hy * 0.55, z);
+    for (const y of [hy - 0.1, -hy + 0.1]) { put(new THREE.BoxGeometry(0.25, 0.25, hz * 2 + 0.3), 'trim', L, y, 0, { noEdges: true }); put(new THREE.BoxGeometry(0.08, 0.08, hz * 2 - 0.4), 'glow', L + 0.06, y * 0.9, 0); }
+    for (const z of [hz, -hz]) put(new THREE.BoxGeometry(0.25, hy * 2, 0.25), 'trim', L, 0, z, { noEdges: true });
+    put(new THREE.BoxGeometry(L - 0.2, 0.1, 0.03), 'trim', L / 2, -hy * 0.45, hz + 0.115, { noEdges: true }); put(new THREE.BoxGeometry(L - 0.2, 0.1, 0.03), 'trim', L / 2, -hy * 0.45, -hz - 0.115, { noEdges: true });
+    plate(L * 0.5, hy * 0.05, hz + 0.13, 1.6, 0.8); plate(L * 0.5, hy * 0.05, -hz - 0.13, 1.6, 0.8, true);
   };
   const wire = (pts) => {
     const l = new THREE.LineSegments(new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(pts, 3)));
@@ -65,20 +212,21 @@ export function buildPart(type) {
       put(new THREE.CylinderGeometry(1.2, 1.9, 0.45, 24), 'hull', 0, 1.47, 0);
       put(new THREE.CylinderGeometry(1.55, 1.55, 0.3, 24), 'hull', 0, -1.2, 0);
       windows(16, 1.92, 0.95, 0.3, 0.16);
+      plate(0, -0.35, 1.22, 1.0, 0.5); plate(0, -0.35, -1.22, 1.0, 0.5, true);
       shaft(3.2);
       break;
     }
     case 'core': case 'longcore': {
       const h = type === 'core' ? 3 : 6;
       put(new THREE.CylinderGeometry(1.2, 1.2, h, 24), 'hull');
-      for (const y of type === 'core' ? [-1.15, 1.15] : [-2.9, -1.5, 0, 1.5, 2.9]) put(flat(new THREE.TorusGeometry(1.24, 0.09, 6, 24)), 'hull', 0, y, 0, { noEdges: true });
+      for (const y of type === 'core' ? [-1.15, 1.15] : [-2.9, -1.5, 0, 1.5, 2.9]) put(flat(new THREE.TorusGeometry(1.24, 0.09, 6, 24)), 'trim', 0, y, 0, { noEdges: true });
       for (const y of type === 'core' ? [0.3] : [-2.0, -0.6, 0.9, 2.3]) windows(8, 1.22, y, 0.2, 0.12);
       shaft(h - 0.1);
       break;
     }
     case 'junction': {
       put(new THREE.CylinderGeometry(1.6, 1.6, 1.6, 12), 'hull', 0, 0, 0, { angle: 20 });
-      for (const y of [-0.8, 0.8]) put(flat(new THREE.TorusGeometry(1.6, 0.1, 6, 24)), 'hull', 0, y, 0, { noEdges: true });
+      for (const y of [-0.8, 0.8]) put(flat(new THREE.TorusGeometry(1.6, 0.1, 6, 24)), 'trim', 0, y, 0, { noEdges: true });
       windows(12, 1.62, 0.35, 0.3, 0.12);
       shaft(1.5);
       break;
@@ -93,7 +241,7 @@ export function buildPart(type) {
     }
     case 'spire': {
       put(new THREE.CylinderGeometry(0.35, 1.2, 4, 16), 'hull');
-      put(flat(new THREE.TorusGeometry(1.0, 0.12, 6, 20)), 'hull', 0, -1.0, 0, { noEdges: true });
+      put(flat(new THREE.TorusGeometry(1.0, 0.12, 6, 20)), 'trim', 0, -1.0, 0, { noEdges: true });
       const p = [0, 2, 0, 0, 5.2, 0];
       for (const [y, w] of [[2.8, 1.4], [3.6, 1.0], [4.4, 0.6]]) p.push(-w, y, 0, w, y, 0, 0, y, -w, 0, y, w);
       wire(p);
@@ -150,37 +298,87 @@ export function buildPart(type) {
     }
     case 'dockport': {
       put(along(new THREE.CylinderGeometry(0.7, 0.7, 2.2, 16)), 'hull', 1.1, 0, 0);
-      put(new THREE.TorusGeometry(0.85, 0.13, 6, 20).rotateY(Math.PI / 2), 'hull', 2.2, 0, 0, { noEdges: true });
+      put(new THREE.TorusGeometry(0.85, 0.13, 6, 20).rotateY(Math.PI / 2), 'trim', 2.2, 0, 0, { noEdges: true });
       for (const [y, z] of [[0.6, 0.6], [-0.6, 0.6], [0.6, -0.6], [-0.6, -0.6]]) box(0.1, 0.12, 0.12, 'glow', 2.32, y, z);
       box(2.0, 0.05, 0.9, 'inner', 1.1, -0.45, 0, { angle: 60 });
       break;
     }
     case 'pylon': {
       box(5, 0.7, 0.7, 'hull', 2.5, 0, 0); box(0.9, 0.9, 0.9, 'hull', 5, 0, 0); box(0.6, 4.2, 0.6, 'hull', 5, 2.5, 0);
-      put(flat(new THREE.TorusGeometry(0.75, 0.14, 6, 20)), 'hull', 5, 4.7, 0, { noEdges: true });
+      put(flat(new THREE.TorusGeometry(0.75, 0.14, 6, 20)), 'trim', 5, 4.7, 0, { noEdges: true });
       for (const y of [1.2, 2.4, 3.6]) box(0.62, 0.1, 0.62, 'glow', 5, y, 0);
       put(new THREE.SphereGeometry(0.14, 8, 6), 'glow', 5, 5.05, 0);
       break;
     }
-    case 'hangar': {
-      box(6, 0.2, 4, 'hull', 3, -1.5, 0); box(6, 0.2, 4, 'hull', 3, 1.5, 0);
-      box(6, 3.2, 0.2, 'hull', 3, 0, 2); box(6, 3.2, 0.2, 'hull', 3, 0, -2); box(0.2, 3.2, 4.2, 'hull', 0.1, 0, 0);
-      for (const z of [2.05, -2.05]) for (let i = 0; i < 5; i++) box(0.5, 0.18, 0.04, 'glow', 0.9 + i * 1.1, 0.9, z);
-      box(0.25, 0.25, 4.3, 'hull', 6, 1.4, 0); box(0.25, 0.25, 4.3, 'hull', 6, -1.4, 0);
-      box(0.08, 0.08, 3.6, 'glow', 6.05, 1.25, 0); box(0.08, 0.08, 3.6, 'glow', 6.05, -1.25, 0);
-      break;
-    }
+    case 'hangar': case 'pelicanbay': { bay(8, 1.7, 2.7); break; }
+    case 'eaglehangar': { bay(7, 1.5, 2.4); break; }
     case 'drydock': {
       box(2, 1.8, 2.4, 'hull', 1, 0, 0);
       for (let i = 0; i < 4; i++) box(0.5, 0.18, 0.04, 'glow', 1, 0.45, i < 2 ? 1.22 : -1.22);
-      const p = [];
-      for (const [y, z] of [[1.6, 1.6], [1.6, -1.6], [-1.6, 1.6], [-1.6, -1.6]]) { box(10, 0.16, 0.16, 'hull', 7, y, z, { noEdges: true }); p.push(2, y, z, 12, y, z); }
-      for (let x = 2; x <= 12.01; x += 2.5) {
-        p.push(x, 1.6, 1.6, x, 1.6, -1.6, x, 1.6, -1.6, x, -1.6, -1.6, x, -1.6, -1.6, x, -1.6, 1.6, x, -1.6, 1.6, x, 1.6, 1.6);
-        for (const [y, z] of [[1.6, 1.6], [1.6, -1.6], [-1.6, 1.6], [-1.6, -1.6]]) put(new THREE.SphereGeometry(0.1, 6, 4), 'glow', x, y, z);
+      const p = [], h = 2.3, x1 = 17;
+      for (const [y, z] of [[h, h], [h, -h], [-h, h], [-h, -h]]) { box(x1 - 2, 0.18, 0.18, 'hull', (x1 + 2) / 2, y, z, { noEdges: true }); p.push(2, y, z, x1, y, z); }
+      for (let x = 2; x <= x1 + 0.01; x += 3) {
+        p.push(x, h, h, x, h, -h, x, h, -h, x, -h, -h, x, -h, -h, x, -h, h, x, -h, h, x, h, h);
+        for (const [y, z] of [[h, h], [h, -h], [-h, h], [-h, -h]]) put(new THREE.SphereGeometry(0.1, 6, 4), 'glow', x, y, z);
       }
       wire(p);
-      box(10, 0.1, 0.5, 'hull', 7, 1.75, 0, { noEdges: true });
+      box(x1 - 2, 0.1, 0.5, 'trim', (x1 + 2) / 2, h + 0.15, 0, { noEdges: true });
+      break;
+    }
+    // ---- the fire support platform
+    case 'gunmount': {
+      put(oct(3.4, 2.0, 1.6), 'hull', 0.2, 0, 0); collar();
+      ports(3, 0.9, 0.55, 0.3, 1.01); box(3.3, 0.09, 2.02, 'trim', 1.9, -0.32, 0, { noEdges: true });
+      plate(2.9, 0.22, 1.02, 0.7, 0.36); plate(2.9, 0.22, -1.02, 0.7, 0.36, true);
+      put(new THREE.CylinderGeometry(0.8, 0.95, 0.35, 20), 'hull', 1.9, -0.95, 0); put(new THREE.SphereGeometry(0.62, 16, 10), 'hull', 1.9, -1.3, 0, { angle: 40 });
+      for (const z of [0.22, -0.22]) { put(new THREE.CylinderGeometry(0.11, 0.14, 1.7, 10), 'hull', 1.9, -2.3, z, { noEdges: true }); put(new THREE.CylinderGeometry(0.15, 0.15, 0.2, 10), 'trim', 1.9, -3.05, z, { noEdges: true }); put(new THREE.CylinderGeometry(0.09, 0.09, 0.03, 10), 'glow', 1.9, -3.17, z); }
+      break;
+    }
+    case 'battery': {
+      put(oct(4.6, 2.0, 1.6), 'hull', 0.2, 0, 0); collar();
+      ports(4, 0.9, 0.55, 0.3, 1.01); box(4.5, 0.09, 2.02, 'trim', 2.5, -0.32, 0, { noEdges: true });
+      plate(4.0, 0.22, 1.02, 0.7, 0.36); plate(4.0, 0.22, -1.02, 0.7, 0.36, true);
+      box(1.5, 0.7, 1.5, 'hull', 2.5, -1.1, 0); put(new THREE.CylinderGeometry(0.36, 0.44, 3.0, 14), 'hull', 2.5, -2.9, 0, { angle: 40 });
+      for (const y of [-1.9, -2.7, -3.5]) put(flat(new THREE.TorusGeometry(0.45, 0.07, 6, 16)), 'trim', 2.5, y, 0, { noEdges: true });
+      put(new THREE.CylinderGeometry(0.52, 0.52, 0.34, 14), 'hull', 2.5, -4.5, 0); put(new THREE.CylinderGeometry(0.3, 0.3, 0.03, 14), 'glow', 2.5, -4.69, 0);
+      for (const [x, z] of [[1.95, 0.55], [3.05, 0.55], [1.95, -0.55], [3.05, -0.55]]) put(new THREE.CylinderGeometry(0.06, 0.06, 1.5, 6), 'hull', x, -2.1, z, { noEdges: true });
+      break;
+    }
+    case 'dronebay': {
+      put(oct(3.0, 2.0, 1.6), 'hull', 0.2, 0, 0); collar();
+      ports(2, 0.9, 0.6, 0.3, 1.01); box(2.9, 0.09, 2.02, 'trim', 1.7, -0.32, 0, { noEdges: true });
+      for (const z of [-0.5, 0, 0.5]) { box(2.2, 0.06, 0.08, 'hull', 1.7, -0.95, z, { noEdges: true }); const d = new THREE.ConeGeometry(0.14, 0.7, 4); d.rotateZ(-Math.PI / 2); put(d, 'hull', 1.4 + z * 0.6, -1.12, z); box(0.5, 0.02, 0.5, 'hull', 1.3 + z * 0.6, -1.12, z, { noEdges: true }); put(new THREE.SphereGeometry(0.04, 6, 4), 'glow', 1.76 + z * 0.6, -1.12, z); }
+      put(new THREE.CylinderGeometry(0.03, 0.03, 0.9, 6), 'hull', 2.8, 1.2, 0.6, { noEdges: true }); put(new THREE.SphereGeometry(0.06, 6, 4), 'glow', 2.8, 1.68, 0.6);
+      break;
+    }
+    case 'relay': {
+      put(along(new THREE.CylinderGeometry(0.12, 0.12, 1.2, 8)), 'hull', 0.6, 0, 0, { noEdges: true }); box(0.4, 0.4, 0.4, 'hull', 1.2, 0, 0);
+      const prof = []; for (let i = 0; i <= 8; i++) { const r = 0.05 + i * 0.15; prof.push(V2(r, r * r / 2.6)); }
+      put(new THREE.LatheGeometry(prof, 24).rotateX(Math.PI), 'hull', 1.2, -0.25, 0, { angle: 30 });
+      put(new THREE.CylinderGeometry(0.03, 0.03, 0.8, 6), 'hull', 1.2, -0.7, 0, { noEdges: true }); put(new THREE.SphereGeometry(0.09, 8, 6), 'glow', 1.2, -1.12, 0);
+      break;
+    }
+    case 'barracks': {
+      put(oct(5.0, 2.2, 1.6), 'hull', 0.1, 0, 0); collar(); put(along(new THREE.CylinderGeometry(0.62, 0.62, 0.3, 16)), 'trim', 5.1, 0, 0);
+      ports(6, 0.9, 0.6, 0.3, 1.11); box(4.9, 0.09, 2.22, 'trim', 2.6, -0.32, 0, { noEdges: true });
+      plate(4.45, 0.24, 1.12, 0.7, 0.36); plate(4.45, 0.24, -1.12, 0.7, 0.36, true);
+      break;
+    }
+    case 'fabshop': {
+      put(oct(4.2, 2.2, 1.6), 'hull', 0.1, 0, 0); collar(); put(along(new THREE.CylinderGeometry(0.62, 0.62, 0.3, 16)), 'trim', 4.3, 0, 0);
+      ports(3, 0.9, 0.6, 0.3, 1.11); box(4.1, 0.09, 2.22, 'trim', 2.2, -0.32, 0, { noEdges: true });
+      for (const [x, z] of [[1.2, 0.5], [1.2, -0.5]]) { put(new THREE.CylinderGeometry(0.2, 0.26, 0.7, 10), 'hull', x, 1.1, z); put(new THREE.CylinderGeometry(0.14, 0.14, 0.04, 10), 'glow', x, 1.47, z); }
+      for (let i = 0; i < 4; i++) box(0.5, 0.45, 0.5, 'pod', 2.6 + (i % 2) * 0.6, -1.05, i < 2 ? 0.35 : -0.35);
+      break;
+    }
+    case 'lance': {
+      put(oct(6.0, 2.4, 1.8, 0.35), 'hull', 0.2, 0, 0); collar(0.7);
+      ports(6, 0.9, 0.8, 0.35, 1.21); box(5.9, 0.1, 2.42, 'trim', 3.2, -0.36, 0, { noEdges: true });
+      plate(5.4, 0.3, 1.22, 0.9, 0.45); plate(5.4, 0.3, -1.22, 0.9, 0.45, true);
+      box(2.2, 0.9, 2.2, 'hull', 3.2, -1.3, 0); put(new THREE.CylinderGeometry(0.7, 0.9, 6, 16), 'hull', 3.2, -4.7, 0, { angle: 40 });
+      for (const y of [-2.4, -3.6, -4.8, -6.0, -7.2]) put(flat(new THREE.TorusGeometry(0.95, 0.1, 6, 20)), 'trim', 3.2, y, 0, { noEdges: true });
+      for (let i = 0; i < 4; i++) { const a = i * TAU / 4 + Math.PI / 4; put(new THREE.SphereGeometry(0.34, 12, 8), 'hull', 3.2 + Math.cos(a) * 1.25, -2.0, Math.sin(a) * 1.25, { angle: 40 }); put(new THREE.CylinderGeometry(0.05, 0.05, 1.2, 6), 'glow', 3.2 + Math.cos(a) * 1.25, -2.8, Math.sin(a) * 1.25); }
+      put(new THREE.CylinderGeometry(0.6, 0.6, 0.04, 16), 'glow', 3.2, -7.72, 0);
       break;
     }
     case 'truss': {
@@ -194,7 +392,7 @@ export function buildPart(type) {
     }
     case 'tube': {
       put(along(new THREE.CylinderGeometry(0.5, 0.5, 4, 12)), 'hull', 2, 0, 0, { angle: 40 });
-      for (const x of [0.3, 2, 3.7]) put(new THREE.TorusGeometry(0.53, 0.07, 6, 16).rotateY(Math.PI / 2), 'hull', x, 0, 0, { noEdges: true });
+      for (const x of [0.3, 2, 3.7]) put(new THREE.TorusGeometry(0.53, 0.07, 6, 16).rotateY(Math.PI / 2), 'trim', x, 0, 0, { noEdges: true });
       for (let i = 0; i < 6; i++) box(0.3, 0.1, 0.04, 'glow', 0.6 + i * 0.55, 0.15, 0.5);
       box(3.8, 0.03, 0.6, 'inner', 2, -0.32, 0, { angle: 60 });
       break;
@@ -212,7 +410,8 @@ export function buildPart(type) {
       put(along(new THREE.CylinderGeometry(1, 1, 3.6, 20)), 'hull', 2.4, 0, 0);
       put(along(new THREE.CylinderGeometry(1, 0.55, 0.6, 20)), 'hull', 4.5, 0, 0);
       put(along(new THREE.CylinderGeometry(0.55, 1, 0.6, 20)), 'hull', 0.3, 0, 0);
-      for (const x of [1.2, 2.4, 3.6]) put(new THREE.TorusGeometry(1.04, 0.08, 6, 20).rotateY(Math.PI / 2), 'hull', x, 0, 0, { noEdges: true });
+      for (const x of [1.2, 2.4, 3.6]) put(new THREE.TorusGeometry(1.04, 0.08, 6, 20).rotateY(Math.PI / 2), 'trim', x, 0, 0, { noEdges: true });
+      box(3.4, 0.07, 2.02, 'trim', 2.4, -0.2, 0, { noEdges: true });
       if (type === 'cargo') for (const z of [1.01, -1.01]) box(2.6, 0.08, 0.04, 'glow', 2.4, 0.5, z);
       else for (let i = 0; i < 6; i++) for (const z of [1.0, -1.0]) box(0.3, 0.2, 0.04, 'glow', 0.9 + i * 0.6, 0.15, z);
       break;
@@ -230,7 +429,7 @@ export function buildPart(type) {
       put(along(new THREE.CylinderGeometry(0.25, 0.25, 4.2, 8)), 'hull', 2.1, 0, 0, { noEdges: true });
       for (const x of [0.95, 2.15, 3.35]) {
         put(new THREE.SphereGeometry(0.85, 16, 10), 'hull', x, 0, 0, { angle: 35 });
-        put(flat(new THREE.TorusGeometry(0.87, 0.06, 6, 20)), 'hull', x, 0, 0, { noEdges: true });
+        put(flat(new THREE.TorusGeometry(0.87, 0.06, 6, 20)), 'trim', x, 0, 0, { noEdges: true });
       }
       for (const z of [0.5, -0.5]) put(along(new THREE.CylinderGeometry(0.06, 0.06, 3.6, 6)), 'hull', 2.1, -0.75, z, { noEdges: true });
       box(0.1, 0.1, 0.1, 'glow', 4.2, 0, 0);
@@ -278,7 +477,7 @@ export function buildPart(type) {
     }
     case 'shield': {
       box(1.4, 0.3, 0.3, 'hull', 0.7, 0, 0);
-      put(new THREE.TorusGeometry(0.6, 0.08, 6, 20).rotateY(Math.PI / 2), 'hull', 1.6, 0, 0, { noEdges: true });
+      put(new THREE.TorusGeometry(0.6, 0.08, 6, 20).rotateY(Math.PI / 2), 'trim', 1.6, 0, 0, { noEdges: true });
       put(new THREE.SphereGeometry(0.42, 16, 10), 'glow', 1.75, 0, 0);
       break;
     }
@@ -298,36 +497,103 @@ export function buildPart(type) {
       break;
     }
   }
-  return g;
+  // The way through: a deck plate and a corridor with a lit centre line, a ring walk, or lift stops.
+  const W = WALK[type], lay = SLOTS[type];
+  if (W && W.k === 'hall') {
+    const bb = new THREE.Box3().setFromObject(g), x0 = Math.max(0.05, bb.min.x + 0.12), x1 = bb.max.x - 0.12, wide = { hab: 1.66, cargo: 1.66, gunmount: 1.8, battery: 1.8, dronebay: 1.8, barracks: 2.0, fabshop: 2.0, lance: 2.2, refinery: 1.8 }[type];
+    if (wide) box(x1 - x0, 0.03, wide, 'inner', (x0 + x1) / 2, W.y - 0.02, 0, { angle: 60 });
+    if (lay) for (let x = x0 + 0.2; x < x1 - 0.1; x += 0.5) box(0.22, 0.012, 0.035, 'lane', x, W.y + 0.004, W.z);
+  } else if (W && W.k === 'ring') {
+    const ys = W.y !== undefined ? [W.y] : [...new Set(lay.map((s) => s.p[1]))];
+    for (const y of ys) { const n = Math.round(W.R * 5); for (let i = 0; i < n; i++) { const a = i * TAU / n, b = new THREE.BoxGeometry(0.035, 0.012, 0.22); b.rotateY(-a); put(b, 'lane', Math.cos(a) * W.R, y + 0.004, Math.sin(a) * W.R); } }
+    for (const a of W.spokes || []) for (let r = 1.5; r < W.R - 0.2; r += 0.5) { const b = new THREE.BoxGeometry(0.22, 0.012, 0.035); b.rotateY(-a); put(b, 'lane', Math.cos(a) * r, W.y + 0.004, Math.sin(a) * r); }
+  } else if (W && W.k === 'shaft' && lay) {
+    for (const y of new Set(lay.map((s) => s.p[1]))) { put(flat(new THREE.TorusGeometry(0.3, 0.02, 4, 16)), 'lane', 0, y + 0.03, 0); box(0.2, 0.42, 0.03, 'lane', 0, y + 0.23, 0.235); }
+  }
+  return bake(g);
 }
 
-// ---------------------------------------------------------------- rooms: a floor tile, and the furniture that says what it is
-// Built in the tile's own frame (floor at y = 0, w along X, d along Z). Heights stay under half a unit to fit the thinnest decks.
-export function buildRoom(room, w, d) {
-  const g = new THREE.Group();
-  const put = (geom, role, x = 0, y = 0, z = 0) => { geom.translate(x, y, z); const m = new THREE.Mesh(geom); m.userData.role = role; g.add(m); return m; };
-  const box = (bw, bh, bd, role, x, y, z) => put(new THREE.BoxGeometry(bw, bh, bd), role, x, y + bh / 2, z);
-  const tile = put(new THREE.BoxGeometry(w * 0.94, 0.04, d * 0.94), 'tile', 0, 0.02, 0);
+// ---------------------------------------------------------------- rooms: a floor tile, walls with a door onto the walk, and fittings
+// Built in the tile's own frame (floor at y = 0, w along X, d along Z). `door` is the side the door is on ('+z', '-z', '+x', '-x'),
+// or null for an open deck. Everything is sized to the standard: a person is 0.36 tall, a bed 0.42 long, a door 0.2 by 0.42.
+// Walls stop at shoulder height so you can see in from above.
+const OPEN = new Set(['empty', 'shuttlebay', 'pelicanpad', 'eaglepad', 'fighterbay']);
+export function buildRoom(room, w, d, door = null) {
+  const g = new THREE.Group(), f = new THREE.Group();
+  const add = (grp, geom, role, x, y, z) => { geom.translate(x, y, z); const m = new THREE.Mesh(geom); m.userData.role = role; grp.add(m); return m; };
+  const tile = add(g, new THREE.BoxGeometry(w * 0.96, 0.04, d * 0.96), 'tile', 0, 0.02, 0);
   tile.userData.room = room;
   const e = new THREE.LineSegments(new THREE.EdgesGeometry(tile.geometry)); e.userData.role = 'tileLine'; g.add(e);
-  const W = w * 0.42, D = d * 0.42, s = Math.min(1, Math.min(w, d) / 1.3);
-  switch (room) {
-    case 'quarters': for (const x of [-W * 0.5, W * 0.5]) { box(0.3 * s, 0.12, 0.6 * s, 'inner', x, 0.04, -D * 0.3); box(0.1, 0.32, 0.18, 'inner', x, 0.04, D * 0.6); } break;
-    case 'bunks': for (const x of [-W * 0.6, -W * 0.2, W * 0.2, W * 0.6]) { box(0.22 * s, 0.1, 0.6 * s, 'inner', x, 0.04, 0); box(0.22 * s, 0.1, 0.6 * s, 'inner', x, 0.26, 0); } break;
-    case 'mess': box(W * 1.2, 0.04, D * 0.5, 'inner', 0, 0.22, 0); for (const x of [-W * 0.4, W * 0.4]) for (const z of [-D * 0.5, D * 0.5]) put(new THREE.CylinderGeometry(0.07, 0.07, 0.16, 6), 'inner', x, 0.12, z); break;
-    case 'lounge': box(W * 1.4, 0.16, 0.25, 'inner', 0, 0.04, -D * 0.6); box(0.06, 0.2, D * 1.4, 'glow', W * 0.95, 0.15, 0); break;
-    case 'hydro': for (const x of [-W * 0.6, 0, W * 0.6]) { box(0.3 * s, 0.1, D * 1.5, 'inner', x, 0.04, 0); box(0.24 * s, 0.14, D * 1.4, 'plant', x, 0.14, 0); } break;
-    case 'workshop': box(W * 1.2, 0.2, 0.3, 'inner', 0, 0.04, -D * 0.6); box(0.3, 0.25, 0.3, 'inner', W * 0.7, 0.04, D * 0.4); put(new THREE.SphereGeometry(0.05, 6, 4), 'spark', 0, 0.3, -D * 0.6); break;
-    case 'cargostore': for (let i = 0; i < 4; i++) box(0.32 * s, 0.3, 0.32 * s, 'crate', (i % 2 ? 1 : -1) * W * 0.45, 0.04 + (i > 1 ? 0.3 : 0), (i > 1 ? 0.1 : -0.1) * D); break;
-    case 'ops': for (const x of [-W * 0.6, 0, W * 0.6]) { box(0.3 * s, 0.22, 0.25, 'inner', x, 0.04, -D * 0.4); box(0.26 * s, 0.14, 0.03, 'glow', x, 0.3, -D * 0.4 + 0.13); } break;
-    case 'market': for (const x of [-W * 0.6, 0, W * 0.6]) { box(0.3 * s, 0.2, 0.3 * s, 'inner', x, 0.04, 0); box(0.36 * s, 0.03, 0.4 * s, 'awning', x, 0.36, 0.05); } break;
-    case 'bar': box(W * 1.5, 0.22, 0.2, 'inner', 0, 0.04, -D * 0.3); for (const x of [-W * 0.5, 0, W * 0.5]) put(new THREE.CylinderGeometry(0.06, 0.06, 0.15, 6), 'inner', x, 0.1, D * 0.3); box(W * 1.2, 0.05, 0.04, 'glow', 0, 0.3, -D * 0.55); break;
-    case 'medbay': for (const x of [-W * 0.5, W * 0.5]) box(0.3 * s, 0.16, 0.65 * s, 'inner', x, 0.04, 0); box(0.04, 0.18, 0.06, 'cross', 0, 0.25, -D * 0.7); box(0.04, 0.06, 0.18, 'cross', 0, 0.31, -D * 0.7); break;
-    case 'secoffice': box(W * 0.9, 0.2, 0.3, 'inner', 0, 0.04, 0); box(0.05, 0.2, 0.2, 'alarm', W * 0.8, 0.15, -D * 0.6); break;
-    case 'truth': box(0.05, 0.3, D * 1.3, 'glow', -W * 0.9, 0.08, 0); box(0.2, 0.2, 0.2, 'inner', W * 0.3, 0.04, 0); break;
-    case 'shuttlebay': { box(w * 0.6, 0.01, 0.06, 'glow', 0, 0.04, -D * 0.8); box(w * 0.6, 0.01, 0.06, 'glow', 0, 0.04, D * 0.8); break; }
-    case 'fighterbay': for (const z of [-D * 0.45, D * 0.45]) { const f = new THREE.ConeGeometry(0.25, 0.9, 3); f.rotateZ(-Math.PI / 2); put(f, 'inner', 0, 0.2, z); } break;
+  // Fittings are laid out with the door at the front (+Z) and the back wall at −Z, then turned to face the real door.
+  const side = door === '+x' || door === '-x', W = side ? d : w, D = side ? w : d, hw = W * 0.45, hd = D * 0.45, bk = -hd, fr = hd;
+  f.rotation.y = { '+z': 0, '-z': Math.PI, '+x': Math.PI / 2, '-x': -Math.PI / 2 }[door] ?? 0; g.add(f);
+  const B = (bw, bh, bd, role, x, z, y = 0.04) => add(f, new THREE.BoxGeometry(bw, bh, bd), role, x, y + bh / 2, z);
+  const Cy = (r, h, role, x, z, y = 0.04, seg = 8) => add(f, new THREE.CylinderGeometry(r, r, h, seg), role, x, y + h / 2, z);
+  if (door && !OPEN.has(room)) {
+    const H = 0.3, t = 0.03, gap = 0.24, wl = (W * 0.96 - gap) / 2;
+    B(W * 0.96, H, t, 'wall', 0, -D * 0.48); B(t, H, D * 0.96, 'wall', -W * 0.48, 0); B(t, H, D * 0.96, 'wall', W * 0.48, 0);
+    for (const sx of [-1, 1]) { B(wl, H, t, 'wall', sx * (gap / 2 + wl / 2), D * 0.48); B(0.03, 0.42, 0.05, 'wall', sx * 0.12, D * 0.48); }
+    B(0.27, 0.03, 0.05, 'wall', 0, D * 0.48, 0.42); B(0.2, 0.012, 0.05, 'lane', 0, D * 0.48, 0.04);
   }
+  const bed = (x, z, y = 0.04, along = true) => { B(along ? 0.2 : 0.42, 0.08, along ? 0.42 : 0.2, 'inner', x, z, y); B(along ? 0.18 : 0.4, 0.03, along ? 0.4 : 0.18, 'bed', x, z, y + 0.08); };
+  const locker = (x, z) => B(0.12, 0.38, 0.1, 'locker', x, z);
+  const desk = (x, z, wd = 0.3) => { B(wd, 0.02, 0.15, 'inner', x, z, 0.18); B(0.02, 0.14, 0.13, 'inner', x - wd / 2 + 0.02, z); B(0.02, 0.14, 0.13, 'inner', x + wd / 2 - 0.02, z); };
+  const stool = (x, z) => Cy(0.04, 0.1, 'locker', x, z);
+  const console_ = (x, z, wd = 0.26) => { B(wd, 0.2, 0.12, 'inner', x, z); B(wd * 0.85, 0.12, 0.02, 'glow', x, z - 0.05, 0.25); B(0.08, 0.1, 0.08, 'locker', x, z + 0.16); };
+  const table = (x, z, r = 0.11) => { Cy(r, 0.02, 'inner', x, z, 0.17, 12); Cy(0.02, 0.13, 'inner', x, z); };
+  const crate = (x, z, y = 0.04, k = 0.2) => B(k, k, k, 'crate', x, z, y);
+  switch (room) {
+    case 'quarters': bed(-hw + 0.13, bk + 0.24); bed(hw - 0.13, bk + 0.24); locker(-hw + 0.08, fr - 0.12); locker(hw - 0.08, fr - 0.12); desk(0, bk + 0.1, 0.26); stool(0, bk + 0.26); break;
+    case 'bunks': for (const x of [-hw + 0.13, hw - 0.13]) for (const z of [bk + 0.24, fr - 0.3]) { bed(x, z); bed(x, z, 0.24); for (const dz of [-0.2, 0.2]) B(0.02, 0.36, 0.02, 'locker', x - Math.sign(x) * -0.1, z + dz); } locker(0, bk + 0.07); break;
+    case 'barrack': for (const x of [-hw + 0.13, 0, hw - 0.13]) { bed(x, bk + 0.24); bed(x, bk + 0.24, 0.24); B(0.02, 0.36, 0.02, 'locker', x + 0.1, bk + 0.44); locker(x, fr - 0.1); } break;
+    case 'mess': for (const x of [-hw * 0.5, hw * 0.5]) { B(0.34, 0.02, 0.18, 'inner', x, 0.05, 0.17); B(0.03, 0.13, 0.03, 'inner', x, 0.05); for (const sx of [-0.1, 0.1]) for (const sz of [-0.11, 0.21]) stool(x + sx, sz); } B(W * 0.8, 0.2, 0.12, 'inner', 0, bk + 0.08); B(W * 0.7, 0.03, 0.03, 'glow', 0, bk + 0.03, 0.3); break;
+    case 'lounge': B(W * 0.6, 0.1, 0.14, 'bed', 0, bk + 0.3); B(W * 0.6, 0.2, 0.04, 'inner', 0, bk + 0.38); B(W * 0.8, 0.22, 0.02, 'glow', 0, bk + 0.02, 0.1); table(0, 0.1, 0.1); Cy(0.05, 0.1, 'locker', hw - 0.1, fr - 0.15); Cy(0.09, 0.16, 'plant', hw - 0.1, fr - 0.15, 0.14, 6); break;
+    case 'hydro': for (const x of [-hw * 0.62, 0, hw * 0.62]) { B(0.24, 0.1, D * 0.7, 'inner', x, 0); B(0.2, 0.12, D * 0.66, 'plant', x, 0, 0.14); B(0.03, 0.02, D * 0.66, 'glow', x, 0, 0.38); } break;
+    case 'workshop': B(W * 0.8, 0.17, 0.14, 'inner', 0, bk + 0.1); B(0.1, 0.1, 0.08, 'locker', -hw * 0.5, bk + 0.1, 0.21); add(f, new THREE.SphereGeometry(0.04, 6, 4), 'spark', hw * 0.2, 0.27, bk + 0.1); B(0.26, 0.3, 0.24, 'locker', hw - 0.16, fr - 0.3); B(0.12, 0.36, D * 0.4, 'inner', -hw + 0.07, fr - 0.3); crate(0, 0.15, 0.04, 0.14); break;
+    case 'cargostore': for (const sx of [-1, 1]) { B(0.14, 0.02, D * 0.8, 'inner', sx * (hw - 0.08), 0, 0.2); B(0.14, 0.02, D * 0.8, 'inner', sx * (hw - 0.08), 0, 0.38); for (const z of [bk + 0.1, fr - 0.1]) B(0.02, 0.4, 0.02, 'inner', sx * (hw - 0.14), z); for (let i = 0; i < 3; i++) { crate(sx * (hw - 0.08), bk + 0.2 + i * 0.26, 0.04, 0.14); if (i < 2) crate(sx * (hw - 0.08), bk + 0.3 + i * 0.3, 0.22, 0.13); } } crate(-0.08, 0); crate(0.14, 0.02); crate(0.03, 0.01, 0.24, 0.18); break;
+    case 'ops': for (const x of [-hw * 0.6, 0, hw * 0.6]) console_(x, bk + 0.1, 0.24); B(0.4, 0.14, 0.26, 'inner', 0, fr - 0.36); B(0.36, 0.01, 0.22, 'glow', 0, fr - 0.36, 0.18); break;
+    case 'market': for (const x of [-hw * 0.62, 0, hw * 0.62]) { B(0.26, 0.16, 0.14, 'inner', x, bk + 0.14); B(0.3, 0.02, 0.26, 'awning', x, bk + 0.18, 0.36); for (const sx of [-0.13, 0.13]) B(0.015, 0.34, 0.015, 'locker', x + sx, bk + 0.3); crate(x, bk + 0.14, 0.2, 0.08); } table(0, fr - 0.3); break;
+    case 'bar': B(W * 0.8, 0.2, 0.1, 'inner', 0, bk + 0.26); B(W * 0.8, 0.26, 0.05, 'locker', 0, bk + 0.05); B(W * 0.74, 0.03, 0.02, 'glow', 0, bk + 0.08, 0.31); for (const x of [-hw * 0.5, -hw * 0.17, hw * 0.17, hw * 0.5]) stool(x, bk + 0.4); for (const x of [-hw * 0.5, hw * 0.5]) { table(x, fr - 0.28, 0.09); stool(x - 0.14, fr - 0.28); stool(x + 0.14, fr - 0.28); } break;
+    case 'medbay': for (const x of [-hw * 0.55, hw * 0.55]) { bed(x, bk + 0.26); B(0.08, 0.22, 0.05, 'locker', x + 0.16, bk + 0.06); B(0.07, 0.06, 0.01, 'glow', x + 0.16, bk + 0.09, 0.2); } B(0.04, 0.16, 0.02, 'cross', 0, bk + 0.02, 0.12); B(0.12, 0.05, 0.02, 'cross', 0, bk + 0.02, 0.175); B(0.3, 0.16, 0.12, 'bed', 0, fr - 0.2); break;
+    case 'secoffice': desk(-hw * 0.4, bk + 0.14, 0.3); stool(-hw * 0.4, bk + 0.3); B(0.05, 0.16, 0.05, 'alarm', hw - 0.06, bk + 0.06, 0.14); locker(-hw + 0.08, fr - 0.12); for (let i = 0; i < 5; i++) { B(0.012, 0.3, 0.012, 'locker', hw * 0.1 + i * 0.07, bk + 0.34); } B(0.3, 0.012, 0.012, 'locker', hw * 0.1 + 0.14, bk + 0.34, 0.33); B(0.3, 0.06, 0.12, 'inner', hw * 0.1 + 0.14, bk + 0.1); break;
+    case 'truth': B(W * 0.7, 0.26, 0.02, 'glow', 0, bk + 0.02, 0.08); B(0.12, 0.2, 0.1, 'inner', 0, bk + 0.3); for (const sx of [-1, 1]) B(0.02, 0.26, 0.02, 'locker', sx * 0.3, fr - 0.3); B(0.08, 0.06, 0.1, 'locker', 0.3, fr - 0.3, 0.3); for (const x of [-0.2, 0, 0.2]) stool(x, fr - 0.16); break;
+    case 'brass': B(W * 0.7, 0.01, D * 0.6, 'carpet', 0, 0, 0.04); desk(0, bk + 0.2, 0.42); B(0.1, 0.2, 0.1, 'bed', 0, bk + 0.06); B(0.02, 0.4, 0.02, 'locker', hw - 0.08, bk + 0.08); B(0.14, 0.1, 0.01, 'awning', hw - 0.16, bk + 0.08, 0.32); B(0.14, 0.1, 0.36, 'bed', -hw + 0.1, fr - 0.3); table(hw * 0.4, fr - 0.26, 0.08); break;
+    case 'lab': B(W * 0.8, 0.17, 0.13, 'inner', 0, bk + 0.1); for (const x of [-hw * 0.5, 0, hw * 0.5]) B(0.05, 0.07, 0.05, 'glow', x, bk + 0.1, 0.21); Cy(0.09, 0.3, 'glass', hw - 0.14, fr - 0.3, 0.04, 10); Cy(0.1, 0.03, 'locker', hw - 0.14, fr - 0.3, 0.04, 10); console_(-hw * 0.5, fr - 0.42, 0.22); break;
+    case 'guncrew': B(W * 0.8, 0.26, 0.02, 'glow', 0, bk + 0.02, 0.1); for (const x of [-hw * 0.5, hw * 0.5]) console_(x, bk + 0.26, 0.24); B(0.3, 0.12, 0.22, 'inner', 0, fr - 0.34); B(0.26, 0.01, 0.18, 'alarm', 0, fr - 0.34, 0.16); locker(hw - 0.08, fr - 0.1); break;
+    case 'magazine': for (const x of [-hw + 0.1, -hw + 0.3, hw - 0.3, hw - 0.1]) for (let z = bk + 0.12; z < fr - 0.15; z += 0.15) Cy(0.05, 0.3, 'shell', x, z, 0.06); for (const x of [-hw + 0.2, hw - 0.2]) B(0.34, 0.02, D * 0.75, 'locker', x, -0.04); B(W * 0.5, 0.03, 0.03, 'alarm', 0, bk + 0.03, 0.3); B(0.16, 0.1, 0.3, 'locker', 0, 0); add(f, new THREE.CylinderGeometry(0.05, 0.05, 0.28, 8).rotateX(Math.PI / 2), 'shell', 0, 0.19, 0); break;
+    case 'armoury': B(W * 0.8, 0.02, 0.06, 'locker', 0, bk + 0.05, 0.1); B(W * 0.8, 0.02, 0.06, 'locker', 0, bk + 0.05, 0.36); for (let x = -hw * 0.75; x <= hw * 0.76; x += 0.09) B(0.025, 0.24, 0.03, 'dark', x, bk + 0.06, 0.12); crate(-hw + 0.14, fr - 0.24, 0.04, 0.18); crate(-hw + 0.14, fr - 0.24, 0.22, 0.14); B(0.34, 0.16, 0.14, 'inner', hw * 0.4, fr - 0.3); break;
+    case 'dronerack': for (const z of [bk + 0.2, 0, fr - 0.3]) { B(W * 0.5, 0.02, 0.03, 'locker', -hw * 0.3, z, 0.14); const c = new THREE.ConeGeometry(0.06, 0.3, 4); c.rotateZ(-Math.PI / 2); add(f, c, 'hull', -hw * 0.3, 0.22, z); B(0.1, 0.012, 0.3, 'hull', -hw * 0.36, z, 0.2); } console_(hw - 0.2, bk + 0.14, 0.22); break;
+    case 'ordnance': for (const z of [bk + 0.22, 0.02, fr - 0.26]) for (const x of [-hw * 0.5, hw * 0.4]) { B(0.36, 0.05, 0.14, 'locker', x, z, 0.06); add(f, new THREE.CylinderGeometry(0.05, 0.05, 0.32, 8).rotateZ(Math.PI / 2), 'shell', x, 0.17, z); B(0.02, 0.1, 0.1, 'alarm', x - 0.17, z, 0.12); } break;
+    case 'fab': for (const [x, z] of [[-0.2, -0.2], [0.2, -0.2], [-0.2, 0.2], [0.2, 0.2]]) B(0.025, 0.4, 0.025, 'locker', x - hw * 0.3, z); B(0.44, 0.03, 0.03, 'locker', -hw * 0.3, 0, 0.4); B(0.06, 0.06, 0.06, 'glow', -hw * 0.3, 0, 0.34); crate(-hw * 0.3, 0, 0.04, 0.22); crate(hw - 0.16, fr - 0.3, 0.04, 0.2); crate(hw - 0.16, fr - 0.3, 0.24, 0.2); crate(hw - 0.16, bk + 0.3, 0.04, 0.2); console_(hw * 0.2, bk + 0.12, 0.2); break;
+    case 'shuttlebay': case 'pelicanpad': case 'eaglepad': {
+      const a = w * 0.42, b = d * 0.4;
+      for (const z of [-b, b]) add(g, new THREE.BoxGeometry(a * 2, 0.012, 0.05), 'lane', 0, 0.046, z);
+      for (const x of [-a, a]) add(g, new THREE.BoxGeometry(0.05, 0.012, b * 2), 'lane', x, 0.046, 0);
+      for (const x of [-a * 0.6, 0, a * 0.6]) add(g, new THREE.BoxGeometry(0.3, 0.012, 0.05), 'alarm', x, 0.046, 0);
+      if (room === 'eaglepad') { const eg = buildEagle(); eg.position.set(-0.1, 0.05, 0); g.add(eg); const c = new THREE.BoxGeometry(0.3, 0.06, 0.14); add(g, c, 'locker', a * 0.8, 0.07, b * 0.6); add(g, new THREE.CylinderGeometry(0.045, 0.045, 0.28, 8).rotateZ(Math.PI / 2), 'shell', a * 0.8, 0.15, b * 0.6); }
+      if (room === 'pelicanpad') { const pg = buildShip('shuttle'); pg.scale.setScalar(1.6); pg.position.set(0, 0.42, 0); g.add(pg); }
+      break;
+    }
+    case 'fighterbay': for (const z of [-d * 0.2, d * 0.2]) { const c = new THREE.ConeGeometry(0.25, 0.9, 3); c.rotateZ(-Math.PI / 2); add(g, c, 'hull', 0, 0.2, z); } break;
+  }
+  return bake(g);
+}
+// An Eagle on its pad: a wedge of a fuselage, swept wings, twin tails and bombs under the wings. About 12 m long.
+export function buildEagle() {
+  const g = new THREE.Group();
+  const put = (geom, role, x = 0, y = 0, z = 0) => { geom.translate(x, y, z); const m = new THREE.Mesh(geom); m.userData.role = role; g.add(m); return m; };
+  const P = (pts, depth, y) => { const sh = new THREE.Shape(); pts.forEach(([x, z], i) => (i ? sh.lineTo(x, z) : sh.moveTo(x, z))); const e = new THREE.ExtrudeGeometry(sh, { depth, bevelEnabled: false }); e.rotateX(Math.PI / 2); e.translate(0, y + depth, 0); return e; };
+  put(P([[1.3, 0], [0.5, 0.2], [-1.0, 0.24], [-1.15, 0.12], [-1.15, -0.12], [-1.0, -0.24], [0.5, -0.2]], 0.2, 0.12), 'hull');
+  for (const s of [1, -1]) {
+    put(P([[0.3, s * 0.2], [-0.5, s * 1.05], [-0.95, s * 1.05], [-0.8, s * 0.2]], 0.04, 0.18), 'hull');
+    const fin = new THREE.BoxGeometry(0.4, 0.34, 0.03); fin.rotateX(s * -0.3); put(fin, 'hull', -0.95, 0.46, s * 0.2);
+    put(new THREE.CylinderGeometry(0.04, 0.04, 0.34, 6).rotateZ(Math.PI / 2), 'shell', -0.45, 0.13, s * 0.55); put(new THREE.CylinderGeometry(0.04, 0.04, 0.34, 6).rotateZ(Math.PI / 2), 'shell', -0.55, 0.13, s * 0.8);
+    put(new THREE.BoxGeometry(0.04, 0.12, 0.04), 'locker', 0.3 - 0.9 * (s > 0 ? 1 : 1), 0.06, s * 0.3);
+  }
+  put(new THREE.BoxGeometry(0.04, 0.12, 0.04), 'locker', 0.8, 0.06, 0);
+  put(new THREE.BoxGeometry(0.42, 0.1, 0.2), 'glass', 0.55, 0.36, 0);
+  put(new THREE.BoxGeometry(0.06, 0.16, 0.3), 'glow', -1.17, 0.22, 0);
+  put(new THREE.BoxGeometry(0.5, 0.05, 0.5), 'trim', -0.2, 0.33, 0);
   return g;
 }
 
@@ -353,12 +619,13 @@ const merge = (list) => {
   for (const name of ['position', 'normal', 'color']) { const a = new Float32Array(n * 3); let o = 0; for (const g of parts) { a.set(g.attributes[name].array, o); o += g.attributes[name].array.length; } out.setAttribute(name, new THREE.BufferAttribute(a, 3)); }
   return out;
 };
-export const FIGURES = ['resident', 'hauler', 'engineer', 'officer', 'medic', 'aide', 'scientist'];
+export const FIGURES = ['resident', 'hauler', 'engineer', 'officer', 'medic', 'aide', 'scientist', 'gunner', 'trooper', 'pilot'];
 export function buildFigure(role) {
   const bx = (w, h, d, x, y, z, col) => tint(new THREE.BoxGeometry(w, h, d).translate(x, y, z), col);
   const SKIN = '#d9b08c', look = {
     resident: { legs: '#4a4f58', torso: '#ffffff' }, hauler: { legs: '#27425e', torso: '#3d7fc4' }, engineer: { legs: '#5a4a1e', torso: '#e0a83a' },
     officer: { legs: '#17181c', torso: '#22242a' }, medic: { legs: '#d8dcd6', torso: '#f2f4ee' }, aide: { legs: '#3c4438', torso: '#6c7a5e' }, scientist: { legs: '#3a3f4a', torso: '#eef0f4' },
+    gunner: { legs: '#3a3026', torso: '#c7652a' }, trooper: { legs: '#3f4a34', torso: '#5d6a4a' }, pilot: { legs: '#555c66', torso: '#6b737e' },
   }[role] || { legs: '#4a4f58', torso: '#ffffff' };
   const g = [];
   for (const x of [-0.025, 0.025]) g.push(bx(0.04, 0.12, 0.05, x, 0.06, 0, look.legs));
@@ -371,6 +638,9 @@ export function buildFigure(role) {
   if (role === 'medic') { g.push(bx(0.012, 0.045, 0.004, 0, 0.19, 0.032, '#e0352b')); g.push(bx(0.04, 0.014, 0.004, 0, 0.19, 0.032, '#e0352b')); g.push(bx(0.066, 0.02, 0.066, 0, 0.31, 0, '#5fbf8a')); }
   if (role === 'aide') { for (const x of [-0.055, 0.055]) g.push(bx(0.035, 0.012, 0.05, x, 0.243, 0, '#f5d547')); g.push(bx(0.07, 0.022, 0.07, 0, 0.312, 0, '#3c4438')); }
   if (role === 'scientist') { g.push(bx(0.104, 0.07, 0.064, 0, 0.1, 0, '#eef0f4')); g.push(bx(0.05, 0.02, 0.012, 0, 0.235, 0.03, '#9a6cff')); g.push(bx(0.05, 0.012, 0.012, 0, 0.28, 0.034, '#7fe9e0')); }
+  if (role === 'gunner') { g.push(bx(0.07, 0.03, 0.07, 0, 0.312, 0, '#22262a')); for (const x of [-0.036, 0.036]) g.push(bx(0.015, 0.04, 0.04, x, 0.28, 0, '#f5d547')); g.push(bx(0.104, 0.02, 0.064, 0, 0.13, 0, '#22262a')); }
+  if (role === 'trooper') { g.push(bx(0.075, 0.045, 0.075, 0, 0.305, 0, '#4c5a3c')); g.push(bx(0.065, 0.015, 0.02, 0, 0.275, 0.034, '#f5d547')); g.push(bx(0.108, 0.07, 0.068, 0, 0.2, 0, '#3f4a34')); g.push(bx(0.02, 0.02, 0.16, 0.05, 0.17, 0.06, '#1c1e20')); g.push(bx(0.08, 0.1, 0.035, 0, 0.19, -0.05, '#3f4a34')); }
+  if (role === 'pilot') { g.push(bx(0.075, 0.06, 0.075, 0, 0.29, 0, '#e8eaec')); g.push(bx(0.06, 0.025, 0.02, 0, 0.285, 0.035, '#f5a020')); g.push(bx(0.104, 0.03, 0.064, 0, 0.215, 0, '#f5d547')); }
   return merge(g);
 }
 // A raider: a small dark dart with a hot engine.
@@ -405,13 +675,15 @@ export function buildShip(kind) {
     put(new THREE.BoxGeometry(0.3 * k, 0.16, 0.34 * k), 'glass', 0.74 * k, 0.24, 0);
     put(new THREE.BoxGeometry(0.5 * k, 0.03, 0.4 * k).rotateZ(0.35), 'hull', -1.08 * k, -0.24, 0);
   } else if (kind === 'warship') {
-    const prof = new THREE.Shape(); prof.moveTo(4.2, 0); prof.lineTo(-3, 1.1); prof.lineTo(-3.6, 0.9); prof.lineTo(-3.6, -0.9); prof.lineTo(-3, -1.1); prof.closePath();
-    const hull = new THREE.ExtrudeGeometry(prof, { depth: 0.9, bevelEnabled: false }); hull.rotateX(Math.PI / 2); hull.translate(0, 0.45, 0);
+    // After the Super Destroyer in Orbital Fury: a long hull with blue light lines, a bridge fin, and a black drive block astern.
+    const prof = new THREE.Shape(); prof.moveTo(4.4, 0); prof.lineTo(3.2, 0.45); prof.lineTo(-2.6, 1.05); prof.lineTo(-2.6, -1.05); prof.lineTo(3.2, -0.45); prof.closePath();
+    const hull = new THREE.ExtrudeGeometry(prof, { depth: 0.8, bevelEnabled: false }); hull.rotateX(Math.PI / 2); hull.translate(0, 0.4, 0);
     put(hull, 'hull');
-    put(new THREE.BoxGeometry(1.4, 0.9, 0.6), 'hull', -1.4, 0.85, 0);
-    put(new THREE.BoxGeometry(0.9, 0.5, 2.6), 'hull', -2.8, 0, 0);
-    for (const z of [0.7, 0, -0.7]) put(new THREE.BoxGeometry(0.12, 0.35, 0.35), 'glow', -3.65, 0, z);
-    for (let i = 0; i < 6; i++) put(new THREE.BoxGeometry(0.25, 0.06, 0.04), 'glow', 1.6 - i * 0.6, 0.6, 0.46);
+    put(new THREE.BoxGeometry(1.3, 1.5, 2.5), 'dark', -3.2, 0, 0);
+    put(new THREE.BoxGeometry(1.6, 0.55, 0.5), 'hull', -1.2, 0.68, 0); put(new THREE.BoxGeometry(0.5, 0.3, 0.52), 'glass', -0.6, 0.72, 0);
+    for (const z of [0.8, 0, -0.8]) put(new THREE.BoxGeometry(0.1, 0.5, 0.5), 'blue', -3.88, 0, z);
+    for (const s of [1, -1]) { const l = new THREE.BoxGeometry(5.4, 0.05, 0.04); l.rotateY(s * 0.1); put(l, 'blue', 0.4, 0.2, s * 0.76); const l2 = new THREE.BoxGeometry(5.4, 0.05, 0.04); l2.rotateY(s * 0.1); put(l2, 'blue', 0.4, -0.2, s * 0.76); }
+    for (const x of [1.6, 0.4, -0.8]) put(new THREE.CylinderGeometry(0.16, 0.2, 0.3, 8), 'hull', x, -0.5, 0);
   } else {
     put(new THREE.BoxGeometry(4.2, 0.6, 0.7), 'hull', -0.3, 0, 0);
     put(new THREE.BoxGeometry(0.9, 0.9, 1.0), 'hull', 1.9, 0.15, 0);
@@ -454,6 +726,15 @@ export function partIcon(type) {
     case 'turret': return s('<path d="M3 16h6v-6H3zM9 11h4l2-2h7M9 14h4l2 1h7"/>');
     case 'shield': return s('<path d="M2 12h8"/><circle cx="15" cy="12" r="3"/><path d="M15 3a9 9 0 0 1 0 18" stroke-dasharray="2 2"/>');
     case 'dish': return s('<path d="M2 12h6M9 4q8 8 0 16M9 12h7"/><circle cx="17" cy="12" r="1"/>');
+    case 'gunmount': return s('<rect x="3" y="4" width="18" height="8" rx="1"/><circle cx="12" cy="13" r="3"/><path d="M10.5 15v7M13.5 15v7"/>');
+    case 'battery': return s('<rect x="2" y="3" width="20" height="7" rx="1"/><path d="M9 10h6v3H9zM10.5 13v8h3v-8M9 21h6"/>');
+    case 'dronebay': return s('<rect x="3" y="4" width="18" height="8" rx="1"/><path d="M6 15h12M7 18l3-1.5-3-1.5zM13 18l3-1.5-3-1.5z"/>');
+    case 'relay': return s('<path d="M2 8h8M5 13q7 8 14 0zM12 13v-5M12 19v2"/>');
+    case 'barracks': return s('<rect x="2" y="7" width="20" height="10" rx="2"/><path d="M6 10v4M10 10v4M14 10v4M18 10v4"/>');
+    case 'eaglehangar': return s('<path d="M2 6h18v12H2zM20 6v12"/><path d="M15 12l-8-3v2l-2 1 2 1v2z"/>');
+    case 'pelicanbay': return s('<path d="M2 6h18v12H2zM20 6v12"/><path d="M6 10h8l2 2-2 2H6zM9 8v8"/>');
+    case 'fabshop': return s('<rect x="2" y="8" width="20" height="10" rx="1"/><path d="M6 8V4h3v4M12 11h6v4h-6z"/>');
+    case 'lance': return s('<rect x="2" y="2" width="20" height="6" rx="1"/><path d="M9 8h6l-1 14h-4zM8 12h8M8.5 16h7"/>');
     case 'billboard': return s('<path d="M2 12h4M6 4h16v14H6zM9 9h10M9 13h7"/>');
     default: return s('<circle cx="12" cy="12" r="6"/>');
   }

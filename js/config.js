@@ -1,5 +1,9 @@
 // Every tuning number for Super Orbital Simulator lives here. Change them here, never in game logic.
-// Distances are in station units (about 10 m). Money is in credits (CR); rates are per minute of game time.
+// THE MINISTRY STANDARD PATTERN. One station unit is 5 m. A person stands 0.36 units (1.8 m); a door is 0.2 wide and 0.42 high;
+// a corridor is 0.4 wide; decks are at least 0.6 apart. Gravity is made by the deck plates, and it points the same way everywhere:
+// toward the keel (−Y), where the planet is. So every deck is level, however a part is attached. Only LOOSE parts (arrays, dishes,
+// guns, racks: nothing to stand on) may be turned any way round.
+// Distances are in station units. Money is in credits (CR); rates are per minute of game time.
 //
 // PARTS snap together at PORTS. A port is [x, y, z, dx, dy, dz, kind] in the part's own frame: where it is and which way it faces.
 // Port 0 is the part's BASE, the port it attaches with. Spine parts ('S' base) stack along their own axis (local Y); arm parts
@@ -13,10 +17,10 @@ const arm = (len) => [[0, 0, 0, -1, 0, 0, 'L'], [len, 0, 0, 1, 0, 0, 'L']];
 const fill = (n, room) => Array(n).fill(room);
 
 export const C = {
-  version: '0.5.0',
+  version: '0.6.0',
 
   groups: [
-    { id: 'structure', name: 'STRUCTURE' }, { id: 'habitation', name: 'HABITATION' }, { id: 'docking', name: 'DOCKING' },
+    { id: 'structure', name: 'STRUCTURE' }, { id: 'platform', name: 'FIRE SUPPORT' }, { id: 'habitation', name: 'HABITATION' }, { id: 'docking', name: 'DOCKING' },
     { id: 'industry', name: 'INDUSTRY' }, { id: 'power', name: 'POWER' }, { id: 'defence', name: 'DEFENCE' }, { id: 'comms', name: 'COMMS' },
   ],
 
@@ -38,6 +42,26 @@ export const C = {
       ports: [[0, 0, 0, -1, 0, 0, 'L'], [1.8, 0, 0, 1, 0, 0, 'L'], [0.9, 0.9, 0, 0, 1, 0, 'L'], [0.9, -0.9, 0, 0, -1, 0, 'L'], [0.9, 0, 0.9, 0, 0, 1, 'L'], [0.9, 0, -0.9, 0, 0, -1, 'L']] },
     tube:     { name: 'Connector Tube', group: 'structure', tier: 0, cost: 20, up: 0, pw: 0, build: 2, center: [2, 0, 0], r: 2,
       about: 'A slim pressurised walkway between two parts.', ports: arm(4) },
+    // ---- the fire support platform: the decks that face the planet. Each belongs to one SYSTEM of the Orbital Fury armory.
+    // keel: its guns point down at the planet, so it cannot go on a port that faces up.
+    gunmount: { name: 'Ship Gun', group: 'platform', tier: 0, cost: 220, up: 3, pw: 3, build: 6, sys: 'gun', keel: true, center: [1.7, 0, 0], r: 2.4, rooms: ['guncrew', 'magazine'],
+      about: 'The ship gun on its mount, with its crew room and ammo bay. Answers calls for gun fire.', ports: [[0, 0, 0, -1, 0, 0, 'L'], [1.7, 0.8, 0, 0, 1, 0, 'L']] },
+    battery:  { name: 'Orbital Battery', group: 'platform', tier: 0, cost: 280, up: 4, pw: 4, build: 8, sys: 'orbital', keel: true, center: [2.3, 0, 0], r: 3, rooms: ['guncrew', 'magazine', 'magazine'],
+      about: 'One orbital cannon and its magazines. Each battery is one strike slot, up to five.', ports: [[0, 0, 0, -1, 0, 0, 'L'], [1.5, 0.8, 0, 0, 1, 0, 'L'], [1.5, 0, 1, 0, 0, 1, 'L'], [1.5, 0, -1, 0, 0, -1, 'L']] },
+    dronebay: { name: 'Drone Bay', group: 'platform', tier: 1, cost: 200, up: 2, pw: 2, build: 5, sys: 'uav', keel: true, center: [1.5, 0, 0], r: 2, rooms: ['dronerack', 'ops'],
+      about: 'Launches the UAV that scans the ground for the gunner.', ports: [[0, 0, 0, -1, 0, 0, 'L'], [1.5, 0.8, 0, 0, 1, 0, 'L']] },
+    relay:    { name: 'Target Relay', group: 'platform', tier: 1, cost: 150, up: 2, pw: 2, build: 4, sys: 'uav', keel: true, center: [1, -0.6, 0], r: 1.8,
+      about: 'A dish aimed at the ground. Widens the strike zone: the UAV system counts as better equipped.', ports: [[0, 0, 0, -1, 0, 0, 'L']] },
+    barracks: { name: 'SEAF Barracks', group: 'platform', tier: 1, cost: 320, up: 4, pw: 2, build: 7, sys: 'seaf', center: [2.6, 0, 0], r: 2.8, rooms: ['barrack', 'barrack', 'armoury'],
+      about: 'Bunks and an armoury for the SEAF troopers who drop to the surface.', ports: [...arm(5.2), [2.6, 0, 1.1, 0, 0, 1, 'L'], [2.6, 0, -1.1, 0, 0, -1, 'L']] },
+    eaglehangar: { name: 'Eagle Hangar', group: 'platform', tier: 2, cost: 440, up: 6, pw: 3, build: 9, sys: 'eagle', bay: true, center: [3.5, 0, 0], r: 4.2, rooms: ['eaglepad', 'eaglepad', 'ordnance'],
+      about: 'Two rearming pads for Eagles, and the ordnance store that feeds them.', ports: [[0, 0, 0, -1, 0, 0, 'L'], [3.5, 1.5, 0, 0, 1, 0, 'L'], [3.5, 0, 2.4, 0, 0, 1, 'L'], [3.5, 0, -2.4, 0, 0, -1, 'L']] },
+    pelicanbay: { name: 'Pelican Bay', group: 'platform', tier: 2, cost: 400, up: 5, pw: 3, build: 9, sys: 'seaf', bay: true, center: [4, 0, 0], r: 4.6, rooms: ['pelicanpad', 'armoury', 'barrack'],
+      about: 'A launch bay for the Pelicans that carry SEAF down and bring them home.', ports: [[0, 0, 0, -1, 0, 0, 'L'], [4, 1.7, 0, 0, 1, 0, 'L'], [4, 0, 2.7, 0, 0, 1, 'L'], [4, 0, -2.7, 0, 0, -1, 'L']] },
+    fabshop:  { name: 'Fabrication Shop', group: 'platform', tier: 2, cost: 300, up: 4, pw: 4, build: 7, sys: 'fab', center: [2.2, 0, 0], r: 2.6, rooms: ['fab', 'cargostore'],
+      about: 'Packs the crates of wire, bastions and turrets that drop to the troops.', ports: [...arm(4.4), [2.2, 0.9, 0, 0, 1, 0, 'L']] },
+    lance:    { name: 'Democracy Lance', group: 'platform', tier: 3, cost: 1500, up: 12, pw: 12, build: 16, sys: 'classified', keel: true, center: [3, -1.5, 0], r: 5, rooms: ['guncrew', 'magazine', 'magazine'],
+      about: 'CLASSIFIED. One great weapon, by permission of the Ministry.', ports: [[0, 0, 0, -1, 0, 0, 'L'], [2, 0.9, 0, 0, 1, 0, 'L']] },
     // ---- habitation
     hab:      { name: 'Hab Module', group: 'habitation', tier: 0, cost: 90, up: 2, pw: 1, build: 4, center: [2.4, 0, 0], r: 2.6, rooms: fill(3, 'quarters'),
       about: 'A pressurised module with three rooms, quarters to start.', ports: [...arm(4.8), [2.4, 0, 1, 0, 0, 1, 'L'], [2.4, 0, -1, 0, 0, -1, 'L']] },
@@ -61,39 +85,39 @@ export const C = {
       about: 'A tall arm with a berth at its tip for heavy freighters (8 crates).', ports: [[0, 0, 0, -1, 0, 0, 'L']] },
     bigring:  { name: 'Docking Ring', group: 'docking', tier: 1, cost: 380, up: 6, pw: 3, build: 10, center: [0, 0, 0], r: 12.5, rooms: ['quarters', 'cargostore', 'quarters', 'cargostore', 'quarters', 'cargostore', 'quarters', 'cargostore', 'quarters', 'cargostore', 'quarters', 'cargostore'],
       about: 'A wide outer ring on six spokes: quarters and cargo stores, and six rim ports for docks.', ports: [...spine(1.2), ...ring6(12.7)] },
-    hangar:   { name: 'Hangar', group: 'docking', tier: 2, cost: 360, up: 6, pw: 3, build: 9, bay: true, center: [3, 0, 0], r: 3.6, rooms: ['shuttlebay', 'workshop', 'cargostore'],
-      berth: [6.2, 0, 0, 1, 0, 0], ships: ['shuttle'], berthRoom: 'shuttlebay',
-      about: 'A big bay with a door at the end. Build a Shuttle Bay inside and shuttles land in it.', ports: [[0, 0, 0, -1, 0, 0, 'L'], [3, 1.5, 0, 0, 1, 0, 'L'], [3, 0, 2, 0, 0, 1, 'L'], [3, 0, -2, 0, 0, -1, 'L']] },
-    drydock:  { name: 'Drydock', group: 'docking', tier: 2, cost: 420, up: 6, pw: 4, build: 10, bay: true, center: [1, 0, 0], r: 6, rooms: ['workshop', 'workshop'],
-      berth: [4.5, 0, 0, 1, 0, 0], ships: ['warship'], berthRoom: 'workshop',
+    hangar:   { name: 'Hangar', group: 'docking', tier: 2, cost: 360, up: 6, pw: 3, build: 9, bay: true, center: [4, 0, 0], r: 4.6, rooms: ['shuttlebay', 'workshop', 'cargostore'],
+      berth: [8.2, 0, 0, 1, 0, 0], ships: ['shuttle'], berthRoom: 'shuttlebay',
+      about: 'A big bay with a door at the end. Build a Shuttle Bay inside and shuttles land in it.', ports: [[0, 0, 0, -1, 0, 0, 'L'], [4, 1.7, 0, 0, 1, 0, 'L'], [4, 0, 2.7, 0, 0, 1, 'L'], [4, 0, -2.7, 0, 0, -1, 'L']] },
+    drydock:  { name: 'Drydock', group: 'docking', tier: 2, cost: 420, up: 6, pw: 4, build: 10, bay: true, center: [1, 0, 0], r: 8, rooms: ['workshop', 'workshop'],
+      berth: [6, 0, 0, 1, 0, 0], ships: ['warship'], berthRoom: 'workshop',
       about: 'An open frame where damaged warships come in for repairs, by engineers on EVA. Needs a Workshop inside.', ports: [[0, 0, 0, -1, 0, 0, 'L']] },
     // ---- industry
     cargo:    { name: 'Cargo Module', group: 'industry', tier: 0, cost: 90, up: 2, pw: 1, build: 4, center: [2.4, 0, 0], r: 2.6, rooms: fill(3, 'cargostore'),
       about: 'A module of cargo stores: haulers bring crates here.', ports: [...arm(4.8), [2.4, 0, 1, 0, 0, 1, 'L'], [2.4, 0, -1, 0, 0, -1, 'L']] },
-    rack:     { name: 'Cargo Rack', group: 'industry', tier: 0, cost: 60, up: 1, pw: 0, build: 3, cargo: true, homes: { hauler: 1 }, center: [2, 0, 0], r: 2.2,
+    rack:     { loose: true, name: 'Cargo Rack', group: 'industry', tier: 0, cost: 60, up: 1, pw: 0, build: 3, cargo: true, homes: { hauler: 1 }, center: [2, 0, 0], r: 2.2,
       about: 'An open frame of containers. Takes crates, and houses one hauler.', ports: [...arm(4), [2, 1.1, 0, 0, 1, 0, 'L'], [2, -1.1, 0, 0, -1, 0, 'L']] },
-    tanks:    { name: 'Fuel Tanks', group: 'industry', tier: 1, cost: 140, up: 2, pw: 0, build: 5, fuel: 5, center: [2, 0, 0], r: 2.2,
+    tanks:    { loose: true, name: 'Fuel Tanks', group: 'industry', tier: 1, cost: 140, up: 2, pw: 0, build: 5, fuel: 5, center: [2, 0, 0], r: 2.2,
       about: 'Three tanks of fuel. Every ship that docks buys some: +5 CR a ship (up to 3).', ports: arm(4.2) },
     refinery: { name: 'Refinery', group: 'industry', tier: 2, cost: 300, up: 5, pw: 4, build: 8, refine: 4, center: [2, 0, 0], r: 2.6, rooms: ['workshop', 'cargostore'],
       about: 'Processes cargo: +4 CR on every crate delivered (up to 2 refineries).', ports: [...arm(4), [2, 1.2, 0, 0, 1, 0, 'L']] },
     // ---- power
     reactor:  { name: 'Reactor Core', group: 'power', tier: 0, cost: 160, up: 6, pw: -16, build: 6, center: [0, 0, 0], r: 2.4, rooms: ['workshop'],
       about: 'Supplies 16 power. Goes in the spine.', ports: [[0, -1.75, 0, 0, -1, 0, 'S'], [0, 1.75, 0, 0, 1, 0, 'S'], ...ring4(2.2)] },
-    solar:    { name: 'Solar Array', group: 'power', tier: 0, cost: 70, up: 1, pw: -6, build: 3, center: [0.6, 0, 0], r: 6,
+    solar:    { loose: true, name: 'Solar Array', group: 'power', tier: 0, cost: 70, up: 1, pw: -6, build: 3, center: [0.6, 0, 0], r: 6,
       about: 'Two wings of cells: supplies 6 power. R turns the wings.', ports: [[0, 0, 0, -1, 0, 0, 'L']] },
-    radiator: { name: 'Radiator', group: 'power', tier: 1, cost: 90, up: 1, pw: -4, build: 3, center: [1.6, 0, 0], r: 4,
+    radiator: { loose: true, name: 'Radiator', group: 'power', tier: 1, cost: 90, up: 1, pw: -4, build: 3, center: [1.6, 0, 0], r: 4,
       about: 'Heat fins that let the reactors run harder: +4 power.', ports: [[0, 0, 0, -1, 0, 0, 'L']] },
     // ---- defence
-    turret:   { name: 'Flak Turret', group: 'defence', tier: 1, cost: 200, up: 3, pw: 2, build: 5, defence: 4, center: [0.6, 0, 0], r: 1.4,
+    turret:   { loose: true, name: 'Flak Turret', group: 'defence', tier: 1, cost: 200, up: 3, pw: 2, build: 5, defence: 4, center: [0.6, 0, 0], r: 1.4,
       about: 'Twin guns on a turning mount. Defence +4.', ports: [[0, 0, 0, -1, 0, 0, 'L']] },
-    shield:   { name: 'Shield Emitter', group: 'defence', tier: 2, cost: 260, up: 4, pw: 4, build: 6, defence: 6, center: [1.2, 0, 0], r: 1.8,
+    shield:   { loose: true, name: 'Shield Emitter', group: 'defence', tier: 2, cost: 260, up: 4, pw: 4, build: 6, defence: 6, center: [1.2, 0, 0], r: 1.8,
       about: 'Projects a shield over the station. Defence +6.', ports: [[0, 0, 0, -1, 0, 0, 'L']] },
     // ---- comms
     spire:    { name: 'Comms Spire', group: 'comms', tier: 0, cost: 50, up: 1, pw: 1, build: 3, traffic: 0.2, center: [0, 0, 0], r: 2.5,
       about: 'Caps the spine. Ships come 20% more often (up to 2).', ports: [[0, -2, 0, 0, -1, 0, 'S']] },
-    dish:     { name: 'Dish Antenna', group: 'comms', tier: 1, cost: 110, up: 2, pw: 1, build: 4, traffic: 0.15, center: [1, 0, 0], r: 2,
+    dish:     { loose: true, name: 'Dish Antenna', group: 'comms', tier: 1, cost: 110, up: 2, pw: 1, build: 4, traffic: 0.15, center: [1, 0, 0], r: 2,
       about: 'A long-range dish. Ships come 15% more often (up to 2).', ports: [[0, 0, 0, -1, 0, 0, 'L']] },
-    billboard:{ name: 'Propaganda Screen', group: 'comms', tier: 1, cost: 90, up: 1, pw: 1, build: 3, leisure: 3, center: [0.8, 0, 0], r: 2.4,
+    billboard:{ loose: true, name: 'Propaganda Screen', group: 'comms', tier: 1, cost: 90, up: 1, pw: 1, build: 3, leisure: 3, center: [0.8, 0, 0], r: 2.4,
       about: 'A giant screen of Super Earth slogans, for passing ships and residents. Morale +3.', ports: [[0, 0, 0, -1, 0, 0, 'L']] },
   },
 
@@ -116,9 +140,18 @@ export const C = {
     shuttlebay: { name: 'Shuttle Bay', short: 'BAY', tier: 2, cost: 80, up: 2, bay: true, col: '#5a6a8a', about: 'Shuttles land inside the hangar.' },
     brass:      { name: 'Brass Suite', short: 'BRASS', tier: 1, cost: 90, up: 2, homes: { aide: 1 }, col: '#b89a3a', about: 'A suite for visiting top brass, kept spotless. Places for 1 aide.' },
     lab:        { name: 'Laboratory', short: 'LAB', tier: 1, cost: 80, up: 1, homes: { scientist: 2 }, col: '#3a6a9a', about: 'Places for 2 scientists, whose research adds to capability.' },
+    guncrew:    { name: 'Gun Crew Room', short: 'GUN', tier: 0, cost: 50, up: 1, homes: { gunner: 2 }, col: '#6a4a3a', about: 'Fire control consoles. Places for 2 gunners.' },
+    magazine:   { name: 'Magazine', short: 'MAG', tier: 0, cost: 40, up: 1, mag: 6, col: '#5a4a2a', about: 'Shells in racks behind blast doors. Holds a reserve of 6 shells. Nobody likes to sleep next to one.' },
+    barrack:    { name: 'Barrack Room', short: 'SEAF', tier: 1, cost: 40, up: 1, homes: { gunner: 3 }, col: '#4a5a3a', about: 'Bunks and lockers for 3 SEAF troopers.' },
+    armoury:    { name: 'Armoury', short: 'ARMS', tier: 1, cost: 50, up: 1, col: '#5a5a4a', about: 'Rifles in racks, for the SEAF.' },
+    dronerack:  { name: 'Drone Rack', short: 'UAV', tier: 1, cost: 60, up: 1, homes: { gunner: 1 }, col: '#3a5a6a', about: 'UAVs on their launch rails. A place for 1 operator.' },
+    eaglepad:   { name: 'Eagle Pad', short: 'EAGLE', tier: 2, cost: 120, up: 2, bay: true, homes: { gunner: 2 }, col: '#4a5a6a', about: 'One Eagle and its deck crew: a pilot and a loader.' },
+    ordnance:   { name: 'Ordnance Store', short: 'ORD', tier: 2, cost: 60, up: 1, mag: 6, col: '#6a5a2a', about: 'Bombs on trolleys for the Eagles. Holds a reserve of 6 shells.' },
+    pelicanpad: { name: 'Pelican Pad', short: 'PELI', tier: 2, cost: 100, up: 2, bay: true, homes: { gunner: 2 }, col: '#4a6a5a', about: 'One Pelican on its pad, with its two pilots.' },
+    fab:        { name: 'Fabricator', short: 'FAB', tier: 2, cost: 90, up: 2, homes: { gunner: 1 }, col: '#6a6a3a', about: 'Prints and packs drop crates. A place for 1 packer.' },
     fighterbay: { name: 'Fighter Bay', short: 'FTR', tier: 2, cost: 120, up: 3, bay: true, defence: 5, col: '#6a4a4a', about: 'A flight of patrol fighters. Defence +5.' },
   },
-  roomOrder: ['quarters', 'bunks', 'mess', 'lounge', 'hydro', 'workshop', 'cargostore', 'ops', 'market', 'bar', 'medbay', 'secoffice', 'truth', 'brass', 'lab', 'shuttlebay', 'fighterbay', 'empty'],
+  roomOrder: ['quarters', 'bunks', 'mess', 'lounge', 'hydro', 'workshop', 'cargostore', 'ops', 'market', 'bar', 'medbay', 'secoffice', 'truth', 'brass', 'lab', 'guncrew', 'magazine', 'barrack', 'armoury', 'dronerack', 'eaglepad', 'ordnance', 'pelicanpad', 'fab', 'shuttlebay', 'fighterbay', 'empty'],
 
   // The divisions you fund and give standing orders to, from the Commander's comms panel.
   div: {
@@ -132,17 +165,18 @@ export const C = {
       orders: { care: [['free', 'Free care: morale +4, costs 10 CR/min'], ['fees', 'Fees: +2 CR/min per medic, morale −2']] } },
     command:     { name: 'Command Staff', short: 'COMMAND', staff: 'aide', uses: 'luxuries', per: 4, allot: 4, col: '#f5d547', orders: {} },
     science:     { name: 'Science Directorate', short: 'SCIENCE', staff: 'scientist', uses: 'instruments', per: 3, allot: 6, col: '#b48cff', orders: {} },
+    gunnery:     { name: 'Fire Support Command', short: 'GUNNERY', staff: 'gunner', uses: 'shells', per: 2, allot: 6, col: '#ff9a3a', orders: {} },
     traffic:     { name: 'Traffic Control', short: 'TRAFFIC', col: '#e6e6e6',
       orders: { mix: [['all', 'All traffic'], ['freight', 'Freighters only'], ['colonists', 'Colonists only']], rate: [['low', 'Light'], ['normal', 'Normal'], ['high', 'Heavy']] } },
     truth:       { name: 'Ministry of Truth', short: 'TRUTH', col: '#ffe600',
       orders: { broadcast: [['patriotic', 'Patriotic hour: morale up to +8, more with Truth Offices'], ['recruitment', 'Recruitment drive: shuttles 50% more often'], ['silence', 'Silence: no broadcast']] } },
   },
-  divOrder: ['supply', 'maintenance', 'security', 'medical', 'command', 'science', 'traffic', 'truth'],
+  divOrder: ['supply', 'maintenance', 'security', 'medical', 'command', 'science', 'gunnery', 'traffic', 'truth'],
   // Supplies come in on freighters, one unit a crate, and each faction draws its weekly allotment from the stores a day at a time.
   supplies: {
     coffee: { name: 'Coffee', unit: 'tins' }, parts: { name: 'Spare parts', unit: 'crates' }, ammo: { name: 'Ammunition', unit: 'boxes' },
     medkits: { name: 'Medkits', unit: 'kits' }, luxuries: { name: 'Fine rations', unit: 'hampers' }, instruments: { name: 'Instruments', unit: 'cases' },
-    rations: { name: 'Rations', unit: 'packs' },
+    rations: { name: 'Rations', unit: 'packs' }, shells: { name: 'Shells', unit: 'shells' },
   },
   supply: { start: 12, allotMax: 40, rationPerResident: 0.5, repairParts: 1 },
   // A station day and week, in seconds of play at 1× speed.
@@ -153,6 +187,7 @@ export const C = {
   // (plus what you approve) decides how happy it is. Happy factions work faster; unhappy ones work slower and complain.
   // `room` is what they ask you to build, `need` says what they judge the layout by.
   factions: {
+    gunnery:     { who: 'Gunnery', room: 'guncrew', wants: 'A ready platform: every gun crewed and fed with shells, magazines close by, and nothing in repair.', ask: 'a Gun Crew Room' },
     supply:      { who: 'Supply', room: 'cargostore', wants: 'Cargo Stores close to the docking ports, so crates do not walk far.', ask: 'a Cargo Store' },
     maintenance: { who: 'Maintenance', room: 'workshop', wants: 'Workshops near everything that can break, and few open faults.', ask: 'a Workshop' },
     security:    { who: 'Security', room: 'secoffice', wants: 'A Security Office close to every docking bay, guns on the hull, and few smugglers getting through.', ask: 'a Security Office' },
@@ -165,9 +200,44 @@ export const C = {
     autoCost: 60, autoShare: 0.25, meddle: -6, short: 25, dilemmaSec: [150, 240] },
   // Raiders test the station now and then, from Garrison on. Defence (turrets, shields, fighters, officers) against their strength.
   raid: { firstSec: 420, everySec: [380, 560], warnSec: 25, fightSec: 18, base: 3, perTier: 5, perHit: 4, maxHits: 4, win: 15 },
+  // The fire support platform. Each SYSTEM is one line of the Orbital Fury armory; `w` is its weight in the readiness figure and
+  // `max` is how many parts of it count. Calls come up from the war below: a ready system answers them, and each answer is capability.
+  platform: {
+    sys: {
+      gun:        { name: 'Ship gun', w: 2, max: 1, call: 'gun fire', shells: 1, weight: 3 },
+      orbital:    { name: 'Orbital strikes', w: 3, max: 5, call: 'an orbital strike', shells: 1, weight: 4 },
+      uav:        { name: 'UAV scan', w: 1, max: 2, call: 'a UAV scan', shells: 0, weight: 2 },
+      eagle:      { name: 'Eagles', w: 2, max: 2, call: 'an Eagle run', shells: 1, weight: 2 },
+      seaf:       { name: 'SEAF drops', w: 2, max: 3, call: 'a SEAF drop', shells: 0, weight: 2 },
+      fab:        { name: 'Buildables', w: 1, max: 1, call: 'a crate of defences', shells: 0, weight: 1 },
+      classified: { name: 'Classified', w: 3, max: 1, call: 'the Democracy Lance', shells: 2, weight: 1 },
+    },
+    order: ['gun', 'orbital', 'uav', 'eagle', 'seaf', 'fab', 'classified'],
+    callSec: [24, 44], firstSec: 50, missSayGap: 90, shortReady: 0.35, bedsNear: 7,
+    squads: ['Tibit Tigers', 'Liberty Hounds', 'Ballot Boxers', 'Midnight Knights', 'Phantom Nine', 'Sweet Liberty Four', 'Iron Voters', 'Quiet Resolve'],
+  },
   // Capability is what the station adds to the war effort. It is the score, and it opens the upgrade path.
-  capability: { crate: 0.5, ship: 1.5, resident: 2, defence: 3, repair: 12, staff: 1, research: 1, raid: 15 },
+  capability: { crate: 0.5, ship: 1.5, resident: 2, defence: 3, repair: 12, staff: 1, research: 1, raid: 15, call: 2, platform: 12 },
   researchPerMin: 1.5,
+
+  // Ship sizes against the standard (a Pelican is about 20 m, a freighter 38 m, a corvette 62 m), and how far off the berth each sits.
+  shipScale: { shuttle: 1.6, freighter: 1.8, warship: 1.6 }, shipOff: { shuttle: 2.4, freighter: 4.6, warship: 3 },
+  // Station livery: the colours, hull plating, interior fit-out and emblem the commander picks.
+  livery: {
+    schemes: {
+      ministry: { name: 'Ministry Grey', hull: '#8c9690', trim: '#f5d547', accent: '#22262a' },
+      sesf:     { name: 'SESF Black', hull: '#2b2e33', trim: '#f5d547', accent: '#8a8f96' },
+      arctic:   { name: 'Arctic White', hull: '#dfe5e6', trim: '#3d7fc4', accent: '#8a959c' },
+      fleet:    { name: 'Fleet Blue', hull: '#3a4f6a', trim: '#7fe9e0', accent: '#1c2636' },
+      rust:     { name: 'Frontier Rust', hull: '#8a5a44', trim: '#e8d9b0', accent: '#3a2a24' },
+      olive:    { name: 'SEAF Olive', hull: '#5d6a4a', trim: '#e0a83a', accent: '#2a3024' },
+    },
+    plating: { panels: 'Panelled', plates: 'Armour plate', smooth: 'Smooth', worn: 'Weathered', hazard: 'Hazard stripes' },
+    interior: { ministry: { name: 'Ministry', wall: '#b9ab8e', floor: '#8a7a62', lane: '#ffe9a0' }, naval: { name: 'Naval', wall: '#8f9aa6', floor: '#5c6670', lane: '#9fe8ff' }, civic: { name: 'Civic', wall: '#e6e8e2', floor: '#9aa79a', lane: '#b8ffd0' }, brass: { name: 'Brass', wall: '#6a4a3a', floor: '#3c2e28', lane: '#ffc66a' } },
+    lights: { warm: '#fff1b0', cool: '#cfeaff', amber: '#ffb648', green: '#b8ffca' },
+    emblems: { wings: 'Wings', star: 'Star', shield: 'Shield', laurel: 'Laurel', none: 'None' },
+    def: { name: '', scheme: 'ministry', hull: '#8c9690', trim: '#f5d547', accent: '#22262a', plating: 'panels', interior: 'ministry', lights: 'warm', emblem: 'wings' },
+  },
 
   start: { credits: 2500, tax: 10 },
   sandbox: { credits: 999999 },
@@ -177,18 +247,18 @@ export const C = {
   ships: { freighterSec: 38, shuttleSec: 42, warshipSec: 95, shuttleMorale: 35, colonists: 4, approachSec: 14, departSec: 11,
     waitSec: 60, queueMax: 3, smuggler: 0.15, repairSec: 30, repairFee: 150, rate: { low: 0.6, normal: 1, high: 1.5 } },
   econ: { crateFee: 8, dockFee: 6, fine: 80, taxPerPct: 0.6 },
-  morale: { base: 70, taxFree: 10, taxPenalty: 2.5, taxBonus: 1, power: 25, leaveBelow: 30, leaveSec: 10, leisureMax: 25, contraband: 10, unrestDecaySec: 60, faulty: 3 },
+  morale: { magazine: 4, base: 70, taxFree: 10, taxPenalty: 2.5, taxBonus: 1, power: 25, leaveBelow: 30, leaveSec: 10, leisureMax: 25, contraband: 10, unrestDecaySec: 60, faulty: 3 },
   faults: { meanSec: 480 },
   securityReach: 16,
 
   // The upgrade path: each tier grows the build zone and unlocks parts and rooms of its tier. Nothing is forced.
   tiers: [
-    { id: 'outpost', name: 'OUTPOST', radius: 16, about: 'A command module and a permit to grow. Trade, house colonists and keep the lights on.' },
-    { id: 'garrison', name: 'GARRISON', radius: 40, needs: { residents: 12, cap: 80, power: 20 },
-      about: 'Recognised by the Ministry. Rings, drums, pylons and the promenade, with markets, bars, medbays and security offices inside.' },
-    { id: 'fortress', name: 'FORTRESS', radius: 70, needs: { residents: 60, cap: 300, power: 60, rooms: ['secoffice', 'medbay'] },
-      about: 'A fortified waypoint for the fleet. Hangars and shuttle bays, drydocks for warships, refineries, flak and shields.' },
-    { id: 'citadel', name: 'CITADEL', radius: 120, needs: { residents: 150, cap: 1000, morale: 70 },
-      about: 'A beacon of managed democracy, with the largest build zone the Ministry grants.' },
+    { id: 'outpost', name: 'OUTPOST', radius: 16, about: 'A command module, a ship gun and a permit to grow. Trade, house colonists and keep the gun ready.' },
+    { id: 'garrison', name: 'GARRISON', radius: 40, needs: { residents: 12, cap: 80, power: 20, ready: 30 },
+      about: 'Recognised by the Ministry. Rings, drums, pylons and the promenade; drone bays and SEAF barracks; with markets, bars, medbays and security offices inside.' },
+    { id: 'fortress', name: 'FORTRESS', radius: 70, needs: { residents: 60, cap: 300, power: 60, ready: 50, rooms: ['secoffice', 'medbay'] },
+      about: 'A fortified waypoint for the fleet. Eagle hangars, Pelican bays and fabrication shops; hangars and shuttle bays, drydocks for warships, refineries, flak and shields.' },
+    { id: 'citadel', name: 'CITADEL', radius: 120, needs: { residents: 150, cap: 1000, morale: 70, ready: 65 },
+      about: 'A beacon of managed democracy, with the largest build zone the Ministry grants and its Classified weapons.' },
   ],
 };

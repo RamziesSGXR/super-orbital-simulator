@@ -41,7 +41,7 @@ function audit() {
     }
   }
   // Panels on top of each other.
-  const boxes = ['#top', '#panel', '#comms', '#c-open', '#cmdr', '#upg', '#simpanel', '#info', '#desk'].map((q) => [q, document.querySelector(q)]).filter(([, e]) => e && vis(e));
+  const boxes = ['#top', '#panel', '#comms', '#c-open', '#cmdr', '#upg', '#liv', '#simpanel', '#info', '#desk'].map((q) => [q, document.querySelector(q)]).filter(([, e]) => e && vis(e));
   for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
     const [qa, a] = boxes[i], [qb, b] = boxes[j];
     if (qa === '#panel' && qb === '#info' || qa === '#info' && qb === '#panel') continue;
@@ -70,7 +70,7 @@ for (const [w, h, touch] of SIZES) {
   await page.goto(`${BASE}/index.html?economy&seed=1`); await page.waitForTimeout(1200);
   await page.evaluate(() => {
     const s = window.__st, b = (t, h, k, r = 0) => s.build(t, h, k, r).id;
-    b('dockport', 1, 2); b('cargo', 1, 3); b('hab', 1, 4); b('hab', 1, 5); const c = b('core', 1, 1); b('reactor', c, 1);
+    b('dockport', 1, 2); b('cargo', 1, 3); b('hab', 1, 4); b('hab', 1, 5); const c = b('core', 1, 1); b('reactor', c, 1); b('gunmount', c, 2);
     s.credits = 5000; for (let i = 0; i < 30 * 200; i++) s.step(1 / 30);
     s.tier = 1; s.radius = 40; for (let i = 0; i < 60; i++) s.step(1 / 30);
     // two things on the desk: a request and a matter of people with three answers
@@ -84,7 +84,7 @@ for (const [w, h, touch] of SIZES) {
   await page.waitForTimeout(2500);
   await seen('economy, comms open', 'economy');
   await page.keyboard.press('o').catch(() => {}); if (touch) await page.tap('#b-cmdr').catch(() => {}); await page.waitForTimeout(500);
-  for (const k of ['supply', 'maintenance', 'security', 'truth']) {
+  for (const k of ['supply', 'maintenance', 'security', 'gunnery', 'truth']) {
     await page.click(`#cm-tabs .dt[data-k="${k}"]`).catch(() => {}); await page.waitForTimeout(250);
     await seen(`commander, ${k}`, k === 'security' ? 'commander' : null);
   }
@@ -92,6 +92,9 @@ for (const [w, h, touch] of SIZES) {
   await page.keyboard.press('u').catch(() => {}); await page.waitForTimeout(300);
   await seen('upgrade path', 'upgrades');
   await page.evaluate(() => document.getElementById('up-x').click());
+  await page.evaluate(() => document.getElementById('b-liv').click()); await page.waitForTimeout(300);
+  await seen('livery', 'livery');
+  await page.evaluate(() => document.getElementById('lv-x').click());
   // Select a part, then a person, then edit inside.
   await page.evaluate(() => { const s = window.__st, p = [...s.parts.values()].find((x) => x.type === 'hab'); window.__ui.sel = p.id; window.__view.select(p.id); });
   await page.waitForTimeout(500);

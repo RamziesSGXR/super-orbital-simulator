@@ -18,7 +18,7 @@ const run = (st, min, log) => {
   }
 };
 const st = new Station(seed, 'run'), b = (t, h, p, r = 0) => { const x = st.build(t, h, p, r); if (!x.ok) throw new Error(`${t}: ${x.why}`); return x.id; };
-const core = b('core', 1, 1), re = b('reactor', core, 1); b('spire', re, 1); b('hab', 1, 4); b('hab', 1, 5); b('dockport', 1, 2); b('cargo', 1, 3); b('core', 1, 0);
+const core = b('core', 1, 1), re = b('reactor', core, 1); b('spire', re, 1); b('hab', 1, 4); b('hab', 1, 5); b('dockport', 1, 2); b('cargo', 1, 3); const low = b('core', 1, 0); b('gunmount', low, 2); b('battery', low, 0);
 const log = []; run(st, minutes, log);
 console.log(log.join('\n'));
 console.log(`\nweek ${st.week()} day ${st.dow()}  cap ${st.capability()}  credits ${Math.round(st.credits)}  staff ${JSON.stringify(st.staff)}`);
@@ -26,7 +26,9 @@ console.log(`stock ${Object.entries(st.stock).map(([k, x]) => `${k} ${Math.round
 console.log(`mood ${Object.entries(st.sat).map(([k, x]) => `${k} ${Math.round(x)}`).join(', ')}  auto ${st.stats.auto}  raids ${st.stats.raidsWon}/${st.stats.raidsLost}  research ${Math.round(st.stats.research)}`);
 const kinds = new Set(st.reqLog.map((r) => r.kind));
 check('time moves in days and weeks', st.week() >= 2 && st.day === Math.floor(st.t / C.time.daySec));
-check('crates stock the stores', Object.values(st.stock).some((x) => x > C.supply.start));
+check('crates stock the stores and nothing runs out', st.lastWeek.in > 0 && !Object.values(st.short).some(Boolean), `${st.lastWeek.in} crates last week`);
+check('the platform is built, crewed and answering calls', st.platform().by.gun.ready > 0.9 && st.platform().by.orbital.ready > 0.9 && st.stats.calls >= 5, `${st.stats.calls} answered, ${st.stats.missed} missed, ready ${Math.round(st.platform().ready * 100)}%`);
+check('every part with a deck is level', [...st.parts.values()].every((p) => C.parts[p.type].loose || Math.abs(1 - 2 * (p.quat[0] ** 2 + p.quat[2] ** 2) - 1) < 1e-6));
 check('a faction changed the station without asking', st.stats.auto >= 1);
 check('something reached the commander', st.reqLog.length >= 2, [...kinds].join(','));
 check('everyone has a story', st.agents.every((a) => a.story.length >= 1));

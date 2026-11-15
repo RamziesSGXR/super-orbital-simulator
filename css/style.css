@@ -381,6 +381,20 @@ h1 { text-shadow: none; letter-spacing: 0.1em; } .eyebrow, .panel .ph, .desk .ph
 .dk p { margin: 3px 0 6px; font-size: 11.5px; line-height: 1.42; color: var(--g); overflow-wrap: anywhere; }
 .dk-b { display: flex; flex-wrap: wrap; gap: 6px; } .dk-b .btn, .freq .btn { min-height: 30px; font-size: 10.5px; padding: 3px 10px; letter-spacing: 0.06em; }
 /* the stores, on Supply's page */
+.plat { margin: 8px 0 4px; padding: 6px 9px; border-left: 2px solid var(--amber); background: rgba(0, 0, 0, 0.25); font-size: 11.5px; }
+.plat > b { display: block; font-size: 10px; letter-spacing: 0.2em; color: var(--amber); font-weight: 400; margin-bottom: 4px; } .plat > em { display: block; font-style: normal; font-size: 10.5px; color: var(--g-dim); margin-top: 4px; }
+.ps { display: grid; grid-template-columns: 112px 30px 1fr minmax(0, 1.4fr); gap: 8px; align-items: center; padding: 1px 0; color: #fff; }
+.ps .pn { color: var(--g-dim); font-size: 10.5px; } .ps em { font-style: normal; font-size: 10.5px; color: var(--g-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ps .pb { height: 6px; background: rgba(255, 255, 255, 0.08); } .ps .pb i { display: block; height: 100%; background: var(--cy); }
+.ps.mid .pb i { background: var(--amber); } .ps.bad .pb i { background: var(--red); } .ps.bad em, .ps.mid em { color: var(--amber); } .ps.none, .ps.off { color: var(--g-dim); } .ps.none em { color: var(--red); }
+.lv-body { padding: 8px 10px 10px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+.lv-row { display: grid; grid-template-columns: 96px 1fr; gap: 8px; align-items: center; } .lv-row .ol { font-size: 10px; letter-spacing: 0.16em; color: var(--g-dim); }
+.lv-row .obs { display: flex; flex-wrap: wrap; gap: 4px; } .lv-row input[type=text] { background: rgba(0, 0, 0, 0.4); border: 1px solid var(--cy-d); color: #fff; font: inherit; padding: 5px 8px; text-transform: uppercase; letter-spacing: 0.1em; min-width: 0; }
+.lv-row .sw i { display: inline-block; width: 9px; height: 12px; margin-right: 1px; vertical-align: -2px; } .lv-row .sw i:last-of-type { margin-right: 6px; }
+.lv-row .cols label { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--g-dim); margin-right: 8px; } .lv-row input[type=color] { width: 34px; height: 24px; padding: 0; border: 1px solid var(--cy-d); background: none; }
+.ri.rdy b { color: var(--amber); }
+@media (max-width: 1100px) { .ri.rdy i { display: none; } } @media (max-width: 860px) { #b-liv .lg { display: none; } #b-liv .sm { display: inline; } } @media (max-width: 700px) { #b-liv { display: none; } }
+@media (max-width: 560px) { .lv-row { grid-template-columns: 1fr; gap: 3px; } .ps { grid-template-columns: 96px 26px 1fr; } .ps em { grid-column: 1 / -1; } }
 .stores { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 2px 12px; margin: 8px 0 4px; padding: 6px 9px; border-left: 2px solid var(--cy-d); background: rgba(0, 0, 0, 0.25); font-size: 11.5px; }
 .stores b { grid-column: 1 / -1; font-size: 10px; letter-spacing: 0.2em; color: var(--cy); font-weight: 400; } .stores em { grid-column: 1 / -1; font-style: normal; font-size: 10.5px; color: var(--g-dim); }
 .stores span { color: #fff; white-space: nowrap; } .stores span i { font-style: normal; color: var(--g-dim); margin-right: 6px; } .stores small { color: var(--g-dim); font-size: 10px; } .stores .warn { color: var(--amber); } .stores .bad { color: var(--red); }
@@ -457,3 +471,10 @@ h1 { text-shadow: none; letter-spacing: 0.1em; } .eyebrow, .panel .ph, .desk .ph
 }
 #app.float-open .simp { display: none; }
 @media (max-width: 600px) { #app.float-open .comms, #app.float-open .copen { display: none; } }
+
+/* 0.6: eight part groups in two columns, and a room palette that scrolls */
+.groups { display: grid; grid-template-columns: 1fr 1fr; width: 118px; align-content: start; }
+.cmd.pal { grid-template-rows: none; grid-auto-rows: 46px; overflow-y: auto; max-height: 148px; padding-right: 2px; }
+@media (max-width: 1100px) { .groups { width: 108px; } .cmd.pal { grid-auto-rows: 40px; max-height: 130px; } }
+@media (max-height: 520px), (max-width: 760px) { .groups { display: flex; width: auto; } .cmd.pal { grid-auto-rows: 38px; max-height: 80px; } }
+#s-title .brief li { margin-bottom: 4px; }

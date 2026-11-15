@@ -55,6 +55,21 @@ const DILEMMAS = [
       { label: 'POLISH THE CORRIDORS', fx: { command: 10, maintenance: -9 }, note: ['Got the corridors polished for the admiral.', 'Spent a shift polishing corridors.'], say: ['command', 'The admiral remarked on the floors. Favourably.'] },
       { label: 'REPAIRS COME FIRST', fx: { maintenance: 10, command: -8 }, note: ['Was told repairs come first.', 'Was backed by the Commander: repairs first.'], say: ['maintenance', 'Thank you, Commander. The admiral can step over the cables.'] },
     ] },
+  { id: 'dangerclose',
+    need: (st) => st.staff.gunner && st.staff.officer && (st.stats.calls || 0) >= 3 ? { a: st.someone('gunner'), b: st.someone('officer') } : null,
+    text: (c, st) => `The ${st.rng.pick(C.platform.squads)} are calling fire onto their own position. Gunner ${c.a.name} will not fire without your word. Officer ${c.b.name} says the regulation is clear: a call is a call.`,
+    opts: [
+      { label: 'FIRE AS CALLED', fx: { gunnery: -6, security: 8, command: 4 }, note: ['Fired on a squad\'s own position, as called, on the Commander\'s word.', 'Saw a call answered by the book.'], say: ['gunnery', 'Shot out. Nothing more on that channel, Commander.'] },
+      { label: 'HOLD FIRE', fx: { gunnery: 8, security: -8, command: -4 }, unrest: 2, note: ['Was told to hold fire, and held it.', 'Was overruled about a call for fire.'], say: ['gunnery', 'Holding. They are still talking down there. For now.'] },
+      { label: 'WALK IT IN SHORT', fx: { gunnery: 4, security: -2 }, stock: { shells: -2 }, note: ['Walked the fire in short of the squad, shell by shell.', 'Watched Gunnery bend a regulation.'], say: ['gunnery', 'Two shells short of them, then one. They are moving again.'] },
+    ] },
+  { id: 'magazine',
+    need: (st) => st.magNear && st.staff.gunner && st.residents() > 3 ? { a: st.someone('resident'), b: st.someone('gunner') } : null,
+    text: (c) => `${c.a.name} has asked to be moved: their bunk shares a deck with a magazine and they have stopped sleeping. Gunner ${c.b.name} says the bulkhead is rated for it.`,
+    opts: [
+      { label: 'THE BULKHEAD IS RATED', fx: { gunnery: 6, medical: -4 }, unrest: 4, note: ['Was told the bulkhead is rated.', 'Was backed by the Commander about the magazine.'], say: ['colonists', 'Somebody has chalked "RATED" on the magazine door.'] },
+      { label: 'FIND THEM ANOTHER BUNK', fx: { medical: 5, gunnery: -3 }, unrest: -3, note: ['Was moved away from the magazine.', 'Lost an argument about a bulkhead.'], say: ['medical', 'Moved, and asleep within the hour.'] },
+    ] },
   { id: 'crate',
     need: (st) => st.staff.hauler && st.staff.scientist ? { a: st.someone('hauler'), b: st.someone('scientist') } : null,
     text: (c) => `A crate of instruments went into the stores as "assorted glassware" and Hauler ${c.a.name} has issued half of it to the mess. Scientist ${c.b.name} wants it back.`,
@@ -91,7 +106,7 @@ export function installStory(Station) {
     weeklyNeed(type) {
       if (type === 'rations') return this.residents() * C.supply.rationPerResident;
       const k = SUPPLY_OF[type];
-      return k ? this.div[k].allot : 0;
+      return k ? this.div[k].allot + (type === 'shells' && this.platformN ? 5 : 0) : 0;
     },
     // What a freighter brings: more of whatever the stores are shortest of, against a week's need.
     manifest(n) {
@@ -164,6 +179,7 @@ export function installStory(Station) {
       else if (k === 'maintenance') subjects = act.filter((p) => !['command', 'core', 'longcore', 'junction', 'truss', 'node', 'tube'].includes(p.type)).map((p) => p.id);
       else if (k === 'medical') subjects = this.residents() ? act.filter((p) => p.rooms.some((r) => C.rooms[r].beds)).map((p) => p.id) : [];
       else if (k === 'command') subjects = [this.root];
+      else if (k === 'gunnery') subjects = act.filter((p) => C.parts[p.type].sys).map((p) => p.id);
       else subjects = act.filter((p) => ['spire', 'dish', 'dome', 'blister'].includes(p.type)).map((p) => p.id);
       if (!subjects.length) return k === 'science' && !have.length ? { part: this.root, far: Infinity } : null;
       if (!have.length) return { part: subjects[0], far: Infinity };
@@ -397,7 +413,7 @@ export function installStory(Station) {
     save() {
       const skip = new Set(['events', 'rng', 'target']);
       const enc = (x) => x instanceof Map ? { __m: [...x].map(([k, y]) => [k, enc(y)]) } : x instanceof Set ? { __s: [...x] }
-        : Array.isArray(x) ? x.map(enc) : x && typeof x === 'object' ? Object.fromEntries(Object.entries(x).map(([k, y]) => [k, enc(y)])) : x === Infinity ? '__inf' : x;
+        : Array.isArray(x) ? x.map(enc) : x && typeof x === 'object' ? Object.fromEntries(Object.entries(x).filter(([k]) => k[0] !== '_').map(([k, y]) => [k, enc(y)])) : x === Infinity ? '__inf' : x;
       const out = { v: C.version, rng: this.rng.s };
       for (const [k, x] of Object.entries(this)) if (!skip.has(k)) out[k] = enc(x);
       return out;

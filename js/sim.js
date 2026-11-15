@@ -6,6 +6,7 @@
 import { C } from './config.js';
 import { RNG } from './rng.js';
 import { v, q } from './math3.js';
+import { installPlatform } from './platform.js';
 import { installStory } from './story.js';
 
 const NAMES = ['Honest Work', 'Steady Progress', 'Fair Weather', 'Good Neighbors', 'Quiet Resolve', 'Open Skies', 'Sturdy Ballots',
@@ -26,10 +27,10 @@ const FIRST = ['Mara', 'Teo', 'Ines', 'Dax', 'Lena', 'Okoye', 'Priya', 'Jonas', 
   'Corin', 'Tala', 'Emeka', 'Rhea', 'Soren', 'Zadie', 'Marek', 'Imani', 'Cass', 'Oren', 'Dilys', 'Pavel'];
 const LAST = ['Voss', 'Marsh', 'Okafor', 'Lindqvist', 'Reyes', 'Tanaka', 'Brandt', 'Halloran', 'Ng', 'Castellan', 'Ibarra', 'Quill', 'Moreau', 'Sato', 'Dunmore',
   'Achebe', 'Petrov', 'Kessler', 'Aldana', 'Fenwick', 'Ruiz', 'Sorensen', 'Bell', 'Nakamura', 'Odum', 'Larkin', 'Vance', 'Mbeki', 'Hart', 'Ivanova'];
-export const STAFF = { hauler: 'supply', engineer: 'maintenance', officer: 'security', medic: 'medical', aide: 'command', scientist: 'science' };
-export const FACTIONS = ['supply', 'maintenance', 'security', 'medical', 'command', 'science'];
+export const STAFF = { hauler: 'supply', engineer: 'maintenance', officer: 'security', medic: 'medical', aide: 'command', scientist: 'science', gunner: 'gunnery' };
+export const FACTIONS = ['supply', 'maintenance', 'security', 'medical', 'command', 'science', 'gunnery'];
 // The room each faction calls its own, for telling whose space a room is.
-export const ROOM_OF = { cargostore: 'supply', workshop: 'maintenance', secoffice: 'security', medbay: 'medical', brass: 'command', lab: 'science' };
+export const ROOM_OF = { cargostore: 'supply', workshop: 'maintenance', secoffice: 'security', medbay: 'medical', brass: 'command', lab: 'science', guncrew: 'gunnery' };
 const COMPLAIN = {
   supply: ['Commander, my haulers are walking half the station with every crate. {why}', 'Supply is not happy. {why}'],
   maintenance: ['Commander, Maintenance is stretched thin. {why}', 'The engineers are grumbling. {why}'],
@@ -37,6 +38,7 @@ const COMPLAIN = {
   medical: ['Commander, Medical cannot reach the people it should. {why}', 'The medics are not happy. {why}'],
   command: ['Commander, the staff are embarrassed to receive visitors. {why}', 'Command is not happy. {why}'],
   science: ['Commander, the Directorate cannot do its work like this. {why}', 'The scientists are muttering. {why}'],
+  gunnery: ['Commander, the platform is not ready and the troops below can tell. {why}', 'Gunnery is not happy. {why}'],
 };
 const PRAISE = {
   supply: 'Supply wanted you to know: the cargo flows, and the haulers noticed.',
@@ -45,6 +47,7 @@ const PRAISE = {
   medical: 'Medical reports: the Medbay is where it should be. Spirits are high.',
   command: 'Command notes: the station is a credit to the Ministry. The brass were impressed.',
   science: 'Science reports: clean readings, short walks to the instruments. The Directorate is pleased.',
+  gunnery: 'Gunnery reports: every call answered. The squads below send their thanks, in their way.',
 };
 export const STRUCTURAL = new Set(['command', 'core', 'longcore', 'junction', 'truss', 'node', 'tube']);
 
@@ -102,12 +105,43 @@ export class Station {
     const b = this.def(p).berth;
     return b ? { pos: v.add(p.pos, q.rot(p.quat, [b[0], b[1], b[2]])), dir: q.rot(p.quat, [b[3], b[4], b[5]]) } : null;
   }
-  // Where a new part would sit on `host`'s port `pi`, turned `rot` steps of 45 degrees about the port's axis.
+  // Where a new part would sit on `host`'s port `pi`. Decks are level everywhere (gravity points to the keel), so a part with
+  // anything to stand on is only ever turned about the vertical: `rot` steps of 45 degrees. LOOSE parts (arrays, dishes, guns)
+  // mate face to face and may be rolled about the port instead.
+  //   side port, arm part      it sticks straight out                  up/down port, spine part   it stacks (by its top port when hung below)
+  //   side port, spine part    it stands beside, touching by its rim    up/down port, arm part     it sits on top or hangs beneath
   placement(type, host, pi, rot = 0) {
-    const d = C.parts[type], tp = this.port(host, pi), base = d.ports[0];
-    const align = q.fromTo([base[3], base[4], base[5]], v.mul(tp.dir, -1));
-    const quat = q.mul(q.axisAngle(tp.dir, rot * Math.PI / 4), align);
-    return { pos: v.sub(tp.pos, q.rot(quat, [base[0], base[1], base[2]])), quat };
+    const d = C.parts[type], tp = this.port(host, pi), base = d.ports[0], join = tp.pos;
+    const yaw = (a) => q.axisAngle([0, 1, 0], a), step = rot * Math.PI / 4;
+    const hostLevel = Math.abs(q.rot(host.quat, [0, 1, 0])[1]) > 0.99;
+    if (d.loose || !hostLevel) {
+      const align = q.fromTo([base[3], base[4], base[5]], v.mul(tp.dir, -1));
+      const quat = q.mul(q.axisAngle(tp.dir, step), align);
+      return { pos: v.sub(tp.pos, q.rot(quat, [base[0], base[1], base[2]])), quat, base: 0, join };
+    }
+    const tv = Math.abs(tp.dir[1]) > 0.7, bv = Math.abs(base[4]) > 0.7;
+    if (!tv && !bv) {
+      // turn the base to face the port: both lie flat, so this is a turn about the vertical
+      const quat = yaw(Math.atan2(base[5], base[3]) - Math.atan2(-tp.dir[2], -tp.dir[0]));
+      return { pos: v.sub(tp.pos, q.rot(quat, [base[0], base[1], base[2]])), quat, base: 0, join };
+    }
+    if (tv && bv) {
+      const quat = yaw(step);
+      let bi = 0;
+      if (Math.sign(base[4]) === Math.sign(tp.dir[1])) {      // the base faces the same way as the port: mate by the other end if it has one
+        bi = d.ports.findIndex((x, i) => i > 0 && Math.abs(x[4]) > 0.7 && Math.sign(x[4]) !== Math.sign(tp.dir[1]));
+        if (bi < 0) { const quat2 = q.mul(q.axisAngle(tp.dir, step), q.fromTo([base[3], base[4], base[5]], v.mul(tp.dir, -1))); return { pos: v.sub(tp.pos, q.rot(quat2, [base[0], base[1], base[2]])), quat: quat2, base: 0, join, flipped: true }; }
+      }
+      const b = d.ports[bi];
+      return { pos: v.sub(tp.pos, q.rot(quat, [b[0], b[1], b[2]])), quat, base: bi, join };
+    }
+    if (bv) {      // a spine part on a side port: it stands beside the host, level with the port
+      const quat = yaw(step), rad = d.rad ?? Math.max(1.2, ...d.ports.filter((x) => Math.abs(x[4]) < 0.7).map((x) => Math.hypot(x[0], x[2])));
+      return { pos: [tp.pos[0] + tp.dir[0] * rad, tp.pos[1], tp.pos[2] + tp.dir[2] * rad], quat, base: -1, join };
+    }
+    // an arm part on a port that faces up or down: it sits on top, or hangs beneath, centred on the port
+    const quat = yaw(step), hh = d.hh ?? 1, c = q.rot(quat, [d.center[0], 0, d.center[2]]);
+    return { pos: [tp.pos[0] - c[0], tp.pos[1] + Math.sign(tp.dir[1]) * hh, tp.pos[2] - c[2]], quat, base: -1, join };
   }
   freePorts() {
     const out = [];
@@ -127,7 +161,10 @@ export class Station {
     if (!this.partOpen(type)) return { ok: false, why: `Unlocks at ${C.tiers[d.tier].name}` };
     if (!host || host.state === 'demolish') return { ok: false, why: 'Nothing to attach to' };
     if (host.used.has(pi)) return { ok: false, why: 'That port is taken' };
+    const tpd = this.port(host, pi).dir;
+    if (d.keel && tpd[1] > 0.7) return { ok: false, why: 'Its guns face the planet: use a side port or one underneath' };
     const pl = this.placement(type, host, pi, rot), c = v.add(pl.pos, q.rot(pl.quat, d.center));
+    if (pl.flipped && d.rooms) return { ok: false, why: 'This part stands upright: use a port that faces up' };
     if (v.len(c) + d.r * 0.5 > this.radius) return { ok: false, why: 'Outside the permitted build zone' };
     // No clash test on purpose: parts may overlap and nest (a ring inside a ring), so players can build any shape.
     if (this.credits < d.cost) return { ok: false, why: 'Not enough credits' };
@@ -138,7 +175,7 @@ export class Station {
     if (!chk.ok) return chk;
     const host = this.parts.get(hostId), pl = this.placement(type, host, pi, rot);
     this._money(-C.parts[type].cost, 'build');
-    const p = this._make(type, host.id, pi, rot, pl.pos, pl.quat);
+    const p = this._make(type, host.id, pi, rot, pl.pos, pl.quat, pl.base, pl.join);
     host.used.add(pi); host.kids.push(p.id);
     this.events.push({ type: 'build', part: p });
     return { ok: true, why: '', id: p.id };
@@ -187,9 +224,9 @@ export class Station {
     return chk;
   }
 
-  _make(type, parent, pport, rot, pos, quat) {
+  _make(type, parent, pport, rot, pos, quat, base = 0, join = null) {
     const n = [...this.parts.values()].filter((x) => x.type === type).length + 1;
-    const p = { id: this.nextId++, type, parent, pport, rot, pos, quat, n, used: new Set(parent ? [0] : []), kids: [],
+    const p = { id: this.nextId++, type, parent, pport, rot, pos, quat, n, join, used: new Set(parent && base >= 0 ? [base] : []), kids: [],
       state: 'building', prog: 0, seed: this.rng.next(), rooms: [...(C.parts[type].rooms || [])], marks: [], fault: false, fixer: 0 };
     this.parts.set(p.id, p);
     return p;
@@ -215,7 +252,7 @@ export class Station {
   nbrs(p) { const out = p.kids.map((k) => this.parts.get(k)).filter((x) => x && x.state === 'active'); const h = this.parts.get(p.parent); if (h && h.state === 'active') out.push(h); return out; }
   edge(a, b) {
     const child = b.parent === a.id ? b : a;
-    const conn = this.port(child, 0).pos, ca = this.center(a), cb = this.center(b);
+    const conn = child.join || this.port(child, 0).pos, ca = this.center(a), cb = this.center(b);
     const da = v.dist(ca, conn), db = v.dist(conn, cb);
     return { ca, conn, cb, da, db, len: Math.max(0.3, da + db) };
   }
@@ -274,6 +311,11 @@ export class Station {
     this.trafficMul = 1 + Math.min(0.4, spires) + 0.1 * Math.min(3, ops);
     this.fuelN = Math.min(3, fuel); this.refineN = Math.min(2, refine);
     this.homes = homes;
+    this.platformN = 0; this.magN = 0;
+    const mags = [];
+    for (const p of this.parts.values()) if (p.state === 'active') { if (this.def(p).sys) this.platformN++; if (p.rooms.some((r) => C.rooms[r].mag)) { this.magN++; mags.push(p.id); } }
+    this.magNear = 0;
+    if (mags.length) { const dm = this.distMap(mags); for (const p of this.parts.values()) if (p.state === 'active' && !this.def(p).sys && p.rooms.some((r) => C.rooms[r].beds) && (dm.get(p.id) ?? 99) <= C.platform.bedsNear) this.magNear++; }
     for (const [role, k] of Object.entries(STAFF)) this.staff[role] = Math.min(homes[role], Math.floor(this.div[k].allot / C.div[k].per));
   }
   beds() { return this.capBeds; }
@@ -313,7 +355,7 @@ export class Station {
     return {
       base: M.base, tax, leisure: Math.max(-10, Math.min(M.leisureMax, this.leisure)), power: -M.power * (1 - this.eff),
       unrest: -this.unrest, faults: -M.faulty * faulty, medical: this.staff.medic ? (care === 'free' ? 4 : -2) : 0,
-      broadcast: this.broadcastBoost(), shifts: sh ? -5 : 0, broke: this.credits < 0 ? -15 : 0, rations: this.short.rations ? -10 : 0,
+      broadcast: this.broadcastBoost(), shifts: sh ? -5 : 0, broke: this.credits < 0 ? -15 : 0, rations: this.short.rations ? -10 : 0, magazines: this.magNear ? -M.magazine : 0,
     };
   }
   _money(x, cat) {
@@ -338,6 +380,7 @@ export class Station {
     if (n.crates) items.push({ label: 'Crates traded', have: this.stats.crates, need: n.crates });
     if (n.power) items.push({ label: 'Power supply', have: this.supply, need: n.power });
     if (n.morale) items.push({ label: 'Morale', have: Math.round(this.morale), need: n.morale });
+    if (n.ready) items.push({ label: 'Platform readiness', have: Math.round(this.platform().ready * 100), need: n.ready });
     for (const r of n.rooms || []) items.push({ label: `${C.rooms[r].name} running`, have: this.roomCount(r), need: 1 });
     for (const i of items) i.ok = i.have >= i.need;
     return { ...T, items };
@@ -427,6 +470,7 @@ export class Station {
       const dm = this.distMap(gear), d = avg(labs.map((b) => dm.get(b) ?? 60));
       out.science = { t: clamp(100 - d * 3), why: `The labs are ${Math.round(d)} units from the nearest instruments.` };
     }
+    out.gunnery = this._gunneryTarget();
     // A faction cannot be blamed for a room the Ministry has not allowed yet.
     for (const k of FACTIONS) if (!this.roomOpen(C.factions[k].room)) out[k] = { t: 55, why: `The Ministry has not yet allowed ${C.factions[k].ask.replace(/^an? /, '')}s.` };
     for (const [role, k] of Object.entries(STAFF)) if (this.homes[role] > 0 && this.staff[role] === 0) { out[k].t = Math.max(5, out[k].t - 20); out[k].why = `There is no allotment to keep anyone on duty. ${out[k].why}`; }
@@ -454,7 +498,7 @@ export class Station {
     const K = C.capability, sat = FACTIONS.reduce((s, k) => s + this.sat[k], 0) / FACTIONS.length;
     const staff = Object.values(this.staff).reduce((s, x) => s + x, 0);
     const raw = this.stats.crates * K.crate + this.stats.ships * K.ship + this.residents() * K.resident + this.defence * K.defence + (this.stats.repairs || 0) * K.repair + staff * K.staff
-      + this.stats.research * K.research + this.stats.raidsWon * K.raid;
+      + this.stats.research * K.research + this.stats.raidsWon * K.raid + (this.stats.calls || 0) * K.call + this.platform().score * K.platform;
     return Math.round(raw * (0.7 + 0.6 * sat / 100));
   }
   crew(k) { return this.agents.filter((a) => a.role === C.div[k].staff); }
@@ -466,11 +510,12 @@ export class Station {
       case 'fix': return 'heading out to a fault';
       case 'drydock': return 'heading to the drydock';
       case 'inspect': return 'inspecting a ship';
+      case 'guns': return 'checking the guns';
       case 'rounds': return a.role === 'aide' ? 'inspecting the station' : a.role === 'scientist' ? 'taking readings' : 'doing rounds';
       case 'leave': return 'leaving the station';
       case 'out': return 'out for a walk';
       case 'back': return 'heading home';
-      default: return a.role === 'resident' ? 'at home' : 'on station';
+      default: return a.role === 'resident' ? 'at home' : a.role === 'gunner' ? 'standing by for a call' : 'on station';
     }
   }
 
@@ -504,6 +549,7 @@ export class Station {
     this._factions(dt);
     this._requests(dt);
     this._story(dt);
+    this._platform(dt);
     this._tiers();
     if ((this.timers.talk -= dt) <= 0) {
       this.timers.talk = 70 + this.rng.range(0, 40);
@@ -581,14 +627,14 @@ export class Station {
       const from = this.parts.get(a.at), to = this.parts.get(a.path[0]);
       if (!from || !to || to.state !== 'active') { a.path = []; a.s = 0; break; }
       const L = this.edge(from, to).len;
-      if (a.s + left >= L) { left -= L - a.s; a.s = 0; a.at = to.id; a.path.shift(); } else { a.s += left; left = 0; }
+      if (a.s + left >= L) { left -= L - a.s; a.s = 0; a.at = to.id; a.path.shift(); a.leg = (a.leg || 0) + 1; } else { a.s += left; left = 0; }
     }
     if (!a.path.length) this._arrive(a);
   }
   _go(a, goal, task) {
     const p = this.route(a.at, goal);
     if (!p) return false;
-    a.path = p; a.s = 0; a.task = task;
+    a.path = p; a.s = 0; a.task = task; a.leg = 0;
     if (!p.length) this._arrive(a);
     return true;
   }
@@ -607,6 +653,13 @@ export class Station {
       return this._goHome(a, [3, 7]);
     }
     if (a.role === 'officer') return this._goHome(a, [2, 5]);
+    if (a.role === 'gunner') {
+      if (a.task !== 'guns' && this.rng.chance(0.35)) {
+        const spots = this.list((d, p) => d.sys || this.has(p, 'mess') || this.has(p, 'bar')).filter((p) => p.id !== a.at);
+        if (spots.length) { const t = this.rng.pick(spots).id; if (this._go(a, (p) => p.id === t, 'guns')) return; }
+      }
+      return this._goHome(a, [4, 10]);
+    }
     if (a.role === 'aide' || a.role === 'scientist') {
       if (a.task !== 'rounds' && this.rng.chance(0.5)) {
         const spots = a.role === 'aide' ? this.list((d, p) => p.type === 'command' || this.has(p, 'ops') || this.has(p, 'mess') || d.berth)
@@ -818,6 +871,7 @@ export class Station {
       case 'traffic': { const bf = this.berths('freighter').length; return `Berths: ${bf} for freighters, ${this.berths('shuttle').length} for shuttles, ${this.berths('warship').length} drydock. Ships served: ${this.stats.ships}, lost: ${this.stats.lost}. Average time at berth: ${this.avgBerth() == null ? 'no data yet' : this.avgBerth().toFixed(0) + ' s'}.`; }
       case 'command': return `Aides on staff: ${st.aide} of ${this.homes.aide} places. Open faults: ${open.length}. Stores running short: ${Object.entries(this.short).filter(([, x]) => x).map(([k2]) => k2).join(', ') || 'none'}. ${this.homes.aide ? 'The suite is ready for inspection at any hour.' : 'We have nowhere fit to receive the brass, Commander.'}`;
       case 'science': return `Scientists: ${st.scientist} of ${this.homes.scientist} places. Research logged: ${Math.floor(this.stats.research)}. ${this.homes.scientist ? 'Readings are coming in.' : 'Give us a Laboratory and we will tell you things about this planet you will wish you did not know.'}`;
+      case 'gunnery': { const P = this.platform(); return `Gunners, pilots and troopers on duty: ${st.gunner} of ${this.homes.gunner} places. Platform readiness: ${Math.round(P.ready * 100)}%. Calls answered: ${this.stats.calls || 0}, missed: ${this.stats.missed || 0}. ${this.platformN ? (P.ready > 0.8 ? 'The troops below know we are here.' : 'We are not where the Ministry expects us to be, Commander.') : 'There is no gun on this station. Build a Ship Gun or an Orbital Battery.'}`; }
       case 'truth': return this.div.truth.order.broadcast === 'silence' ? 'The Ministry is silent, by your order. Citizens are left alone with their thoughts.' : `Broadcasting ${this.div.truth.order.broadcast === 'patriotic' ? 'the Patriotic Hour' : 'the Recruitment Drive'} on every screen. Morale from broadcasts: +${this.broadcastBoost().toFixed(0)}. Truth Offices aboard: ${this.broadcast}.`;
     }
     return '';
@@ -837,3 +891,4 @@ export class Station {
 }
 
 installStory(Station);
+installPlatform(Station);

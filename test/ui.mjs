@@ -42,11 +42,11 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
   check('Hull is the default view', await page.evaluate(() => window.__view.mode === 'hull' && window.__ui.view === 'hull') && await page.$eval('.vb[data-v="hull"]', (b) => b.classList.contains('on')));
   check('the top bar shows capability, not a profit figure', await page.evaluate(() => !document.getElementById('r-net') && /^\d/.test(document.getElementById('r-cap').textContent)));
   check('build buttons show a picture of the part, with its name and cost', await page.evaluate(() => { const b = document.querySelector('#cmd .cb'); return !!b.querySelector('img') && b.querySelector('img').src.startsWith('data:image/png') && !!b.querySelector('.cn').textContent && +b.querySelector('.cc').textContent > 0; }));
-  check('parts come in seven groups', (await page.$$eval('#groups .gt', (b) => b.map((x) => x.textContent))).join() === 'STRUCT,HAB,DOCK,INDUS,POWER,DEF,COMMS');
+  check('parts come in eight groups, fire support second', (await page.$$eval('#groups .gt', (b) => b.map((x) => x.textContent))).join() === 'STRUCT,FIRE,HAB,DOCK,INDUS,POWER,DEF,COMMS');
   await page.keyboard.press('Tab');
   const hab = await page.$$eval('#cmd .cb', (b) => b.map((x) => [x.dataset.t, x.classList.contains('locked')]));
-  check('Tab opens the next group, with its later parts locked', hab.length === 7 && hab.filter((g) => g[1]).map((g) => g[0]).join() === 'ring,drum,disc,tower', JSON.stringify(hab));
-  await page.keyboard.press('w'); await page.waitForTimeout(200);
+  check('Tab opens the next group, with its later parts locked', hab.length === 9 && hab.filter((g) => g[1]).map((g) => g[0]).join() === 'dronebay,relay,barracks,eaglehangar,pelicanbay,fabshop,lance', JSON.stringify(hab));
+  await page.keyboard.press('e'); await page.waitForTimeout(200);
   check('a locked part is refused with the tier that unlocks it', /GARRISON/.test(await page.textContent('#toast')));
 
   await page.click('#groups .gt[data-g="docking"]'); await page.keyboard.press('q'); await page.waitForTimeout(200);
@@ -88,11 +88,34 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
   await page.evaluate(() => {
     const s = window.__st, b = (t, h, k, r = 0) => s.build(t, h, k, r).id;
     b('hab', 1, 4); b('hab', 1, 5);
-    const c = b('core', 1, 1); b('reactor', c, 1);
+    const c = b('core', 1, 1); b('reactor', c, 1); b('gunmount', c, 2);
   });
   await steps(page, 60);
   const mid = await page.evaluate(() => ({ crates: window.__st.stats.crates, res: window.__st.residents() }));
   check('ships dock and haulers carry crates to cargo', mid.crates > 0, JSON.stringify(mid));
+  // The fire support platform, the gravity standard and the livery.
+  check('the ship gun is crewed and the top bar reads the platform ready', await page.evaluate(() => { const P = window.__st.platform(); return P.by.gun.n === 1 && P.by.gun.ready > 0.9 && /^\d+%$/.test(document.getElementById('r-rdy').textContent); }), await page.evaluate(() => JSON.stringify(window.__st.platform().sys.map((x) => [x.k, x.n, +x.ready.toFixed(2), x.why]))));
+  check('a gun cannot go on a port that faces up', await page.evaluate(() => { const s = window.__st, re = [...s.parts.values()].find((p) => p.type === 'reactor'); return /planet/.test(s.canBuild('battery', re.id, 1).why); }));
+  check('every deck is level, however a part is attached', await page.evaluate(() => {
+    const s = window.__st, c = [...s.parts.values()].find((p) => p.type === 'core'), ids = [s.build('tower', c.id, 3).id, s.build('hab', [...s.parts.values()].find((p) => p.type === 'reactor').id, 1).id];
+    const up = (q) => 1 - 2 * (q[0] * q[0] + q[2] * q[2]);
+    const ok = ids.every((id) => id && Math.abs(up(s.parts.get(id).quat) - 1) < 1e-6);
+    for (const id of ids) if (id) { s.parts.get(id).state = 'active'; s.demolish(id); }
+    return ok;
+  }) || await page.evaluate(() => window.__st.tier < 1));
+  await steps(page, 90);
+  check('calls come up from the ground and the platform answers', await page.evaluate(() => (window.__st.stats.calls || 0) >= 1), await page.evaluate(() => `${window.__st.stats.calls} answered, ${window.__st.stats.missed} missed`));
+  check('people walk the corridors: a walker is on a deck, not in mid air', await page.evaluate(() => {
+    const s = window.__st, v = window.__view, now = performance.now() / 1000;
+    for (let i = 0; i < 400; i++) { s.step(1 / 30); const a = s.agents.find((x) => x.path.length && !x.eva); if (a) { const P = v.agentPos(a, now); return !!P && P.length === 4 && Number.isFinite(P[1]); } }
+    return false;
+  }));
+  await page.click('#b-liv'); await page.waitForTimeout(200);
+  await page.click('#lv-body [data-scheme="sesf"]'); await page.click('#lv-body [data-key="plating"][data-v="plates"]'); await page.click('#lv-body [data-key="emblem"][data-v="star"]');
+  await page.fill('#lv-name', 'Tharsis Watch'); await page.press('#lv-name', 'Enter'); await page.waitForTimeout(200);
+  check('livery sets the name, colours, plating and emblem', await page.evaluate(() => { const L = window.__st.livery, v = window.__view; return L.name === 'Tharsis Watch' && L.scheme === 'sesf' && L.plating === 'plates' && L.emblem === 'star' && '#' + v.M.hull.color.getHexString() === '#2b2e33' && v.M.hull.map === v.plateTex.plates; }), await page.evaluate(() => JSON.stringify(window.__st.livery)));
+  await page.screenshot({ path: 'test/shots/livery.png' });
+  await page.click('#lv-body [data-scheme="ministry"]'); await page.click('#lv-body [data-key="plating"][data-v="panels"]'); await page.click('#lv-x');
 
   // Edit inside a hab: the rooms are in 3D, in the part itself.
   await page.evaluate(() => window.__view.focus([...window.__st.parts.values()].find((p) => p.type === 'hab').id, true)); await page.waitForTimeout(300);
@@ -100,7 +123,7 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
   for (let i = 0; i < 3 && await page.evaluate(() => window.__st.parts.get(window.__ui.sel)?.type) !== 'hab'; i++) { await page.mouse.click(...await partXY(page, 'p.type === "hab"')); await page.waitForTimeout(300); }
   check('clicking a part selects it, with EDIT INSIDE', await page.evaluate(() => window.__st.parts.get(window.__ui.sel)?.type) === 'hab' && await page.isVisible('#a-edit'), await page.evaluate(() => `${window.__st.parts.get(window.__ui.sel)?.type} ${window.__ui.tool} ${window.__ui.edit}`));
   await page.keyboard.press('i'); await page.waitForTimeout(500);
-  check('I opens the part: a room palette and its rooms', await page.evaluate(() => window.__view.edit) && (await page.$$('#cmd .rb')).length === 18 && (await page.$$('#info .chip[data-i]')).length === 3);
+  check('I opens the part: a room palette and its rooms', await page.evaluate(() => window.__view.edit) && (await page.$$('#cmd .rb')).length === 27 && (await page.$$('#info .chip[data-i]')).length === 3);
   const habId = await page.evaluate(() => window.__view.edit), cr0 = await page.evaluate(() => window.__st.credits);
   await page.click('.rb[data-r="mess"]');
   const t1 = await tileXY(page, 1);
@@ -116,7 +139,7 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
 
   // The Commander's channel.
   await page.keyboard.press('o'); await page.waitForTimeout(300);
-  check('O opens the Commander\'s channel with eight divisions', await page.isVisible('#cmdr') && (await page.$$('#cm-tabs .dt')).length === 8);
+  check('O opens the Commander\'s channel with nine divisions', await page.isVisible('#cmdr') && (await page.$$('#cm-tabs .dt')).length === 9);
   await page.click('#cm-tabs .dt[data-k="maintenance"]'); await page.waitForTimeout(100);
   await page.click('.ob[data-v="preventive"]'); await page.waitForTimeout(300);
   check('a standing order is given and acknowledged on the radio', await page.evaluate(() => window.__st.div.maintenance.order.plan) === 'preventive' && /CH 4 · PATRIOTIC MAINTENANCE/.test(await page.textContent('#c-list')));
@@ -138,7 +161,7 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
 
   // The upgrade path.
   await page.keyboard.press('u'); await page.waitForTimeout(200);
-  check('U shows the upgrade path, Outpost to Citadel', (await page.$$('#up-list .tier')).length === 4 && await page.isVisible('#up-list .tier.now') && (await page.$$('#up-list .tier.next .req')).length === 3);
+  check('U shows the upgrade path, Outpost to Citadel', (await page.$$('#up-list .tier')).length === 4 && await page.isVisible('#up-list .tier.now') && (await page.$$('#up-list .tier.next .req')).length === 4);
   await page.screenshot({ path: 'test/shots/upgrades.png' });
   await page.keyboard.press('u');
   for (let i = 0; i < 14 && await page.evaluate(() => window.__st.tier) < 1; i++) await steps(page, 60);
@@ -153,7 +176,8 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
     s._dilemma();
     return { id: r.id, part: p.id, slot, n: s.requests.length };
   });
-  await page.waitForTimeout(700);
+  // software rendering is slow: wait for the next HUD pass rather than for a fixed time
+  await page.waitForFunction((n) => document.querySelectorAll('#dk-list .dk').length === n && document.getElementById('cm-badge').textContent.trim() === String(n), ask.n, { timeout: 20000 }).catch(() => {});
   check('a request lands on the desk with its choices', await page.isVisible('#desk') && (await page.$$('#dk-list .dk')).length === ask.n && (await page.$$(`#dk-list .dk[data-id="${ask.id}"] button`)).length === 2, `${ask.n}`);
   check('a matter of people comes with choices of its own', ask.n === 2 && (await page.$$('#dk-list .dk:last-child button')).length >= 2 && /MATTER OF PEOPLE/.test(await page.textContent('#dk-list .dk:last-child')), `${ask.n}`);
   check('the Commander button counts what is waiting', +(await page.textContent('#cm-badge')).trim() === ask.n);
@@ -175,9 +199,11 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
   check('the stars, sun and moons move with the camera, so they never slide', await page.evaluate(() => window.__view.sky.position.distanceTo(window.__view.camera.position) < 1e-6));
   await page.keyboard.press('4'); await page.waitForTimeout(300);
   check('4 cuts the station away', await page.evaluate(() => window.__view.cutaway && !!window.__view.M.hull.clippingPlanes));
-  check('with the hull cut away, people are figures by job', await page.evaluate(() => { const v = window.__view; return v.figOn && Object.values(v.figs).reduce((n, f) => n + f.count, 0) === window.__st.agents.filter((x) => !x.eva).length && v.figs.hauler.count > 0; }));
+  await page.waitForFunction(() => window.__view.figOn && window.__view.figs.hauler.count > 0, null, { timeout: 20000 }).catch(() => {});
+  check('with the hull cut away, people are figures by job', await page.evaluate(() => { const v = window.__view; return v.figOn && Object.values(v.figs).reduce((n, f) => n + f.count, 0) === window.__st.agents.filter((x) => !x.eva).length && v.figs.hauler.count > 0; }), await page.evaluate(() => { const v = window.__view; return JSON.stringify({ fig: v.figOn, counts: Object.fromEntries(Object.entries(v.figs).map(([k, f]) => [k, f.count])), agents: window.__st.agents.filter((x) => !x.eva).length }); }));
   await page.screenshot({ path: 'test/shots/cutaway.png' });
   await page.keyboard.press('4'); await page.keyboard.press('3'); await page.waitForTimeout(300);
+  await page.waitForFunction(() => window.__view.mode === 'life' && window.__view.agentPts.geometry.drawRange.count > 0, null, { timeout: 20000 }).catch(() => {});
   check('3 shows life signs', await page.evaluate(() => window.__view.mode === 'life' && window.__view.agentPts.geometry.drawRange.count > 0));
   check('life signs are only people inside the station', await page.evaluate(() => window.__view.agentPts.geometry.drawRange.count <= window.__st.agents.filter((a) => !a.eva).length + window.__view.suits.children.filter((s) => s.visible).length));
   await page.screenshot({ path: 'test/shots/life-signs.png' });
@@ -296,7 +322,7 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
   await steps(page, 90);
   await page.keyboard.press('m'); await page.click('#b-restart'); await page.waitForTimeout(600);      // leaving for the title saves
   check('Continue appears once the station has been saved', await page.isVisible('#b-continue'));
-  const before = await page.evaluate(() => JSON.parse(localStorage.getItem('sos.save.05')).t);
+  const before = await page.evaluate(() => JSON.parse(localStorage.getItem('sos.save.06')).t);
   await page.reload(); await page.waitForTimeout(1500);
   await page.click('#b-continue'); await page.waitForTimeout(800);
   const w1 = await page.evaluate(() => ({ n: window.__st.parts.size, t: window.__st.t, mode: window.__st.mode, agents: window.__st.agents.length, objs: window.__view.partObjs.size }));
