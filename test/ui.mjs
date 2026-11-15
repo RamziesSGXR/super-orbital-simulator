@@ -115,6 +115,23 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
   await page.fill('#lv-name', 'Tharsis Watch'); await page.press('#lv-name', 'Enter'); await page.waitForTimeout(200);
   check('livery sets the name, colours, plating and emblem', await page.evaluate(() => { const L = window.__st.livery, v = window.__view; return L.name === 'Tharsis Watch' && L.scheme === 'sesf' && L.plating === 'plates' && L.emblem === 'star' && '#' + v.M.hull.color.getHexString() === '#2b2e33' && v.M.hull.map === v.plateTex.plates; }), await page.evaluate(() => JSON.stringify(window.__st.livery)));
   await page.screenshot({ path: 'test/shots/livery.png' });
+  // Scale, standing spots and rearranging.
+  check('a person is drawn 1.8 m tall against a 9 m unit', await page.evaluate(() => Math.abs(window.__view.personK() * 0.33 - 0.2) < 0.005));
+  check('people at rest stand on a planned spot, with a clear way to the door', await page.evaluate(() => {
+    const s = window.__st, v = window.__view, a = s.agents.find((x) => !x.path.length && !x.eva && s.parts.get(x.at) && s.parts.get(x.at).rooms.length);
+    if (!a) return false; const r = v._rest(a, s.parts.get(a.at)); return !!r.door && Array.isArray(r.via) && r.spot.length === 3;
+  }));
+  check('painting the same room again rearranges it', await page.evaluate(() => {
+    const s = window.__st, p = [...s.parts.values()].find((x) => x.type === 'hab'), was = (p.fit && p.fit[0]) || 0;
+    const r = s.setRoom(p.id, 0, p.rooms[0]); const f = s.refit(p.id, 0);
+    return !r.ok && f.ok && p.fit[0] === (was + 1) % 6;
+  }));
+  check('the people size setting changes how large people are drawn', await page.evaluate(() => {
+    const i = document.getElementById('in-people'); i.value = 140; i.dispatchEvent(new Event('input'));
+    const big = window.__view.peopleK === 1.4 && document.getElementById('bv-people').textContent === '140%';
+    i.value = 100; i.dispatchEvent(new Event('input'));
+    return big && window.__view.peopleK === 1;
+  }));
   await page.click('#lv-body [data-scheme="ministry"]'); await page.click('#lv-body [data-key="plating"][data-v="panels"]'); await page.click('#lv-x');
 
   // Edit inside a hab: the rooms are in 3D, in the part itself.

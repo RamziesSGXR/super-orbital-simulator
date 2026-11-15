@@ -1,8 +1,9 @@
 // Every tuning number for Super Orbital Simulator lives here. Change them here, never in game logic.
-// THE MINISTRY STANDARD PATTERN. One station unit is 5 m. A person stands 0.36 units (1.8 m); a door is 0.2 wide and 0.42 high;
-// a corridor is 0.4 wide; decks are at least 0.6 apart. Gravity is made by the deck plates, and it points the same way everywhere:
-// toward the keel (−Y), where the planet is. So every deck is level, however a part is attached. Only LOOSE parts (arrays, dishes,
-// guns, racks: nothing to stand on) may be turned any way round.
+// THE MINISTRY STANDARD PATTERN. One station unit is 9 m (C.scale.m) and a person is 1.8 m (C.scale.person). Rooms are furnished
+// in metres from real things at real sizes (rooms.js): a bed is 2 m, a door 1.2 m by 2.1 m, a wall 2.5 m, a worktop 0.9 m.
+// Decks are about 9 m apart: the space between is tanks, ducts and the gravity plates. Gravity is made by the deck plates, and it
+// points the same way everywhere: toward the keel (−Y), where the planet is. So every deck is level, however a part is attached.
+// Only LOOSE parts (arrays, dishes, guns, racks: nothing to stand on) may be turned any way round.
 // Distances are in station units. Money is in credits (CR); rates are per minute of game time.
 //
 // PARTS snap together at PORTS. A port is [x, y, z, dx, dy, dz, kind] in the part's own frame: where it is and which way it faces.
@@ -17,7 +18,7 @@ const arm = (len) => [[0, 0, 0, -1, 0, 0, 'L'], [len, 0, 0, 1, 0, 0, 'L']];
 const fill = (n, room) => Array(n).fill(room);
 
 export const C = {
-  version: '0.6.0',
+  version: '0.7.0',
 
   groups: [
     { id: 'structure', name: 'STRUCTURE' }, { id: 'platform', name: 'FIRE SUPPORT' }, { id: 'habitation', name: 'HABITATION' }, { id: 'docking', name: 'DOCKING' },
@@ -220,8 +221,11 @@ export const C = {
   capability: { crate: 0.5, ship: 1.5, resident: 2, defence: 3, repair: 12, staff: 1, research: 1, raid: 15, call: 2, platform: 12 },
   researchPerMin: 1.5,
 
-  // Ship sizes against the standard (a Pelican is about 20 m, a freighter 38 m, a corvette 62 m), and how far off the berth each sits.
-  shipScale: { shuttle: 1.6, freighter: 1.8, warship: 1.6 }, shipOff: { shuttle: 2.4, freighter: 4.6, warship: 3 },
+  // Ship sizes against the standard (a Pelican is about 25 m, an Eagle 15 m, a freighter 45 m, a destroyer 115 m), and how far off the berth each sits.
+  shipScale: { shuttle: 1.1, freighter: 1.2, warship: 1.6, eagle: 0.68 }, shipOff: { shuttle: 1.7, freighter: 3.1, warship: 3 },
+  // THE SCALE. One station unit is `m` metres and a person is `person` metres tall. Rooms are furnished in metres (rooms.js), so
+  // changing these two numbers rescales the people and every fitting against the station; the hull itself does not change.
+  scale: { m: 9, person: 1.8 },
   // Station livery: the colours, hull plating, interior fit-out and emblem the commander picks.
   livery: {
     schemes: {

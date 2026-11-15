@@ -208,7 +208,8 @@ function pickRoom(r) {
 function paint(id, slot) {
   const r = st.setRoom(id, slot, ui.room);
   if (r.ok) audio.play('place');
-  else if (r.why && r.why !== 'Already that room') { audio.play('deny'); toast(r.why); }
+  else if (r.why === 'Already that room') { if (st.refit(id, slot).ok) audio.play('click'); }      // the same room again: rearrange it
+  else if (r.why) { audio.play('deny'); toast(r.why); }
   info();
 }
 function editClick(x, y) {
@@ -645,6 +646,11 @@ function menu(on = !$('s-menu').classList.contains('on')) { $('s-menu').classLis
 $('b-menu').onclick = () => menu(); $('b-close').onclick = () => menu(false);
 $('b-mute').onclick = () => { audio.unlock(); audio.mute(!audio.muted); $('b-mute').textContent = audio.muted ? 'SOUND OFF' : 'SOUND ON'; };
 $('in-tax').oninput = (e) => { st.setTax(+e.target.value); menuText(); };
+// People size: a display setting only. 100% is the standard (C.scale); the station and its rooms do not change.
+const PEOPLE_KEY = 'sos.people';
+function setPeople(v, save = true) { const n = Math.max(60, Math.min(160, +v || 100)); view.peopleK = n / 100; $('in-people').value = n; $('bv-people').textContent = `${n}%`; if (save) try { localStorage.setItem(PEOPLE_KEY, String(n)); } catch (e) { /* no storage here */ } }
+$('in-people').oninput = (e) => setPeople(e.target.value);
+try { setPeople(localStorage.getItem(PEOPLE_KEY) || 100, false); } catch (e) { setPeople(100, false); }
 function menuText() {
   const p = st.moraleParts();
   $('bv-tax').textContent = `${st.tax}%`;
@@ -792,7 +798,7 @@ function editInfo(peekRoom) {
   const r = peekRoom || ui.room, R = r && C.rooms[r], s = roomSums(p.rooms);
   const chips = p.rooms.map((x, i) => `<button type="button" class="chip${ui.slot === i ? ' on' : ''}" data-i="${i}" style="--c:${C.rooms[x].col}">${i + 1} ${C.rooms[x].short || '—'}</button>`).join('');
   const sel = ui.slot != null ? `Room ${ui.slot + 1} is a <b>${C.rooms[p.rooms[ui.slot]].name}</b>. ` : '';
-  const how = R ? `<b>${R.name}</b>${R.cost ? ` · ${R.cost} CR` : ''}${R.up ? ` · upkeep ${R.up}/min` : ''}. ${R.about || 'Clears the room.'}`
+  const how = R ? `<b>${R.name}</b>${R.cost ? ` · ${R.cost} CR` : ''}${R.up ? ` · upkeep ${R.up}/min` : ''}. ${R.about || 'Clears the room.'}${r !== 'empty' ? ' Click a room that is already one to rearrange it.' : ''}`
     : `${sel}Pick a room on the left, then click a room inside the part${view.touch ? ' (or tap a number below)' : ''}.`;
   setInfo(`<div class="in edit"><span>EDITING · ${st.name(p).toUpperCase()}</span><button class="btn" id="a-focus" type="button">FOCUS <small>F</small></button><button class="btn primary" id="a-done" type="button">DONE <small>I</small></button></div>`
     + `<div class="ia">${how}</div><div class="chips">${chips}</div><div class="st">${sumStats(s) || stat('ROOMS', 'all empty')}</div>`, () => {

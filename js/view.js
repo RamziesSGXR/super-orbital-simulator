@@ -30,10 +30,10 @@ export class View {
     R.localClippingEnabled = true;
     R.setClearColor(0x000000);
     this.scene = new THREE.Scene();
-    this.camera = new THREE.PerspectiveCamera(42, 1, 0.1, 6000);
+    this.camera = new THREE.PerspectiveCamera(42, 1, 0.05, 6000);
     this.camera.position.set(26, 17, 30);
     this.controls = new THREE.OrbitControls(this.camera, canvas);
-    Object.assign(this.controls, { enableDamping: true, dampingFactor: 0.08, minDistance: 3, maxDistance: 260, screenSpacePanning: true });
+    Object.assign(this.controls, { enableDamping: true, dampingFactor: 0.08, minDistance: 0.9, maxDistance: 260, screenSpacePanning: true });
     this.mode = 'blueprint'; this.cutaway = false; this.overlay = true; this.portMode = 'near'; this.touch = false;
     this.clip = [new THREE.Plane(new THREE.Vector3(-1, 0, 0), 0), new THREE.Plane(new THREE.Vector3(0, 0, -1), 0)];
     this._materials();
@@ -90,6 +90,8 @@ export class View {
       decal: B({ color: 0xffffff, side: THREE.DoubleSide }),
       dark: S({ color: 0x15171a, metalness: 0.6, roughness: 0.45, flatShading: true }), blue: B({ color: 0x5fc8ff }),
       wall: S({ color: 0xb9ab8e, roughness: 0.9, metalness: 0.02 }), lane: B({ color: 0xffe9a0 }),
+      wood: S({ color: 0x8b6b4a, roughness: 0.8 }), white: S({ color: 0xe6e9e4, roughness: 0.6 }), steel: S({ color: 0xaab2b6, roughness: 0.35, metalness: 0.75 }), sofa: S({ color: 0x8a4f3c, roughness: 0.95 }),
+      fdark: S({ color: 0x1d2024, metalness: 0.5, roughness: 0.5 }), fblue: B({ color: 0x5fc8ff }), fscreen: B({ color: 0xffffff }),
       bed: S({ color: 0x9fb4c8, roughness: 0.95 }), locker: S({ color: 0x4a5258, roughness: 0.6, metalness: 0.4 }), shell: S({ color: 0xc9a23a, roughness: 0.4, metalness: 0.7 }), carpet: S({ color: 0x7a2a2a, roughness: 1 }),
       craft: S({ color: 0x8c9690, metalness: 0.5, roughness: 0.5, flatShading: true }), craftTrim: S({ color: 0xf5d547, metalness: 0.3, roughness: 0.6, flatShading: true }),
       raider: S({ color: 0x3a2226, metalness: 0.6, roughness: 0.4, flatShading: true }), raiderGlow: B({ color: 0xff5a3a }),
@@ -120,13 +122,14 @@ export class View {
     // The propaganda screen: one canvas shared by every screen, changing slogan every few seconds.
     const sc = this.screenCv = document.createElement('canvas'); sc.width = 384; sc.height = 224;
     this.screenTex = new THREE.CanvasTexture(sc); this.screenTex.colorSpace = THREE.SRGBColorSpace;
+    M.fscreen.map = this.screenTex;
     M.screen = B({ map: this.screenTex, side: THREE.DoubleSide }); M.bpScreen = B({ map: this.screenTex, transparent: true, opacity: 0.35, side: THREE.DoubleSide });
     this.slogan = -1; this._drawSlogan(0);
     this.clipped = ['bpHull', 'bpLine', 'bpGlow', 'bpPanel', 'hull', 'hullLine', 'glow', 'glass', 'panel', 'wire', 'pod', 'trim', 'decal', 'dark', 'blue', 'xHull', 'xLine', 'xGlow', 'build', 'gone', 'screen', 'bpScreen', 'dimHull', 'dimLine'];
     for (const k of this.clipped) M[k].clipIntersection = true;
     this.decalCv = document.createElement('canvas'); this.decalCv.width = 512; this.decalCv.height = 256;
     this.decalTex = new THREE.CanvasTexture(this.decalCv); this.decalTex.colorSpace = THREE.SRGBColorSpace; M.decal.map = this.decalTex;
-    this.plateTex = {};
+    this.plateTex = {}; this.peopleK = 1;
     this.setLivery({ ...C.livery.def });
   }
   // ---------------------------------------------------------------- livery: colours, hull plating, interior fit-out, lights, emblem
@@ -227,7 +230,7 @@ export class View {
       else if (r === 'tileLine') o.material = m === 'blueprint' ? this.M.bpTileLine : m === 'life' ? this.M.xInnerLine : this.M.tileLine;
       else if (m === 'blueprint') o.material = r === 'glow' || r === 'spark' || r === 'lane' ? this.M.bpGlow : r === 'line' ? this.M.bpInnerLine : this.M.bpInner;
       else if (m === 'life') o.material = this.M.hidden;
-      else o.material = { hull: this.M.craft, trim: this.M.craftTrim, glass: this.M.thGlass, line: this.M.tileLine, decal: this.M.hidden }[r] || this.M[r] || this.M.inner;
+      else o.material = { hull: this.M.craft, trim: this.M.craftTrim, glass: this.M.thGlass, line: this.M.tileLine, decal: this.M.hidden, dark: this.M.fdark, blue: this.M.fblue, screen: this.M.fscreen }[r] || this.M[r] || this.M.inner;
     });
   }
   _dim(id) { return !!this.edit && this.edit !== id; }
@@ -391,22 +394,22 @@ export class View {
   _rooms(p) {
     const lay = SLOTS[p.type];
     if (!lay || p.state === 'building') return;
-    const sig = `${p.rooms.join(',')}|${p.marks.join(',')}`;
+    const sig = `${p.rooms.join(',')}|${p.marks.join(',')}|${(p.fit || []).join(',')}|${C.scale.m}`;
     let r = this.roomObjs.get(p.id);
     if (r && r.sig === sig) return;
     if (r) this.scene.remove(r.group);
     const g = new THREE.Group();
     lay.forEach((s, i) => {
-      const room = p.rooms[i] || 'empty', rg = buildRoom(room, s.w, s.d, doorSide(p.type, s));
+      const room = p.rooms[i] || 'empty', rg = buildRoom(room, s.w, s.d, doorSide(p.type, s), (p.fit && p.fit[i]) || 0);
       rg.position.set(...s.p); rg.rotation.y = s.ry;
       rg.traverse((x) => { x.userData.part = p.id; x.userData.slot = i; });
       // A room a faction asked for carries that faction's colour: a bar along the front edge and a flag on a short post.
       const mk = p.marks[i];
       if (mk && C.div[mk]) {
         const col = new THREE.Color(C.div[mk].col), m = new THREE.MeshBasicMaterial({ color: col });
-        const bar = new THREE.Mesh(new THREE.BoxGeometry(s.w * 0.9, 0.06, 0.07), m); bar.position.set(0, 0.05, s.d * 0.46);
-        const post = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.5, 0.04), m); post.position.set(s.w * 0.4, 0.28, s.d * 0.44);
-        const flag = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.18, 0.02), m); flag.position.set(s.w * 0.4 + 0.17, 0.46, s.d * 0.44);
+        const bar = new THREE.Mesh(new THREE.BoxGeometry(s.w * 0.94, 0.012, 0.04), m); bar.position.set(0, 0.34, s.d * 0.475);
+        const post = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.5, 0.02), m); post.position.set(s.w * 0.44, 0.28, s.d * 0.47);
+        const flag = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.1, 0.01), m); flag.position.set(s.w * 0.44 - 0.09, 0.47, s.d * 0.47);
         for (const x of [bar, post, flag]) { x.userData.role = 'mark'; x.userData.mat = m; x.userData.part = p.id; x.userData.slot = i; }
         rg.add(bar, post, flag);
       }
@@ -426,7 +429,7 @@ export class View {
     const inside = dp && (dp.type === 'hangar' || dp.type === 'drydock');
     const off = C.shipOff[s.kind] ?? 3;
     const out = b ? new THREE.Vector3(...b.dir) : new THREE.Vector3(0, 1, 0);
-    if (b && dp.type === 'hangar') b.pos[1] -= 1.1;      // a shuttle sets down on the hangar floor
+    if (b && dp.type === 'hangar') b.pos[1] -= 1.25;      // a shuttle sets down on the hangar floor
     const berth = b ? new THREE.Vector3(...b.pos).add(out.clone().multiplyScalar(dp.type === 'hangar' ? -3 : off)) : hold;
     const nose = inside ? out.clone() : out.clone().negate();      // into a hangar or drydock they back in, nose out
     let pos, look;
@@ -480,7 +483,8 @@ export class View {
       for (const r of want) { idx = lay.map((_, i) => i).filter((i) => p.rooms[i] === r); if (idx.length) break; }
       if (!idx.length) idx = lay.map((_, i) => i).filter((i) => !KEEP_OUT.has(p.rooms[i]));
       if (!idx.length) idx = lay.map((_, i) => i);
-      out = slotSpot(p.type, idx[Math.floor(a.seed * 997) % idx.length], a.seed);
+      const si = idx[Math.floor(a.seed * 997) % idx.length];
+      out = slotSpot(p.type, si, a.seed, p.rooms[si] || 'empty', (p.fit && p.fit[si]) || 0);
     } else {
       const c = [d.center[0] + (a.seed - 0.5) * 0.8, d.center[1], d.center[2]], w = onWalk(p.type, c);
       out = { spot: w ? [w[0], w[1], w[2] + (a.seed * 5.1 % 1 - 0.5) * 0.2] : [c[0], c[1] - 0.2, (a.seed * 5.1 % 1 - 0.5) * 0.5], door: null };
@@ -493,9 +497,9 @@ export class View {
   // A leg inside one part, between two spots, as world points with running lengths.
   _leg(p, from, to) {
     const A = from.door || from.spot, B = to.door || to.spot, pts = [];
-    if (from.door) pts.push(from.spot);
+    if (from.door) { pts.push(from.spot); for (const x of from.via || []) pts.push(x); }
     for (const x of WALK[p.type] ? walkPath(p.type, A, B) : [A, B]) pts.push(x);
-    if (to.door) pts.push(to.spot);
+    if (to.door) { for (const x of [...(to.via || [])].reverse()) pts.push(x); pts.push(to.spot); }
     const out = pts.map((l) => addRot(p.pos, p.quat, [l[0], l[1] + 0.04, l[2]])), len = [0];
     for (let i = 1; i < out.length; i++) len.push(len[i - 1] + Math.hypot(out[i][0] - out[i - 1][0], out[i][1] - out[i - 1][1], out[i][2] - out[i - 1][2]));
     return { pts: out, len };
@@ -526,14 +530,16 @@ export class View {
         return a.s < e.da ? this._along(a._wa, a.s / Math.max(0.01, e.da)) : this._along(a._wb, (a.s - e.da) / Math.max(0.01, e.db));
       }
     }
-    const r = this._rest(a, p).spot, sway = Math.sin(now * 0.3 + a.seed * 20) * 0.03;
-    const w = addRot(p.pos, p.quat, [r[0] + sway, r[1] + 0.04, r[2]]);
-    return [w[0], w[1], w[2], null];
+    const rs = this._rest(a, p), r = rs.spot;
+    const w = addRot(p.pos, p.quat, [r[0], r[1] + 0.04, r[2]]);
+    return [w[0], w[1], w[2], null, rs.face ?? null];
   }
+  // How big a figure is drawn: the standard height (C.scale) over the height it was modelled at, times the player's own setting.
+  personK() { return C.scale.person / C.scale.m / 0.33 * this.peopleK; }
   _agents(now) {
     const pos = this.agentPts.geometry.attributes.position, col = this.agentPts.geometry.attributes.color;
     let n = 0;
-    const put = (P, c) => { if (n >= pos.count) return; pos.setXYZ(n, P[0], P[1] + 0.12, P[2]); col.setXYZ(n, c[0], c[1], c[2]); n++; };
+    const put = (P, c) => { if (n >= pos.count) return; pos.setXYZ(n, P[0], P[1] + 0.1, P[2]); col.setXYZ(n, c[0], c[1], c[2]); n++; };
     const count = {}, fig = this.figOn, m4 = this._m4, qa = this._qa, qb = this._qb, sc = this._sc, v3 = this._v3, tintc = this._col;
     let crates = 0;
     for (const a of this.st.agents) {
@@ -549,12 +555,13 @@ export class View {
       if (i >= im.instanceMatrix.count) continue;
       count[fk] = i + 1;
       if (P[3] !== null && P[3] !== undefined) qa.setFromAxisAngle(UP, P[3] + Math.sin(now * 9 + a.seed * 30) * 0.1);
-      else { qa.set(...part.quat); qb.setFromAxisAngle(UP, a.seed * 6.283); qa.multiply(qb); }
+      else { qa.set(...part.quat); qb.setFromAxisAngle(UP, P[4] !== null && P[4] !== undefined ? P[4] + Math.sin(now * 0.4 + a.seed * 20) * 0.25 : a.seed * 6.283); qa.multiply(qb); }
       v3.set(P[0], P[1], P[2]);
       const bob = a.path.length ? 1 + Math.sin(now * 12 + a.seed * 40) * 0.05 : 1;
-      m4.compose(v3, qa, sc.set(1.09, 1.09 * bob, 1.09)); im.setMatrixAt(i, m4);
+      const ps = this.personK();
+      m4.compose(v3, qa, sc.set(ps, ps * bob, ps)); im.setMatrixAt(i, m4);
       if (a.role === 'resident') { tintc.setHSL((a.seed * 7.7) % 1, 0.35, 0.6); im.setColorAt(i, tintc); }
-      if (a.carry && crates < this.crateIM.instanceMatrix.count) { v3.set(0, 0.2, 0.07).applyQuaternion(qa).add(sc.set(P[0], P[1], P[2])); m4.compose(v3, qa, sc.set(1, 1, 1)); this.crateIM.setMatrixAt(crates++, m4); }
+      if (a.carry && crates < this.crateIM.instanceMatrix.count) { v3.set(0, 0.2 * ps, 0.08 * ps).applyQuaternion(qa).add(sc.set(P[0], P[1], P[2])); m4.compose(v3, qa, sc.set(ps * 1.3, ps * 1.3, ps * 1.3)); this.crateIM.setMatrixAt(crates++, m4); }
     }
     for (const r of FIGURES) { const im = this.figs[r]; im.count = fig ? count[r] || 0 : 0; im.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true; }
     this.crateIM.count = crates; this.crateIM.instanceMatrix.needsUpdate = true;
@@ -687,7 +694,7 @@ export class View {
     }
     while (this.suitPool.length < jobs.length) { const s = buildSuit(); s.traverse((x) => { if (x.userData.role) x.material = this.M[x.userData.role]; }); this.suits.add(s); this.suitPool.push(s); }
     this.evaPos = [];
-    const sc = this.mode === 'blueprint' ? 2 : 1.5;
+    const sc = (this.mode === 'blueprint' ? 1.1 : 0.6) * this.peopleK;
     this.suitPool.forEach((s, i) => {
       const j = jobs[i];
       s.visible = !!j && this.mode !== 'life';
@@ -815,7 +822,7 @@ export class View {
     const g = new THREE.Group();
     lay.forEach((s, i) => {
       const r = C.rooms[p.rooms[i] || 'empty'], sp = this._tag(`${i + 1} ${r.short || 'EMPTY'}`, r.col);
-      const k = Math.min(1.7, Math.max(0.8, s.w * 0.42));
+      const k = Math.min(0.8, Math.max(0.42, s.w * 0.22));
       sp.scale.set(k, k * 0.32, 1); sp.position.set(s.p[0], s.p[1] + 0.55, s.p[2]);
       g.add(sp);
     });
@@ -881,7 +888,7 @@ export class View {
   agentScreen(a, now) {
     const P = this.agentPos(a, now);
     if (!P || a.eva) return null;
-    const v = this._v3.set(P[0], P[1] + 0.3, P[2]), d = v.distanceTo(this.camera.position);
+    const v = this._v3.set(P[0], P[1] + 0.24 * this.peopleK, P[2]), d = v.distanceTo(this.camera.position);
     v.project(this.camera);
     if (v.z > 1) return null;
     const r = this.canvas.getBoundingClientRect();

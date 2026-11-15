@@ -7,6 +7,8 @@
 // Port positions in config.js and slot positions here match these shapes.
 import * as THREE from './vendor/three.js';
 
+import { C } from './config.js';
+import { roomPlan, OPEN } from './rooms.js';
 const TAU = Math.PI * 2;
 const V2 = (x, y) => new THREE.Vector2(x, y);
 const along = (g) => g.rotateZ(-Math.PI / 2);        // a Y-axis cylinder turned to lie along +X
@@ -109,15 +111,23 @@ export function doorSide(type, s) {
   if (Math.hypot(lx, lz) < 0.05) return null;
   return Math.abs(lx) > Math.abs(lz) ? (lx > 0 ? '+x' : '-x') : (lz > 0 ? '+z' : '-z');
 }
-// A person's spot in a slot, and the slot's door, in the part's frame.
-export function slotSpot(type, i, k) {
-  const s = SLOTS[type][i], c = Math.cos(s.ry), sn = Math.sin(s.ry);
-  const u = (k * 7.31 % 1 - 0.5) * s.w * 0.6, w = (k * 3.77 % 1 - 0.5) * s.d * 0.5;
-  const spot = [s.p[0] + u * c + w * sn, s.p[1], s.p[2] - u * sn + w * c];
-  const side = doorSide(type, s);
-  if (!side) return { spot, door: null };
-  const ox = side === '+x' ? s.w / 2 : side === '-x' ? -s.w / 2 : 0, oz = side === '+z' ? s.d / 2 : side === '-z' ? -s.d / 2 : 0;
-  return { spot, door: [s.p[0] + ox * c + oz * sn, s.p[1], s.p[2] - ox * sn + oz * c] };
+// A slot's room plan (rooms.js works in metres, with the door wall at +Z), and how to bring a point of it into the part's frame.
+const TURN = { '+z': 0, '-z': Math.PI, '+x': Math.PI / 2, '-x': -Math.PI / 2 };
+function slotPlan(type, i, room, variant) {
+  const s = SLOTS[type][i], side = doorSide(type, s), m = C.scale.m, sw = side === '+x' || side === '-x';
+  const plan = roomPlan(room, (sw ? s.d : s.w) * 0.96 * m, (sw ? s.w : s.d) * 0.96 * m, side, variant);
+  const th = TURN[side] ?? 0, ct = Math.cos(th), st = Math.sin(th), c = Math.cos(s.ry), sn = Math.sin(s.ry);
+  const at = (x, z) => { const lx = (x * ct + z * st) / m, lz = (-x * st + z * ct) / m; return [s.p[0] + lx * c + lz * sn, s.p[1], s.p[2] - lx * sn + lz * c]; };
+  return { plan, at, turn: th + s.ry };
+}
+// A person's own place in a slot, in the part's frame: where they stand, which way they face (null: any), the clear way from there
+// to the door, and the door (on an open deck, the lift in the middle). People with work to stand at take those places first.
+export function slotSpot(type, i, k, room = 'empty', variant = 0) {
+  const { plan, at, turn } = slotPlan(type, i, room, variant);
+  const use = plan.spots.filter((x) => !x.idle), idle = plan.spots.filter((x) => x.idle);
+  const pool = use.length && (k * 13.7 % 1 < 0.8 || !idle.length) ? use : idle, sp = pool[Math.floor(k * 7919) % pool.length];
+  const j = sp.idle ? (k * 5.3 % 1 - 0.5) * 0.9 : (k * 5.3 % 1 - 0.5) * 0.24;
+  return { spot: at(sp.x + j, sp.z), via: sp.via.map(([x, z]) => at(x, z)), door: at(plan.door[0], plan.door[1]), face: sp.face === null ? null : sp.face + turn };
 }
 
 // Bake a built group down to one mesh (or one set of lines) per role, so a part or a room costs a handful of draw calls however
@@ -508,77 +518,42 @@ export function buildPart(type) {
     for (const y of ys) { const n = Math.round(W.R * 5); for (let i = 0; i < n; i++) { const a = i * TAU / n, b = new THREE.BoxGeometry(0.035, 0.012, 0.22); b.rotateY(-a); put(b, 'lane', Math.cos(a) * W.R, y + 0.004, Math.sin(a) * W.R); } }
     for (const a of W.spokes || []) for (let r = 1.5; r < W.R - 0.2; r += 0.5) { const b = new THREE.BoxGeometry(0.22, 0.012, 0.035); b.rotateY(-a); put(b, 'lane', Math.cos(a) * r, W.y + 0.004, Math.sin(a) * r); }
   } else if (W && W.k === 'shaft' && lay) {
-    for (const y of new Set(lay.map((s) => s.p[1]))) { put(flat(new THREE.TorusGeometry(0.3, 0.02, 4, 16)), 'lane', 0, y + 0.03, 0); box(0.2, 0.42, 0.03, 'lane', 0, y + 0.23, 0.235); }
+    for (const y of new Set(lay.map((s) => s.p[1]))) { put(flat(new THREE.TorusGeometry(0.28, 0.012, 4, 20)), 'lane', 0, y + 0.045, 0); for (const [x, z, w, d] of [[0, 0.225, 0.14, 0.02], [0, -0.225, 0.14, 0.02], [0.225, 0, 0.02, 0.14], [-0.225, 0, 0.02, 0.14]]) box(w, 0.24, d, 'lane', x, y + 0.16, z); }
   }
   return bake(g);
 }
 
-// ---------------------------------------------------------------- rooms: a floor tile, walls with a door onto the walk, and fittings
+// ---------------------------------------------------------------- rooms: a floor tile and everything rooms.js planned for it
 // Built in the tile's own frame (floor at y = 0, w along X, d along Z). `door` is the side the door is on ('+z', '-z', '+x', '-x'),
-// or null for an open deck. Everything is sized to the standard: a person is 0.36 tall, a bed 0.42 long, a door 0.2 by 0.42.
-// Walls stop at shoulder height so you can see in from above.
-const OPEN = new Set(['empty', 'shuttlebay', 'pelicanpad', 'eaglepad', 'fighterbay']);
-export function buildRoom(room, w, d, door = null) {
-  const g = new THREE.Group(), f = new THREE.Group();
-  const add = (grp, geom, role, x, y, z) => { geom.translate(x, y, z); const m = new THREE.Mesh(geom); m.userData.role = role; grp.add(m); return m; };
+// or null for an open deck round a lift. The plan is in metres; here it is shrunk to station units and turned to face the door.
+export function buildRoom(room, w, d, door = null, variant = 0) {
+  const g = new THREE.Group(), f = new THREE.Group(), m = C.scale.m;
+  const add = (grp, geom, role, x, y, z) => { geom.translate(x, y, z); const o = new THREE.Mesh(geom); o.userData.role = role; grp.add(o); return o; };
   const tile = add(g, new THREE.BoxGeometry(w * 0.96, 0.04, d * 0.96), 'tile', 0, 0.02, 0);
   tile.userData.room = room;
   const e = new THREE.LineSegments(new THREE.EdgesGeometry(tile.geometry)); e.userData.role = 'tileLine'; g.add(e);
-  // Fittings are laid out with the door at the front (+Z) and the back wall at −Z, then turned to face the real door.
-  const side = door === '+x' || door === '-x', W = side ? d : w, D = side ? w : d, hw = W * 0.45, hd = D * 0.45, bk = -hd, fr = hd;
-  f.rotation.y = { '+z': 0, '-z': Math.PI, '+x': Math.PI / 2, '-x': -Math.PI / 2 }[door] ?? 0; g.add(f);
-  const B = (bw, bh, bd, role, x, z, y = 0.04) => add(f, new THREE.BoxGeometry(bw, bh, bd), role, x, y + bh / 2, z);
-  const Cy = (r, h, role, x, z, y = 0.04, seg = 8) => add(f, new THREE.CylinderGeometry(r, r, h, seg), role, x, y + h / 2, z);
-  if (door && !OPEN.has(room)) {
-    const H = 0.3, t = 0.03, gap = 0.24, wl = (W * 0.96 - gap) / 2;
-    B(W * 0.96, H, t, 'wall', 0, -D * 0.48); B(t, H, D * 0.96, 'wall', -W * 0.48, 0); B(t, H, D * 0.96, 'wall', W * 0.48, 0);
-    for (const sx of [-1, 1]) { B(wl, H, t, 'wall', sx * (gap / 2 + wl / 2), D * 0.48); B(0.03, 0.42, 0.05, 'wall', sx * 0.12, D * 0.48); }
-    B(0.27, 0.03, 0.05, 'wall', 0, D * 0.48, 0.42); B(0.2, 0.012, 0.05, 'lane', 0, D * 0.48, 0.04);
+  const side = door === '+x' || door === '-x';
+  const plan = roomPlan(room, (side ? d : w) * 0.96 * m, (side ? w : d) * 0.96 * m, door, variant);
+  f.rotation.y = TURN[door] ?? 0; f.scale.setScalar(1 / m); f.position.y = 0.04; g.add(f);
+  for (const it of plan.items) {
+    if (it[0] === 'b') add(f, new THREE.BoxGeometry(it[2], it[3], it[4]), it[1], it[5], it[6], it[7]);
+    else if (it[0] === 'c') add(f, new THREE.CylinderGeometry(it[2], it[2], it[3], it[7] || 10), it[1], it[4], it[5], it[6]);
+    else if (it[0] === 'cx') add(f, new THREE.CylinderGeometry(it[2], it[2], it[3], 10).rotateZ(Math.PI / 2), it[1], it[4], it[5], it[6]);
+    else add(f, new THREE.CylinderGeometry(it[2], it[2], it[3], 10).rotateX(Math.PI / 2), it[1], it[4], it[5], it[6]);
   }
-  const bed = (x, z, y = 0.04, along = true) => { B(along ? 0.2 : 0.42, 0.08, along ? 0.42 : 0.2, 'inner', x, z, y); B(along ? 0.18 : 0.4, 0.03, along ? 0.4 : 0.18, 'bed', x, z, y + 0.08); };
-  const locker = (x, z) => B(0.12, 0.38, 0.1, 'locker', x, z);
-  const desk = (x, z, wd = 0.3) => { B(wd, 0.02, 0.15, 'inner', x, z, 0.18); B(0.02, 0.14, 0.13, 'inner', x - wd / 2 + 0.02, z); B(0.02, 0.14, 0.13, 'inner', x + wd / 2 - 0.02, z); };
-  const stool = (x, z) => Cy(0.04, 0.1, 'locker', x, z);
-  const console_ = (x, z, wd = 0.26) => { B(wd, 0.2, 0.12, 'inner', x, z); B(wd * 0.85, 0.12, 0.02, 'glow', x, z - 0.05, 0.25); B(0.08, 0.1, 0.08, 'locker', x, z + 0.16); };
-  const table = (x, z, r = 0.11) => { Cy(r, 0.02, 'inner', x, z, 0.17, 12); Cy(0.02, 0.13, 'inner', x, z); };
-  const crate = (x, z, y = 0.04, k = 0.2) => B(k, k, k, 'crate', x, z, y);
-  switch (room) {
-    case 'quarters': bed(-hw + 0.13, bk + 0.24); bed(hw - 0.13, bk + 0.24); locker(-hw + 0.08, fr - 0.12); locker(hw - 0.08, fr - 0.12); desk(0, bk + 0.1, 0.26); stool(0, bk + 0.26); break;
-    case 'bunks': for (const x of [-hw + 0.13, hw - 0.13]) for (const z of [bk + 0.24, fr - 0.3]) { bed(x, z); bed(x, z, 0.24); for (const dz of [-0.2, 0.2]) B(0.02, 0.36, 0.02, 'locker', x - Math.sign(x) * -0.1, z + dz); } locker(0, bk + 0.07); break;
-    case 'barrack': for (const x of [-hw + 0.13, 0, hw - 0.13]) { bed(x, bk + 0.24); bed(x, bk + 0.24, 0.24); B(0.02, 0.36, 0.02, 'locker', x + 0.1, bk + 0.44); locker(x, fr - 0.1); } break;
-    case 'mess': for (const x of [-hw * 0.5, hw * 0.5]) { B(0.34, 0.02, 0.18, 'inner', x, 0.05, 0.17); B(0.03, 0.13, 0.03, 'inner', x, 0.05); for (const sx of [-0.1, 0.1]) for (const sz of [-0.11, 0.21]) stool(x + sx, sz); } B(W * 0.8, 0.2, 0.12, 'inner', 0, bk + 0.08); B(W * 0.7, 0.03, 0.03, 'glow', 0, bk + 0.03, 0.3); break;
-    case 'lounge': B(W * 0.6, 0.1, 0.14, 'bed', 0, bk + 0.3); B(W * 0.6, 0.2, 0.04, 'inner', 0, bk + 0.38); B(W * 0.8, 0.22, 0.02, 'glow', 0, bk + 0.02, 0.1); table(0, 0.1, 0.1); Cy(0.05, 0.1, 'locker', hw - 0.1, fr - 0.15); Cy(0.09, 0.16, 'plant', hw - 0.1, fr - 0.15, 0.14, 6); break;
-    case 'hydro': for (const x of [-hw * 0.62, 0, hw * 0.62]) { B(0.24, 0.1, D * 0.7, 'inner', x, 0); B(0.2, 0.12, D * 0.66, 'plant', x, 0, 0.14); B(0.03, 0.02, D * 0.66, 'glow', x, 0, 0.38); } break;
-    case 'workshop': B(W * 0.8, 0.17, 0.14, 'inner', 0, bk + 0.1); B(0.1, 0.1, 0.08, 'locker', -hw * 0.5, bk + 0.1, 0.21); add(f, new THREE.SphereGeometry(0.04, 6, 4), 'spark', hw * 0.2, 0.27, bk + 0.1); B(0.26, 0.3, 0.24, 'locker', hw - 0.16, fr - 0.3); B(0.12, 0.36, D * 0.4, 'inner', -hw + 0.07, fr - 0.3); crate(0, 0.15, 0.04, 0.14); break;
-    case 'cargostore': for (const sx of [-1, 1]) { B(0.14, 0.02, D * 0.8, 'inner', sx * (hw - 0.08), 0, 0.2); B(0.14, 0.02, D * 0.8, 'inner', sx * (hw - 0.08), 0, 0.38); for (const z of [bk + 0.1, fr - 0.1]) B(0.02, 0.4, 0.02, 'inner', sx * (hw - 0.14), z); for (let i = 0; i < 3; i++) { crate(sx * (hw - 0.08), bk + 0.2 + i * 0.26, 0.04, 0.14); if (i < 2) crate(sx * (hw - 0.08), bk + 0.3 + i * 0.3, 0.22, 0.13); } } crate(-0.08, 0); crate(0.14, 0.02); crate(0.03, 0.01, 0.24, 0.18); break;
-    case 'ops': for (const x of [-hw * 0.6, 0, hw * 0.6]) console_(x, bk + 0.1, 0.24); B(0.4, 0.14, 0.26, 'inner', 0, fr - 0.36); B(0.36, 0.01, 0.22, 'glow', 0, fr - 0.36, 0.18); break;
-    case 'market': for (const x of [-hw * 0.62, 0, hw * 0.62]) { B(0.26, 0.16, 0.14, 'inner', x, bk + 0.14); B(0.3, 0.02, 0.26, 'awning', x, bk + 0.18, 0.36); for (const sx of [-0.13, 0.13]) B(0.015, 0.34, 0.015, 'locker', x + sx, bk + 0.3); crate(x, bk + 0.14, 0.2, 0.08); } table(0, fr - 0.3); break;
-    case 'bar': B(W * 0.8, 0.2, 0.1, 'inner', 0, bk + 0.26); B(W * 0.8, 0.26, 0.05, 'locker', 0, bk + 0.05); B(W * 0.74, 0.03, 0.02, 'glow', 0, bk + 0.08, 0.31); for (const x of [-hw * 0.5, -hw * 0.17, hw * 0.17, hw * 0.5]) stool(x, bk + 0.4); for (const x of [-hw * 0.5, hw * 0.5]) { table(x, fr - 0.28, 0.09); stool(x - 0.14, fr - 0.28); stool(x + 0.14, fr - 0.28); } break;
-    case 'medbay': for (const x of [-hw * 0.55, hw * 0.55]) { bed(x, bk + 0.26); B(0.08, 0.22, 0.05, 'locker', x + 0.16, bk + 0.06); B(0.07, 0.06, 0.01, 'glow', x + 0.16, bk + 0.09, 0.2); } B(0.04, 0.16, 0.02, 'cross', 0, bk + 0.02, 0.12); B(0.12, 0.05, 0.02, 'cross', 0, bk + 0.02, 0.175); B(0.3, 0.16, 0.12, 'bed', 0, fr - 0.2); break;
-    case 'secoffice': desk(-hw * 0.4, bk + 0.14, 0.3); stool(-hw * 0.4, bk + 0.3); B(0.05, 0.16, 0.05, 'alarm', hw - 0.06, bk + 0.06, 0.14); locker(-hw + 0.08, fr - 0.12); for (let i = 0; i < 5; i++) { B(0.012, 0.3, 0.012, 'locker', hw * 0.1 + i * 0.07, bk + 0.34); } B(0.3, 0.012, 0.012, 'locker', hw * 0.1 + 0.14, bk + 0.34, 0.33); B(0.3, 0.06, 0.12, 'inner', hw * 0.1 + 0.14, bk + 0.1); break;
-    case 'truth': B(W * 0.7, 0.26, 0.02, 'glow', 0, bk + 0.02, 0.08); B(0.12, 0.2, 0.1, 'inner', 0, bk + 0.3); for (const sx of [-1, 1]) B(0.02, 0.26, 0.02, 'locker', sx * 0.3, fr - 0.3); B(0.08, 0.06, 0.1, 'locker', 0.3, fr - 0.3, 0.3); for (const x of [-0.2, 0, 0.2]) stool(x, fr - 0.16); break;
-    case 'brass': B(W * 0.7, 0.01, D * 0.6, 'carpet', 0, 0, 0.04); desk(0, bk + 0.2, 0.42); B(0.1, 0.2, 0.1, 'bed', 0, bk + 0.06); B(0.02, 0.4, 0.02, 'locker', hw - 0.08, bk + 0.08); B(0.14, 0.1, 0.01, 'awning', hw - 0.16, bk + 0.08, 0.32); B(0.14, 0.1, 0.36, 'bed', -hw + 0.1, fr - 0.3); table(hw * 0.4, fr - 0.26, 0.08); break;
-    case 'lab': B(W * 0.8, 0.17, 0.13, 'inner', 0, bk + 0.1); for (const x of [-hw * 0.5, 0, hw * 0.5]) B(0.05, 0.07, 0.05, 'glow', x, bk + 0.1, 0.21); Cy(0.09, 0.3, 'glass', hw - 0.14, fr - 0.3, 0.04, 10); Cy(0.1, 0.03, 'locker', hw - 0.14, fr - 0.3, 0.04, 10); console_(-hw * 0.5, fr - 0.42, 0.22); break;
-    case 'guncrew': B(W * 0.8, 0.26, 0.02, 'glow', 0, bk + 0.02, 0.1); for (const x of [-hw * 0.5, hw * 0.5]) console_(x, bk + 0.26, 0.24); B(0.3, 0.12, 0.22, 'inner', 0, fr - 0.34); B(0.26, 0.01, 0.18, 'alarm', 0, fr - 0.34, 0.16); locker(hw - 0.08, fr - 0.1); break;
-    case 'magazine': for (const x of [-hw + 0.1, -hw + 0.3, hw - 0.3, hw - 0.1]) for (let z = bk + 0.12; z < fr - 0.15; z += 0.15) Cy(0.05, 0.3, 'shell', x, z, 0.06); for (const x of [-hw + 0.2, hw - 0.2]) B(0.34, 0.02, D * 0.75, 'locker', x, -0.04); B(W * 0.5, 0.03, 0.03, 'alarm', 0, bk + 0.03, 0.3); B(0.16, 0.1, 0.3, 'locker', 0, 0); add(f, new THREE.CylinderGeometry(0.05, 0.05, 0.28, 8).rotateX(Math.PI / 2), 'shell', 0, 0.19, 0); break;
-    case 'armoury': B(W * 0.8, 0.02, 0.06, 'locker', 0, bk + 0.05, 0.1); B(W * 0.8, 0.02, 0.06, 'locker', 0, bk + 0.05, 0.36); for (let x = -hw * 0.75; x <= hw * 0.76; x += 0.09) B(0.025, 0.24, 0.03, 'dark', x, bk + 0.06, 0.12); crate(-hw + 0.14, fr - 0.24, 0.04, 0.18); crate(-hw + 0.14, fr - 0.24, 0.22, 0.14); B(0.34, 0.16, 0.14, 'inner', hw * 0.4, fr - 0.3); break;
-    case 'dronerack': for (const z of [bk + 0.2, 0, fr - 0.3]) { B(W * 0.5, 0.02, 0.03, 'locker', -hw * 0.3, z, 0.14); const c = new THREE.ConeGeometry(0.06, 0.3, 4); c.rotateZ(-Math.PI / 2); add(f, c, 'hull', -hw * 0.3, 0.22, z); B(0.1, 0.012, 0.3, 'hull', -hw * 0.36, z, 0.2); } console_(hw - 0.2, bk + 0.14, 0.22); break;
-    case 'ordnance': for (const z of [bk + 0.22, 0.02, fr - 0.26]) for (const x of [-hw * 0.5, hw * 0.4]) { B(0.36, 0.05, 0.14, 'locker', x, z, 0.06); add(f, new THREE.CylinderGeometry(0.05, 0.05, 0.32, 8).rotateZ(Math.PI / 2), 'shell', x, 0.17, z); B(0.02, 0.1, 0.1, 'alarm', x - 0.17, z, 0.12); } break;
-    case 'fab': for (const [x, z] of [[-0.2, -0.2], [0.2, -0.2], [-0.2, 0.2], [0.2, 0.2]]) B(0.025, 0.4, 0.025, 'locker', x - hw * 0.3, z); B(0.44, 0.03, 0.03, 'locker', -hw * 0.3, 0, 0.4); B(0.06, 0.06, 0.06, 'glow', -hw * 0.3, 0, 0.34); crate(-hw * 0.3, 0, 0.04, 0.22); crate(hw - 0.16, fr - 0.3, 0.04, 0.2); crate(hw - 0.16, fr - 0.3, 0.24, 0.2); crate(hw - 0.16, bk + 0.3, 0.04, 0.2); console_(hw * 0.2, bk + 0.12, 0.2); break;
-    case 'shuttlebay': case 'pelicanpad': case 'eaglepad': {
-      const a = w * 0.42, b = d * 0.4;
-      for (const z of [-b, b]) add(g, new THREE.BoxGeometry(a * 2, 0.012, 0.05), 'lane', 0, 0.046, z);
-      for (const x of [-a, a]) add(g, new THREE.BoxGeometry(0.05, 0.012, b * 2), 'lane', x, 0.046, 0);
-      for (const x of [-a * 0.6, 0, a * 0.6]) add(g, new THREE.BoxGeometry(0.3, 0.012, 0.05), 'alarm', x, 0.046, 0);
-      if (room === 'eaglepad') { const eg = buildEagle(); eg.position.set(-0.1, 0.05, 0); g.add(eg); const c = new THREE.BoxGeometry(0.3, 0.06, 0.14); add(g, c, 'locker', a * 0.8, 0.07, b * 0.6); add(g, new THREE.CylinderGeometry(0.045, 0.045, 0.28, 8).rotateZ(Math.PI / 2), 'shell', a * 0.8, 0.15, b * 0.6); }
-      if (room === 'pelicanpad') { const pg = buildShip('shuttle'); pg.scale.setScalar(1.6); pg.position.set(0, 0.42, 0); g.add(pg); }
-      break;
-    }
-    case 'fighterbay': for (const z of [-d * 0.2, d * 0.2]) { const c = new THREE.ConeGeometry(0.25, 0.9, 3); c.rotateZ(-Math.PI / 2); add(g, c, 'hull', 0, 0.2, z); } break;
+  if (OPEN.has(room) && room !== 'empty') {      // a pad: its markings, and the craft that lives on it
+    const a = w * 0.42, b = d * 0.4;
+    for (const z of [-b, b]) add(g, new THREE.BoxGeometry(a * 2, 0.008, 0.03), 'lane', 0, 0.044, z);
+    for (const x of [-a, a]) add(g, new THREE.BoxGeometry(0.03, 0.008, b * 2), 'lane', x, 0.044, 0);
+    for (const x of [-a * 0.6, 0, a * 0.6]) add(g, new THREE.BoxGeometry(0.2, 0.008, 0.03), 'alarm', x, 0.044, 0);
+    for (const [x, z] of [[a * 0.85, b * 0.8], [-a * 0.85, b * 0.8]]) { add(g, new THREE.BoxGeometry(0.12, 0.09, 0.08), 'locker', x, 0.085, z); add(g, new THREE.BoxGeometry(0.1, 0.05, 0.06), 'alarm', x, 0.155, z); }
+    if (room === 'eaglepad') { const eg = buildEagle(); eg.scale.setScalar(C.shipScale.eagle); eg.position.set(-0.1, 0.045, 0); g.add(eg); add(g, new THREE.CylinderGeometry(0.025, 0.025, 0.2, 8).rotateZ(Math.PI / 2), 'shell', a * 0.85, 0.2, b * 0.8); }
+    if (room === 'pelicanpad') { const pg = buildShip('shuttle'); pg.scale.setScalar(C.shipScale.shuttle); pg.position.set(0, 0.32, 0); g.add(pg); }
+    if (room === 'fighterbay') for (const z of [-d * 0.2, d * 0.2]) { const c = new THREE.ConeGeometry(0.18, 0.8, 3); c.rotateZ(-Math.PI / 2); add(g, c, 'hull', 0, 0.2, z); }
   }
   return bake(g);
 }
-// An Eagle on its pad: a wedge of a fuselage, swept wings, twin tails and bombs under the wings. About 12 m long.
+// An Eagle on its pad: a wedge of a fuselage, swept wings, twin tails and bombs under the wings. Drawn at C.shipScale.eagle: about 15 m.
 export function buildEagle() {
   const g = new THREE.Group();
   const put = (geom, role, x = 0, y = 0, z = 0) => { geom.translate(x, y, z); const m = new THREE.Mesh(geom); m.userData.role = role; g.add(m); return m; };

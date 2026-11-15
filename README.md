@@ -2,7 +2,7 @@
 
 Run a space station and the people aboard it. A browser game for the **Super Earth Special Forces** community, in the same look as [Orbital Fury](https://orbitalfury.com/).
 
-> **Prototype 0.6: the fire support platform.** The station now has a job: it is the platform the gunner calls on in Orbital Fury. You build its guns, hangars and barracks; your people keep them crewed and supplied; squads on the planet call for fire and the platform answers. Also new: one gravity for the whole station (every deck is level), rooms with walls and doors on real corridors, a consistent scale, and a livery panel for the station's name, colours, plating, interior and emblem.
+> **Prototype 0.7: rooms at real size.** People and ships are now small against a much bigger station: one unit is 9 m and a person is 1.8 m. Every room is furnished in metres from the things a home and a real space station hold, with a little science fiction on top, and nobody stands in or walks through any of it. You can rearrange a room, and set how large people are drawn.
 
 **Your station. Its people. What happens to them.** It is a space station simulator: think Deep Space Nine in the Helldivers universe, with you as the station's commander. You start with Station Command in empty space, snap parts onto it and set their rooms. Then the people move in, and the station becomes theirs as much as yours.
 
@@ -11,6 +11,35 @@ Run a space station and the people aboard it. A browser game for the **Super Ear
 It runs in your browser on a computer, or on a phone or tablet held sideways. There is nothing to install. Turn the sound on.
 
 **Quick start:** press **NEW STATION**. Open **FIRE** and put a Ship Gun on a side port. Open the **DOCK** group at the bottom left, press `Q` for a Docking Port, move the pointer near Station Command and click when the little dot lights up. Add a Cargo Module from **INDUS** and a Hab Module from **HAB** the same way. Ships and colonists arrive within a minute, and soon after that the first thing lands on your desk.
+
+## What's new in 0.7
+
+- **A bigger station, smaller people.** One unit is now 9 m, not 5 m, and a person is 1.8 m. Against the old scale people are a little over half the size, so a hab module is 18 m across and one of its rooms is about 10 m square. Ships shrank to match: a Pelican is about 25 m, an Eagle 15 m, a freighter 45 m, a destroyer 115 m.
+- **Rooms furnished like real rooms.** Each room is laid out in metres from kits of real things at real sizes, set against the walls with clear aisles between:
+
+  | Room | What is in it |
+  | --- | --- |
+  | Quarters | Double and single beds with bedside tables and wardrobes, a wet room (shower, toilet, basin), a kitchenette with a fridge and wall cupboards, a dining table, a sofa and screen, a desk, bookshelves, plants |
+  | Bunk Room, Barrack Room | Two-tier bunks, lockers, kit racks with helmets and rifles, boot benches, a wet room, a treadmill and resistance frame |
+  | Mess Hall | A galley with food printers and a serving counter, long tables with benches, a tea and water point, vending |
+  | Observation Lounge | Sofas facing the window, armchairs, a game table, planters |
+  | Hydroponics | Four-tier grow racks under lights, soil beds, a water tank and pump, a seedling bench |
+  | Workshop | Workbenches with tool boards, a lathe, a printer, parts bins, a welding bay with gas bottles, an EVA suit rack |
+  | Cargo Store | Pallet racking, floor stacks, barrels, a loader |
+  | Ops Center | Console rows under a wall display, a holo table, server racks |
+  | Market, Liberty Lounge | Stalls with awnings, a noodle bar; a bar counter with stools and a lit back shelf, booths, an arcade cabinet, kegs |
+  | Medbay | Reception, treatment beds with monitors and curtains, an auto-doc pod, a scanner arch, cabinets |
+  | Security, Truth, Brass | A duty desk, holding cells, a monitor wall; a broadcast studio, posters, voting booths; a flag-flanked desk, a conference table, a trophy case |
+  | Laboratory | Benches, a glovebox, specimen tanks, a centrifuge, a whiteboard |
+  | The platform's rooms | Fire control consoles and a plotting table; shells in racks and cradles under a hoist; rifle racks and armour stands; drones on cradles; bomb racks and trolleys; fabricator cells, hoppers and a conveyor |
+
+- **Nobody is cut in half.** Every room has planned standing spots in front of its fittings and in its aisles. People go from their spot along the aisle, down a clear lane to the door, and out. `npm run rooms` checks every room at every size the station uses: no spot and no route passes through a fitting or a wall.
+- **Walls you can see over.** Walls are drawn to waist height with a full-height door frame, so a room reads as a room and you can still see into it.
+- **Adjusting.**
+  - **Rearrange a room:** while editing a part, pick the room it already is and click it again. The same fittings are laid out another way (six arrangements). It costs nothing.
+  - **People size:** MENU has a slider from 60% to 160%. 100% is true to scale.
+  - **The scale itself** is two numbers in `js/config.js` (`scale.m`, `scale.person`); rooms are written in metres in `js/rooms.js`, so they follow.
+- **You can zoom in much closer** to see it.
 
 ## What's new in 0.6
 
@@ -31,7 +60,7 @@ It runs in your browser on a computer, or on a phone or tablet held sideways. Th
 - **Gunnery, the seventh faction.** Gunners, pilots and SEAF troopers draw shells each week, live in Gun Crew Rooms, Barrack Rooms and on the pads, and want a ready platform. Residents do not like sleeping near a magazine.
 - **One gravity.** The deck plates make gravity and it points the same way everywhere: toward the keel, where the planet is. So every deck is level however a part is attached. A spine part on a side port stands beside it; a module on a top port sits on it. Guns go on side ports or underneath. Only parts with nothing to stand on (arrays, dishes, turrets, racks) can still be turned any way.
 - **Rooms you could walk through.** Every part has a walk: a corridor along a module, a ring corridor with spokes to the hub, the promenade round a disc, a lift up a tower. Rooms have walls and a door onto it. People stand in a room that suits their job, leave by the door, follow the corridor to the next part and go in by its door.
-- **One scale.** One unit is 5 m. A person is 1.8 m, a bed 2 m, a door 1 m by 2.1 m, a corridor 2 m wide. A Pelican is about 20 m, a freighter 38 m, a corvette 62 m. Hangars and the drydock were enlarged to fit, and hull plating is the same size on every part.
+- **One scale** (revised in 0.7). One unit was 5 m. A person is 1.8 m, a bed 2 m, a door 1 m by 2.1 m, a corridor 2 m wide. A Pelican is about 20 m, a freighter 38 m, a corvette 62 m. Hangars and the drydock were enlarged to fit, and hull plating is the same size on every part.
 - **Livery.** The **LIVERY** button sets the station's name, six colour schemes or your own three colours, five kinds of hull plating, four interiors, four light colours and an emblem. The name and emblem go on nameplates on the hull.
 - **Borrowed from Orbital Fury:** the Pelican, a new Eagle on the hangar pads, SEAF troopers, and the Super Destroyer's look (blue light lines, black drive block) on the visiting warships.
 

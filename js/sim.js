@@ -210,6 +210,14 @@ export class Station {
     return { ok: true, why: '' };
   }
   // `by` is 'player' when the commander paints the room, or a faction when it does so itself or you approved its request.
+  // Rearrange a room: the same fittings, laid out another way. Free, and it changes nothing but how the room looks.
+  refit(id, slot) {
+    const p = this.parts.get(id);
+    if (!p || !p.rooms[slot] || p.rooms[slot] === 'empty') return { ok: false, why: 'Nothing to rearrange' };
+    p.fit ||= []; p.fit[slot] = ((p.fit[slot] || 0) + 1) % 6;
+    this.events.push({ type: 'room', part: p, slot });
+    return { ok: true, n: p.fit[slot] };
+  }
   setRoom(id, slot, room, mark = null, by = 'player') {
     const chk = this.canRoom(id, slot, room);
     if (!chk.ok) return chk;
@@ -217,7 +225,7 @@ export class Station {
     this._money(-C.rooms[room].cost, 'build');
     const owner = p.marks[slot] || ROOM_OF[p.rooms[slot]];
     if (by === 'player' && !this.sandbox && owner && owner !== ROOM_OF[room]) this._meddled(owner, p, p.rooms[slot]);
-    p.rooms[slot] = room; p.marks[slot] = mark;
+    p.rooms[slot] = room; p.marks[slot] = mark; if (p.fit) p.fit[slot] = 0;
     for (const a of this.agents) if (a.home === p.id) a.home = 0;    // anyone housed here finds their place again
     this.events.push({ type: 'room', part: p, slot });
     this._refresh();
