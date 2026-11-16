@@ -44,7 +44,7 @@ const CH = {
   captain:     { n: 9, name: 'SHIP-TO-STATION', col: '#7fc8ff', off: ['Over.', 'Over and out.', 'For democracy, over.'] },
 };
 const audio = new Audio();
-const ui = { started: false, tool: null, rot: 0, hot: null, sel: null, paused: false, speed: 1, view: 'hull', cut: false, open: false, group: 'structure',
+const ui = { started: false, tool: null, rot: 0, hot: null, sel: null, paused: false, speed: 1, view: 'hull', cut: false, open: false, follow: 0, group: 'structure',
   edit: null, room: null, slot: null, px: null, py: null, portsDirty: false, dots: true, clean: false, div: 'supply', comms: true, person: 0 };
 
 // ---------------------------------------------------------------- the title backdrop: an example station, turning slowly
@@ -77,7 +77,7 @@ function start(mode, saved) {
   audio.unlock();
   st = saved || new Station(Number(qs.get('seed')) || (Date.now() % 100000), mode);
   mode = st.mode;
-  window.__st = st; window.__ui = ui; window.__edit = startEdit;
+  window.__st = st; window.__ui = ui; window.__edit = startEdit; window.__follow = setFollow;
   view.setStation(st);
   st.livery = { ...loadLivery(), ...(st.livery || {}) }; view.setLivery(st.livery);
   view.controls.autoRotate = false;
@@ -160,8 +160,19 @@ function setTool(t) {
   if (t) ui.portsDirty = true; else view.showPorts(null);
   gridState(); info();
 }
-function select(id) { ui.sel = id; ui.person = 0; view.select(id); info(); }
-function pickPerson(id) { select(null); ui.person = id; audio.play('click'); info(); }
+function select(id) { ui.sel = id; ui.person = 0; ui.follow = 0; view.select(id); info(); }
+// Click a person to read about them; click them again (or press F, or FOLLOW) and the camera stays with them.
+function pickPerson(id) { if (ui.person === id && ui.follow !== id) { setFollow(id); return; } select(null); ui.person = id; audio.play('click'); info(); }
+function setFollow(id) {
+  audio.play('click');
+  if (!id) { ui.follow = 0; info(); return; }
+  if (ui.person !== id) { select(null); ui.person = id; }
+  ui.follow = id;
+  // so they can be seen: take the hull away if nothing else is showing the inside, and come in close
+  if (!ui.edit && ui.view === 'hull' && !ui.open && !ui.cut) setOpen(true);
+  const a = st.agents.find((x) => x.id === id); if (a) { view.lookAtAgent(a); view.closeIn(1.8); }
+  info();
+}
 
 // ---------------------------------------------------------------- building out a part's insides, room by room
 const canEdit = (id) => { const p = st.parts.get(id); return !!p && !!SLOTS[p.type] && p.state === 'active'; };
@@ -355,7 +366,7 @@ addEventListener('keydown', (e) => {
   if (k === 'r') { ui.rot = (ui.rot + 1) % 8; audio.play('click'); if (ui.tool) { ui.portsDirty = true; view.ghostKey = ''; view.setGhost(ui.tool, ui.hot, ui.rot); } info(); }
   else if (k === 'x') demolishSel();
   else if (k === 'f' && ui.sel) view.focus(ui.sel);
-  else if (k === 'f' && ui.person) { const a = st.agents.find((x) => x.id === ui.person); if (a) view.lookAtAgent(a); }
+  else if (k === 'f' && ui.person) setFollow(ui.follow === ui.person ? 0 : ui.person);
   else if (k === 'i') { if (ui.edit) endEdit(); else if (ui.sel && canEdit(ui.sel)) startEdit(ui.sel); }
   else if (k === 'escape') {
     if ($('s-menu').classList.contains('on')) menu(false);
@@ -796,11 +807,12 @@ function info(peek) {
 // One person: who they are, who they work for, and what they are doing right now.
 function personInfo(a) {
   const k = C.divOrder.find((d) => C.div[d].staff === a.role), home = st.parts.get(a.home), at = st.parts.get(a.at);
-  setInfo(`<div class="in edit"><span>${a.name.toUpperCase()}</span><button class="btn" id="a-focus" type="button">FOCUS <small>F</small></button><button class="btn primary" id="a-done" type="button">DONE</button></div>`
+  const fol = ui.follow === a.id;
+  setInfo(`<div class="in edit"><span>${a.name.toUpperCase()}</span><button class="btn${fol ? ' on' : ''}" id="a-follow" type="button" title="Keep the camera on this person (F). Click them again in the station to do the same.">${fol ? 'FOLLOWING' : 'FOLLOW'} <small>F</small></button><button class="btn primary" id="a-done" type="button">DONE</button></div>`
     + `<div class="ia">${ROLE_ONE[a.role]}${k ? `, ${C.factions[k].who}` : ''}. ${k ? `${C.factions[k].who} is ${st.sat[k] >= 65 ? 'in good spirits' : st.sat[k] >= C.faction.low ? 'getting by' : 'unhappy'}.` : ''}</div>`
     + `<div class="st">${stat('DOING', st.doing(a))}${stat('IN', at ? st.name(at) : '—')}${stat(a.role === 'resident' ? 'QUARTERS' : 'POSTED', home ? st.name(home) : '—')}${stat('ABOARD', `${Math.max(1, Math.round((st.t - a.since) / C.time.daySec))} days`)}</div>`
     + `<ul class="story">${a.story.slice(-3).reverse().map((x) => `<li><i>${x.d}</i>${x.text}</li>`).join('')}</ul>`, () => {
-    $('a-focus').onclick = () => view.lookAtAgent(a);
+    $('a-follow').onclick = () => setFollow(ui.follow === a.id ? 0 : a.id);
     $('a-done').onclick = () => { audio.play('click'); select(null); };
   });
 }
@@ -913,6 +925,11 @@ function frame(nowMs) {
     if (n >= 20) acc = 0;
   }
   drain();
+  // Following someone: the camera stays with them until you fly it yourself, pick something else, or they leave the station.
+  if (ui.follow) {
+    const a = st.agents.find((x) => x.id === ui.follow);
+    if (!a || ['w', 'a', 's', 'd', ' ', 'shift'].some((k) => held.has(k)) || !view.follow(a, dt)) { ui.follow = 0; info(); }
+  }
   if (held.size && ui.started) view.fly((held.has('w') ? 1 : 0) - (held.has('s') ? 1 : 0), (held.has('d') ? 1 : 0) - (held.has('a') ? 1 : 0), (held.has(' ') ? 1 : 0) - (held.has('shift') ? 1 : 0), (held.has('e') ? 1 : 0) - (held.has('q') ? 1 : 0), dt);
   view.sync(now, dt);
   if (ui.tool && ui.portsDirty) { ui.portsDirty = false; view.showPorts(ui.tool, ui.rot, ui.hot, ui.px, ui.py); }

@@ -18,7 +18,7 @@ const arm = (len) => [[0, 0, 0, -1, 0, 0, 'L'], [len, 0, 0, 1, 0, 0, 'L']];
 const fill = (n, room) => Array(n).fill(room);
 
 export const C = {
-  version: '0.9.0',
+  version: '0.10.0',
 
   groups: [
     { id: 'structure', name: 'STRUCTURE' }, { id: 'platform', name: 'FIRE SUPPORT' }, { id: 'habitation', name: 'HABITATION' }, { id: 'docking', name: 'DOCKING' },

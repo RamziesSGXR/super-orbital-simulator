@@ -244,6 +244,7 @@ h2 { margin: 4px 0 10px; font-size: clamp(20px, 5vw, 26px); letter-spacing: 0.14
 .info .in.edit { display: flex; align-items: center; gap: 6px; }
 .info .in.edit span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .info .in.edit .btn { min-height: 26px; font-size: 10.5px; padding: 1px 9px; letter-spacing: 0.06em; }
+@media (max-width: 900px), (pointer: coarse) { .info .in.edit .btn small { display: none; } .info .in.edit .btn { padding: 1px 7px; } }      /* no keys on a phone: leave the room to the name */
 .info .ia b { color: #fff; }
 .info .st { display: flex; flex-wrap: wrap; gap: 2px 14px; margin-top: 4px; }
 .info .st span i { font-style: normal; color: var(--g-dim); margin-right: 4px; }

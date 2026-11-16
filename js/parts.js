@@ -56,7 +56,7 @@ export const WALK = {
   reactor: { k: 'ring', R: 0.95, y: 0.02 },
   hab: { k: 'hall', y: -0.53, z: 0.6 }, cargo: { k: 'hall', y: -0.53, z: 0.6 },
   ring: { k: 'ring', R: 6.45, y: -0.31, spokes: deg([0, 90, 180, 270]) }, bigring: { k: 'ring', R: 11.66, y: -0.19, spokes: deg([30, 90, 150, 210, 270, 330]) },
-  drum: { k: 'ring', R: 3.38 }, disc: { k: 'ring', R: 4.55, y: -0.13 },
+  drum: { k: 'ring', R: 3.38, spokes: deg([0, 90, 180, 270]) }, disc: { k: 'ring', R: 4.55, y: -0.13, spokes: deg([0, 45, 90, 135, 180, 225, 270, 315]) },
   blister: { k: 'hall', y: -0.38, z: 0 }, dockport: { k: 'hall', y: -0.43, z: 0 }, tube: { k: 'hall', y: -0.3, z: 0 }, truss: { k: 'hall', y: -0.28, z: 0 },
   hangar: { k: 'hall', y: -1.58, z: 2.15 }, pelicanbay: { k: 'hall', y: -1.58, z: 2.15 }, eaglehangar: { k: 'hall', y: -1.38, z: 2.0 },
   drydock: { k: 'hall', y: -0.72, z: 0.75 }, refinery: { k: 'hall', y: -1.08, z: 0.62 },
@@ -175,7 +175,7 @@ export function buildPart(type) {
   const g = new THREE.Group();
   const put = (geom, role, x = 0, y = 0, z = 0, opt = {}) => {
     geom.translate(x, y, z);
-    const m = new THREE.Mesh(role === 'hull' || role === 'trim' ? skin(geom) : role === 'inner' ? skin(geom, C.scale.m / 2) : geom); m.userData.role = role; g.add(m);
+    const m = new THREE.Mesh(role === 'hull' || role === 'trim' ? skin(geom) : role === 'inner' || role === 'hall' || role === 'wall' ? skin(geom, C.scale.m / 2) : geom); m.userData.role = role; g.add(m);
     if ((role === 'hull' || role === 'glass' || role === 'inner') && !opt.noEdges) {
       const e = new THREE.LineSegments(new THREE.EdgesGeometry(geom, opt.angle ?? 28)); e.userData.role = role === 'inner' ? 'innerLine' : 'line'; g.add(e);
     }
@@ -510,19 +510,64 @@ export function buildPart(type) {
   }
   // The way through: a deck plate and a corridor with a lit centre line, a ring walk, or lift stops.
   const W = WALK[type], lay = SLOTS[type];
+  // HALLWAYS. A hallway is a carpet runner 3.4 m wide with a lit centre line. The side that has no rooms on it gets a waist-high
+  // wall with a handrail and wall lights, broken where a port opens through it.
+  const HW = 0.19, WH = 0.14, def = C.parts[type];
   if (W && W.k === 'hall') {
     const bb = new THREE.Box3().setFromObject(g), x0 = Math.max(0.05, bb.min.x + 0.12), x1 = bb.max.x - 0.12, wide = { hab: 1.66, cargo: 1.66, gunmount: 1.8, battery: 1.8, dronebay: 1.8, barracks: 2.0, fabshop: 2.0, lance: 2.2, refinery: 1.8 }[type];
     if (wide) box(x1 - x0, 0.03, wide, 'inner', (x0 + x1) / 2, W.y - 0.02, 0, { angle: 60 });
-    if (lay) for (let x = x0 + 0.2; x < x1 - 0.1; x += 0.5) box(0.22, 0.012, 0.035, 'lane', x, W.y + 0.004, W.z);
+    const through = lay && lay.some((sl) => Math.abs(sl.p[2] - W.z) < 0.1);      // the walk runs through the room itself
+    if (!through) {
+      box(x1 - x0, 0.005, HW * 2, 'hall', (x0 + x1) / 2, W.y + 0.0025, W.z, { noEdges: true });
+      for (const sd of [1, -1]) {
+        if (lay && lay.some((sl) => Math.sign(sl.p[2] - W.z) === sd)) continue;      // rooms on this side: their own walls and doors face the hall
+        const gaps = def.ports.filter((q) => Math.abs(q[4]) < 0.7 && Math.sign(q[5]) === sd && Math.abs(q[5]) > 0.7).map((q) => q[0]).sort((u, v) => u - v);
+        let x = x0;
+        for (const gx of [...gaps, null]) {
+          const end = gx === null ? x1 : gx - 0.17, len = end - x;
+          if (len > 0.08) {
+            const zc = W.z + sd * (HW + 0.007);
+            box(len, WH, 0.014, 'wall', x + len / 2, W.y + WH / 2, zc, { noEdges: true }); box(len, 0.008, 0.014, 'locker', x + len / 2, W.y + 0.105, W.z + sd * (HW - 0.012), { noEdges: true });
+            for (let lx = x + 0.2; lx < end - 0.1; lx += 0.6) box(0.14, 0.012, 0.004, 'lane', lx, W.y + 0.122, W.z + sd * (HW - 0.001));
+          }
+          if (gx !== null) x = gx + 0.17;
+        }
+      }
+    }
+    for (let x = x0 + 0.2; x < x1 - 0.1; x += 0.5) box(0.22, 0.012, 0.035, 'lane', x, W.y + 0.004, W.z);
   } else if (W && W.k === 'ring') {
     const ys = W.y !== undefined ? [W.y] : [...new Set(lay.map((s) => s.p[1]))];
-    for (const y of ys) { const n = Math.round(W.R * 5); for (let i = 0; i < n; i++) { const a = i * TAU / n, b = new THREE.BoxGeometry(0.035, 0.012, 0.22); b.rotateY(-a); put(b, 'lane', Math.cos(a) * W.R, y + 0.004, Math.sin(a) * W.R); } }
-    for (const a of W.spokes || []) for (let r = 1.5; r < W.R - 0.2; r += 0.5) { const b = new THREE.BoxGeometry(0.22, 0.012, 0.035); b.rotateY(-a); put(b, 'lane', Math.cos(a) * r, W.y + 0.004, Math.sin(a) * r); }
+    const roomR = lay && lay.length ? Math.hypot(lay[0].p[0], lay[0].p[2]) : 0, sd = roomR > W.R ? -1 : 1;      // the wall goes on the side away from the rooms
+    for (const y of ys) {
+      const n = Math.round(W.R * 5); for (let i = 0; i < n; i++) { const a = i * TAU / n, b = new THREE.BoxGeometry(0.035, 0.012, 0.22); b.rotateY(-a); put(b, 'lane', Math.cos(a) * W.R, y + 0.004, Math.sin(a) * W.R); }
+      if (!lay || type === 'reactor') continue;
+      put(new THREE.RingGeometry(W.R - HW, W.R + HW, Math.max(32, Math.round(W.R * 10))).rotateX(-Math.PI / 2), 'hall', 0, y + 0.003, 0, { noEdges: true });
+      // openings: at the spokes on the inner side, at the side ports on the outer side
+      const open = sd < 0 ? (W.spokes || []) : def.ports.filter((q) => Math.abs(q[4]) < 0.7 && Math.hypot(q[0], q[2]) > W.R).map((q) => Math.atan2(q[2], q[0]));
+      const wr = W.R + sd * (HW + 0.007), m = Math.max(24, Math.round(wr * 7)), seg = TAU * wr / m;
+      for (let i = 0; i < m; i++) {
+        const a = (i + 0.5) * TAU / m;
+        if (open.some((o) => Math.abs(Math.atan2(Math.sin(a - o), Math.cos(a - o))) * wr < 0.2 + seg / 2)) continue;
+        const wl = new THREE.BoxGeometry(0.014, WH, seg * 1.02); wl.rotateY(-a); put(wl, 'wall', Math.cos(a) * wr, y + WH / 2, Math.sin(a) * wr, { noEdges: true });
+        const hr = new THREE.BoxGeometry(0.014, 0.008, seg * 1.02); hr.rotateY(-a); put(hr, 'locker', Math.cos(a) * (wr - sd * 0.02), y + 0.105, Math.sin(a) * (wr - sd * 0.02), { noEdges: true });
+        if (i % 3 === 0) { const li = new THREE.BoxGeometry(0.004, 0.012, 0.14); li.rotateY(-a); put(li, 'lane', Math.cos(a) * (wr - sd * 0.008), y + 0.122, Math.sin(a) * (wr - sd * 0.008)); }
+      }
+    }
+    // the walkways along the spokes, from the hub out to the ring walk
+    const y0 = W.y !== undefined ? W.y : Math.min(...lay.map((s) => s.p[1]));
+    for (const a of W.spokes || []) {
+      const r0 = 0.3, r1 = W.R - HW, sp = new THREE.BoxGeometry(r1 - r0, 0.005, HW * 1.6); sp.rotateY(-a);
+      if (lay && type !== 'reactor') put(sp, 'hall', Math.cos(a) * (r0 + r1) / 2, y0 + 0.0025, Math.sin(a) * (r0 + r1) / 2, { noEdges: true });
+      for (let r = 0.6; r < W.R - 0.2; r += 0.5) { const b = new THREE.BoxGeometry(0.22, 0.012, 0.035); b.rotateY(-a); put(b, 'lane', Math.cos(a) * r, y0 + 0.004, Math.sin(a) * r); }
+    }
   } else if (W && W.k === 'shaft' && lay) {
     // A lift stop on every deck (a lit ring and four door frames), and a spiral stair round the lift from each deck to the next.
     // The stair leaves each deck just past the +Z side and climbs away from it, so the ways in to the lift from +Z and −Z stay clear.
     const ys = [...new Set(lay.map((s) => s.p[1]))].sort((a, b) => a - b);
-    for (const y of ys) { put(flat(new THREE.TorusGeometry(0.28, 0.012, 4, 20)), 'lane', 0, y + 0.045, 0); for (const [x, z, sx, sz] of [[0, 0.14, 1, 0], [0, -0.14, 1, 0], [0.14, 0, 0, 1], [-0.14, 0, 0, 1]]) {      // a door frame on each side of the lift
+    // the lift tower: square braces up the rails, and on every deck a lobby mat, a lit ring, four door frames and a call post
+    for (let y = ys[0] + 0.3; y < ys[ys.length - 1] + 0.3; y += 0.15) for (const [x, z, w, d] of [[0, 0.13, 0.26, 0.01], [0, -0.13, 0.26, 0.01], [0.13, 0, 0.01, 0.26], [-0.13, 0, 0.01, 0.26]]) box(w, 0.01, d, 'inner', x, y, z, { noEdges: true });
+    for (const y of ys) { put(new THREE.RingGeometry(0.14, 0.3, 24).rotateX(-Math.PI / 2), 'hall', 0, y + 0.043, 0, { noEdges: true }); for (const [x, z] of [[0.17, 0.17], [-0.17, -0.17]]) { box(0.02, 0.13, 0.02, 'locker', x, y + 0.105, z, { noEdges: true }); box(0.024, 0.03, 0.024, 'lane', x, y + 0.16, z); }
+      put(flat(new THREE.TorusGeometry(0.28, 0.012, 4, 20)), 'lane', 0, y + 0.045, 0); for (const [x, z, sx, sz] of [[0, 0.14, 1, 0], [0, -0.14, 1, 0], [0.14, 0, 0, 1], [-0.14, 0, 0, 1]]) {      // a door frame on each side of the lift
       for (const e of [-0.075, 0.075]) box(0.012, 0.25, 0.012, 'inner', x + sx * e, y + 0.165, z + sz * e, { noEdges: true });
       box(sx ? 0.162 : 0.012, 0.012, sz ? 0.162 : 0.012, 'inner', x, y + 0.296, z, { noEdges: true }); box(sx ? 0.1 : 0.014, 0.008, sz ? 0.1 : 0.014, 'lane', x, y + 0.286, z);
     } }

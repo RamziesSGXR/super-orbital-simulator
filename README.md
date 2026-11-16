@@ -2,7 +2,7 @@
 
 Run a space station and the people aboard it. A browser game for the **Super Earth Special Forces** community, in the same look as [Orbital Fury](https://orbitalfury.com/).
 
-> **Prototype 0.9: seeing in and flying around.** A new INSIDE view takes the hull away so every deck can be seen from any side. The cutaway now follows the camera and works from any distance. The camera flies on `W A S D`, `Space` and `Shift`, and the wheel zooms toward the pointer.
+> **Prototype 0.10: hallways, elevators and following a person.** Corridors are now proper hallways with a carpet runner, a wall, a handrail and lights. Every lift shaft has an elevator cab that travels between the decks. Click a person twice, or press `F`, and the camera stays with them wherever they go.
 
 **Your station. Its people. What happens to them.** It is a space station simulator: think Deep Space Nine in the Helldivers universe, with you as the station's commander. You start with Station Command in empty space, snap parts onto it and set their rooms. Then the people move in, and the station becomes theirs as much as yours.
 
@@ -11,6 +11,14 @@ Run a space station and the people aboard it. A browser game for the **Super Ear
 It runs in your browser on a computer, or on a phone or tablet held sideways. There is nothing to install. Turn the sound on.
 
 **Quick start:** press **NEW STATION**. Open **FIRE** and put a Ship Gun on a side port. Open the **DOCK** group at the bottom left, press `Q` for a Docking Port, move the pointer near Station Command and click when the little dot lights up. Add a Cargo Module from **INDUS** and a Hab Module from **HAB** the same way. Ships and colonists arrive within a minute, and soon after that the first thing lands on your desk.
+
+## What's new in 0.10
+
+- **Hallways.** Every corridor has a carpet runner in the station's colours. On the side with no rooms it has a waist-high wall with a handrail and a row of lights, and the wall opens wherever another part joins. Ring parts get the same round their walk, with runners along the spokes to the lift. Rooms have a runner down each aisle and across to the door.
+- **Elevators.** Every part with a lift shaft and rooms on it has a cab: waist-high steel sides, glass above, a yellow band and a lit ceiling. It carries whoever is riding. With nobody aboard it travels from deck to deck by itself and waits a few seconds at each. The shaft is now a braced tower, and each deck has a lobby mat and two call posts.
+- **Follow a person.** Click a person to read their card, then click them again, press `F`, or press **FOLLOW** on the card. The camera comes in close and stays on them: along the hallway, into the elevator, up to the next deck. You can still turn and zoom. Flying the camera with `W A S D`, `Space` or `Shift`, picking something else, or pressing `F` again lets go. If you were looking at the closed hull, following turns INSIDE on so you can see them.
+
+Not done yet: elevator doors do not open and close, nobody takes the stairs, and the cab does not make people wait for it. Dragging to pan while following is pulled back to the person.
 
 ## What's new in 0.9
 

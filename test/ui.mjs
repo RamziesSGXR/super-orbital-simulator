@@ -104,7 +104,7 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
     for (const id of ids) if (id) { s.parts.get(id).state = 'active'; s.demolish(id); }
     return ok;
   }) || await page.evaluate(() => window.__st.tier < 1));
-  await steps(page, 90);
+  for (let i = 0; i < 6 && !(await page.evaluate(() => window.__st.stats.calls || 0)); i++) await steps(page, 60);      // which system is called for is chance
   check('calls come up from the ground and the platform answers', await page.evaluate(() => (window.__st.stats.calls || 0) >= 1), await page.evaluate(() => `${window.__st.stats.calls} answered, ${window.__st.stats.missed} missed`));
   check('people walk the corridors: a walker is on a deck, not in mid air', await page.evaluate(() => {
     const s = window.__st, v = window.__view, now = performance.now() / 1000;
@@ -167,7 +167,7 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
   await page.keyboard.press('o'); await page.waitForTimeout(300);
   check('O opens the Commander\'s channel with nine divisions', await page.isVisible('#cmdr') && (await page.$$('#cm-tabs .dt')).length === 9);
   await page.click('#cm-tabs .dt[data-k="maintenance"]'); await page.waitForTimeout(100);
-  await page.click('.ob[data-v="preventive"]'); await page.waitForTimeout(300);
+  await page.click('.ob[data-v="preventive"]'); await page.waitForFunction(() => /PATRIOTIC MAINTENANCE/.test(document.getElementById('c-list').textContent), null, { timeout: 15000 }).catch(() => {});
   check('a standing order is given and acknowledged on the radio', await page.evaluate(() => window.__st.div.maintenance.order.plan) === 'preventive' && /CH 4 · PATRIOTIC MAINTENANCE/.test(await page.textContent('#c-list')));
   await page.$eval('#cm-budget', (e) => { e.value = 12; e.dispatchEvent(new Event('input')); });
   check('the weekly allotment slider sets what the division draws', await page.evaluate(() => window.__st.div.maintenance.allot) === 12 && /crates a week/.test(await page.textContent('#cm-bv')));
@@ -246,6 +246,37 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
   await page.keyboard.press('p'); const wasPaused = await page.evaluate(() => window.__ui.paused); await page.keyboard.press('p');
   check('P pauses', wasPaused && !(await page.evaluate(() => window.__ui.paused)));
   check('the wheel zooms toward the pointer, and closer than before', await page.evaluate(() => window.__view.controls.zoomToCursor === true && window.__view.controls.minDistance <= 0.3 && window.__view.controls.zoomSpeed >= 2));
+  // Hallways, elevators and following a person.
+  check('corridors and ring walks are built as hallways: a runner, a wall with openings, a handrail and lights', await page.evaluate(async () => {
+    const P = await import('/js/parts.js'), roles = (t) => { const r = new Set(); P.buildPart(t).traverse((o) => { if (o.isMesh && o.userData.role) r.add(o.userData.role); }); return r; };
+    return ['hab', 'ring', 'disc', 'drum', 'command', 'tube'].every((t) => roles(t).has('hall')) && ['hab', 'ring'].every((t) => { const r = roles(t); return r.has('wall') && r.has('locker') && r.has('lane'); });
+  }));
+  check('rooms have a runner along their aisles', await page.evaluate(async () => { const R = await import('/js/rooms.js'); return R.roomPlan('quarters', 9, 7.2, 0, 0).items.some((i) => i[1] === 'hall'); }));
+  check('every part with a lift shaft has an elevator, and an empty one travels between decks by itself', await page.evaluate(async () => {
+    const P = await import('/js/parts.js'), s = window.__st, v = window.__view; v.liftRider.clear(); v._lifts(0.016);
+    const shafts = [...s.parts.values()].filter((p) => p.state === 'active' && P.WALK[p.type] && P.WALK[p.type].k === 'shaft' && (P.SLOTS[p.type] || []).length);
+    if (!shafts.length || !shafts.every((p) => v.lifts.has(p.id))) return false;
+    const c = [...v.lifts.values()].find((x) => x.ys.length > 1); if (!c) return false;
+    const seen = new Set(); for (let i = 0; i < 600; i++) { v.liftRider.clear(); v._lifts(0.1); for (const y of c.ys) if (Math.abs(c.y - y) < 1e-3) seen.add(y); }
+    return seen.size === c.ys.length;
+  }));
+  const camWas = await page.evaluate(() => [window.__view.controls.target.toArray(), window.__view.camera.position.toArray()]);
+  const fid = await page.evaluate(() => { const s = window.__st, a = s.agents.find((x) => !x.eva && s.parts.has(x.at)); window.__follow(a.id); return a.id; });
+  await page.waitForFunction((id) => { const v = window.__view, a = window.__st.agents.find((x) => x.id === id), P = a && v.agentPos(a, performance.now() / 1000), t = v.controls.target; return P && Math.hypot(P[0] - t.x, P[2] - t.z) < 0.25; }, fid, { timeout: 30000 }).catch(() => {});
+  const fg = await page.evaluate((id) => { const v = window.__view, a = window.__st.agents.find((x) => x.id === id), P = a && v.agentPos(a, performance.now() / 1000), t = v.controls.target; return P ? [Math.hypot(P[0] - t.x, P[2] - t.z), v.camera.position.distanceTo(t)] : [99, 99]; }, fid);
+  check('following a person keeps the camera on them, close in, with the inside showing', fg[0] < 0.4 && fg[1] <= 1.85 && (await page.evaluate((id) => window.__ui.follow === id && window.__ui.person === id && (window.__ui.open || window.__ui.cut || window.__ui.view !== 'hull'), fid)), fg.map((x) => x.toFixed(2)).join(' '));
+  check('their card says FOLLOWING', /FOLLOWING/.test(await page.textContent('#a-follow')));
+  await page.screenshot({ path: 'test/shots/follow.png' });
+  await page.keyboard.down('w'); await page.waitForFunction(() => window.__ui.follow === 0, null, { timeout: 15000 }).catch(() => {}); await page.keyboard.up('w'); await page.waitForTimeout(150);
+  check('flying the camera yourself lets go of them', (await page.evaluate(() => window.__ui.follow === 0)) && !/FOLLOWING/.test(await page.textContent('#a-follow')));
+  await page.keyboard.press('f'); await page.waitForTimeout(150);
+  const fOn = await page.evaluate(() => window.__ui.follow);
+  await page.click('#a-follow'); await page.waitForTimeout(150);
+  check('F follows the person on the card, and the button lets go again', fOn === fid && (await page.evaluate(() => window.__ui.follow === 0)));
+  await page.evaluate((id) => { window.__follow(id); }, fid); await page.click('#a-done'); await page.waitForTimeout(150);
+  check('closing the card stops following', await page.evaluate(() => window.__ui.follow === 0 && !window.__ui.person));
+  if (await page.evaluate(() => window.__ui.open)) await page.keyboard.press('t');
+  await page.evaluate(([t, c]) => { window.__view.controls.target.fromArray(t); window.__view.camera.position.fromArray(c); }, camWas); await page.waitForTimeout(200);
 
   await page.evaluate(() => document.querySelector('.vb[data-v="cut"]').click()); await page.evaluate(() => document.querySelector('.vb[data-v="life"]').click()); await page.waitForTimeout(300);
   await page.waitForFunction(() => window.__view.mode === 'life' && window.__view.agentPts.geometry.drawRange.count > 0, null, { timeout: 20000 }).catch(() => {});
@@ -334,6 +365,7 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
   await page.tap('#groups .gt[data-g="habitation"]'); await page.tap('#cmd .cb[data-t="ring"]'); await page.waitForTimeout(300);
   await page.touchscreen.tap(420, 200); await page.waitForTimeout(200);   // a tap on empty space marks this as a touch screen
   const free = await page.evaluate(() => window.__st.freePorts().length);
+  await page.waitForFunction(() => window.__view.markers.children.length === window.__st.freePorts().length, null, { timeout: 15000 }).catch(() => {});
   check('on a touch screen every free port shows a faint dot', await page.evaluate(() => window.__view.markers.children.length) === free, `${free}`);
   const xy = await portXY(page, 'p.part === 1 && p.i === 0');
   await page.touchscreen.tap(...xy); await page.waitForTimeout(300);
@@ -374,7 +406,7 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
   check('Continue brings the same station back', w1.mode === 'broken' && w1.n === w0.n && Math.abs(w1.t - before) < 3 && w1.agents > 0 && w1.objs === w1.n, JSON.stringify(w1));
   // a raid, called by hand
   await page.evaluate(() => { const s = window.__st; s.callRaid(); });
-  await page.waitForTimeout(400);
+  await page.waitForFunction(() => /RAIDERS INBOUND/.test(document.getElementById('banner').textContent), null, { timeout: 20000 }).catch(() => {});
   check('a raid warns before it arrives', await page.evaluate(() => window.__st.raid && window.__st.raid.state === 'warn') && /RAIDERS INBOUND/.test(await page.textContent('#banner')));
   await steps(page, 30); await page.waitForTimeout(400);
   check('the raiders come in and the raid resolves', await page.evaluate(() => { const s = window.__st; return !s.raid || s.raid.state === 'fight'; }));

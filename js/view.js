@@ -14,7 +14,7 @@ const GREEN = 0x7fe9e0, YELLOW = 0xf5d547, BLUE = 0x7fe9e0;      // the drawing 
 const ROLE_COL = { resident: [0.85, 1, 0.9], hauler: [0.3, 0.72, 1], engineer: [1, 0.76, 0.25], officer: [1, 0.35, 0.29], medic: [0.6, 1, 0.75], aide: [0.96, 0.84, 0.28], scientist: [0.7, 0.55, 1], gunner: [1, 0.6, 0.23], carry: [1, 0.69, 0.13], eva: [1, 1, 1] };
 const UP = new THREE.Vector3(0, 1, 0);
 const OPEN_HIDE = new Set(['hull', 'trim', 'glass', 'glow', 'decal', 'dark', 'blue', 'pod']);
-const CUT_IN = ['inner', 'innerLine', 'lane', 'tileLine', 'wood', 'white', 'steel', 'sofa', 'fdark', 'fblue', 'fscreen', 'bed', 'locker', 'shell', 'carpet', 'wall', 'craft', 'craftTrim', 'crate', 'plant', 'awning', 'cross', 'alarm', 'spark'];
+const CUT_IN = ['hall', 'inner', 'innerLine', 'lane', 'tileLine', 'wood', 'white', 'steel', 'sofa', 'fdark', 'fblue', 'fscreen', 'bed', 'locker', 'shell', 'carpet', 'wall', 'craft', 'craftTrim', 'crate', 'plant', 'awning', 'cross', 'alarm', 'spark'];
 const RESIDENTS = ['resident', 'resident2', 'resident3', 'resident4'];
 // The rooms each job stands in when it is in a part that has them, best first.
 const STAND = { resident: ['quarters', 'bunks', 'mess', 'bar', 'lounge', 'market', 'hydro'], hauler: ['cargostore'], engineer: ['workshop'], officer: ['secoffice'], medic: ['medbay'],
@@ -95,6 +95,7 @@ export class View {
       dark: S({ color: 0x15171a, metalness: 0.6, roughness: 0.45, flatShading: true }), blue: B({ color: 0x5fc8ff }),
       wall: S({ color: 0xb9ab8e, roughness: 0.9, metalness: 0.02 }), lane: B({ color: 0xffe9a0 }),
       wood: S({ color: 0x8b6b4a, roughness: 0.8 }), white: S({ color: 0xe6e9e4, roughness: 0.6 }), steel: S({ color: 0xaab2b6, roughness: 0.35, metalness: 0.75 }), sofa: S({ color: 0x8a4f3c, roughness: 0.95 }),
+      hall: S({ color: 0x9a8a6a, roughness: 0.95, side: THREE.DoubleSide }),
       fdark: S({ color: 0x1d2024, metalness: 0.5, roughness: 0.5 }), fblue: B({ color: 0x5fc8ff }), fscreen: B({ color: 0xffffff }),
       bed: S({ color: 0x9fb4c8, roughness: 0.95 }), locker: S({ color: 0x4a5258, roughness: 0.6, metalness: 0.4 }), shell: S({ color: 0xc9a23a, roughness: 0.4, metalness: 0.7 }), carpet: S({ color: 0x7a2a2a, roughness: 1 }),
       craft: S({ color: 0x8c9690, metalness: 0.5, roughness: 0.5, flatShading: true }), craftTrim: S({ color: 0xf5d547, metalness: 0.3, roughness: 0.6, flatShading: true }),
@@ -185,7 +186,7 @@ export class View {
     const set = (m, t) => { m.map = t; m.needsUpdate = true; };
     set(M.inner, T.deck); for (const m of Object.values(this.tileMats)) set(m, T.deck);
     set(M.wood, T.wood); set(M.steel, T.steel); set(M.locker, T.locker); set(M.wall, T.wall); set(M.white, T.plastic); set(M.crate, T.crate); set(M.shell, T.brass); set(M.plant, T.leaf);
-    for (const m of [M.sofa, M.bed, M.carpet]) set(m, T.cloth);
+    for (const m of [M.sofa, M.bed, M.carpet, M.hall]) set(m, T.cloth);
     this.surf = T;
   }
   // ---------------------------------------------------------------- livery: colours, hull plating, interior fit-out, lights, emblem
@@ -244,7 +245,7 @@ export class View {
     for (const m of [M.hull, M.thHull, M.craft]) { m.color.set(L.hull); m.map = tex; m.needsUpdate = true; }
     M.trim.color.set(L.trim); M.craftTrim.color.set(L.trim); M.dark.color.set(L.accent).multiplyScalar(0.6); M.wire.color.set(L.accent).lerp(new THREE.Color(0xaab6b0), 0.5);
     const I = D.interior[L.interior] || D.interior.ministry;
-    M.inner.color.set(I.floor); M.wall.color.set(I.wall); M.lane.color.set(I.lane);
+    M.inner.color.set(I.floor); M.wall.color.set(I.wall); M.lane.color.set(I.lane); M.hall.color.set(I.floor).lerp(new THREE.Color(I.lane), 0.38);
     M.glow.color.set(D.lights[L.lights] || D.lights.warm);
     this._drawDecal();
     this.thumbs = null;
@@ -611,27 +612,46 @@ export class View {
     const w = addRot(p.pos, p.quat, [r[0], r[1] + 0.04, r[2]]);
     return [w[0], w[1], w[2], null, rs.face ?? null];
   }
-  // A lift car in every part with a lift. It goes to whoever is riding and waits where it last stopped.
+  // An elevator in every part with a lift shaft: a cab with waist-high sides, glass above, a yellow band and a lit ceiling, open
+  // front and back. It goes to whoever is riding. With nobody aboard it works its way up and down the decks on its own.
   _lifts(dt) {
     const st = this.st, show = this.figOn;
     for (const [id, c] of this.lifts) if (!st.parts.has(id)) { this.scene.remove(c.obj); this.lifts.delete(id); }
     for (const p of st.parts.values()) {
       const lay = SLOTS[p.type];
-      if (!WALK[p.type] || WALK[p.type].k !== 'shaft' || !lay || lay.length < 2 || p.state !== 'active') continue;
+      if (!WALK[p.type] || WALK[p.type].k !== 'shaft' || !lay || !lay.length || p.state !== 'active') continue;
       let c = this.lifts.get(p.id);
       if (!c) {
         const g = new THREE.Group(), M = this.M, add = (w, h, d, m, x, y, z) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y, z); g.add(o); };
-        add(0.23, 0.012, 0.23, M.locker, 0, -0.006, 0); add(0.23, 0.012, 0.23, M.locker, 0, 0.27, 0); add(0.16, 0.006, 0.16, M.lane, 0, 0.262, 0);
-        for (const [x, z] of [[0.108, 0.108], [-0.108, 0.108], [0.108, -0.108], [-0.108, -0.108]]) add(0.012, 0.27, 0.012, M.steel, x, 0.132, z);
-        for (const [x, z, w, d] of [[0.112, 0, 0.006, 0.2], [-0.112, 0, 0.006, 0.2]]) add(w, 0.1, d, M.thGlass, x, 0.06, z);
+        add(0.24, 0.014, 0.24, M.locker, 0, -0.007, 0); add(0.24, 0.016, 0.24, M.locker, 0, 0.278, 0); add(0.18, 0.006, 0.18, M.lane, 0, 0.268, 0);
+        for (const [x, z] of [[0.112, 0.112], [-0.112, 0.112], [0.112, -0.112], [-0.112, -0.112]]) add(0.016, 0.27, 0.016, M.steel, x, 0.135, z);
+        for (const sx of [-1, 1]) { add(0.012, 0.12, 0.21, M.steel, sx * 0.114, 0.06, 0); add(0.014, 0.018, 0.212, M.craftTrim, sx * 0.114, 0.128, 0); add(0.006, 0.13, 0.21, M.thGlass, sx * 0.114, 0.202, 0); add(0.008, 0.008, 0.2, M.steel, sx * 0.1, 0.1, 0); }
+        for (const sz of [-1, 1]) { add(0.24, 0.02, 0.012, M.craftTrim, 0, 0.26, sz * 0.114); add(0.1, 0.01, 0.014, M.lane, 0, 0.245, sz * 0.114); }
         this.scene.add(g);
-        c = { obj: g, y: p.pos[1] + Math.min(...lay.map((s) => s.p[1])) + 0.04 }; this.lifts.set(p.id, c);
+        const ys = [...new Set(lay.map((sl) => sl.p[1]))].sort((u, v) => u - v).map((y) => p.pos[1] + y + 0.04);
+        c = { obj: g, y: ys[0], ys, at: 0, dir: 1, wait: 2 + (p.id % 5), quiet: 0 }; this.lifts.set(p.id, c);
       }
       const want = this.liftRider.get(p.id);
-      if (want !== undefined) c.y += Math.max(-dt * 6, Math.min(dt * 6, want - c.y));
+      if (want !== undefined) { c.y += Math.max(-dt * 6, Math.min(dt * 6, want - c.y)); c.quiet = 0; }
+      else if (c.ys.length > 1 && (c.quiet += dt) > 5) {      // nobody aboard for a while: call at the next deck, wait, and go on
+        const to = c.ys[c.at];
+        if (Math.abs(to - c.y) > 1e-3) c.y += Math.max(-dt * 0.9, Math.min(dt * 0.9, to - c.y));
+        else if ((c.wait -= dt) <= 0) { if (c.at + c.dir < 0 || c.at + c.dir >= c.ys.length) c.dir = -c.dir; c.at += c.dir; c.wait = 4; }
+      }
       c.obj.position.set(p.pos[0], c.y, p.pos[2]); c.obj.visible = show;
     }
   }
+  // Keep the camera on one person: what it looks at glides to them, and the camera goes with it, so the angle and distance are yours.
+  follow(a, dt) {
+    const P = this.agentPos(a, performance.now() / 1000);
+    if (!P) return false;
+    const tg = this.controls.target, k = 1 - Math.exp(-dt * 7), dx = (P[0] - tg.x) * k, dy = (P[1] + 0.1 * this.peopleK - tg.y) * k, dz = (P[2] - tg.z) * k;
+    tg.x += dx; tg.y += dy; tg.z += dz; this.camera.position.x += dx; this.camera.position.y += dy; this.camera.position.z += dz;
+    this.controls.autoRotate = false;
+    return true;
+  }
+  // Bring the camera in to a given distance from what it is looking at, if it is further away than that.
+  closeIn(dist) { const off = this.camera.position.clone().sub(this.controls.target), d = off.length(); if (d > dist) this.camera.position.copy(this.controls.target).add(off.multiplyScalar(dist / d)); }
   // How big a figure is drawn: the standard height (C.scale) over the height it was modelled at, times the player's own setting.
   personK() { return C.scale.person / C.scale.m / 0.33 * this.peopleK; }
   _agents(now) {

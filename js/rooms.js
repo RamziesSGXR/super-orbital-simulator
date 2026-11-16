@@ -276,6 +276,12 @@ export function roomPlan(room, W, D, door, variant = 0) {
       }
     }
   }
+  // HALLWAYS inside a room: a carpet runner along every aisle and down the cross lane to the door (or the lift)
+  if (!pad && rows.length) {
+    for (const a of aisles) items.push(['b', 'hall', x1 - x0, 0.016, 1.2, (x0 + x1) / 2, 0.008, a]);
+    const za = Math.min(...aisles), zc = lift ? Math.max(...aisles) : hd - t;
+    if (zc - za > 0.2) items.push(['b', 'hall', 1.2, 0.017, zc - za, 0, 0.0085, (za + zc) / 2]);
+  }
   // people with nothing to stand at stand in the aisles (on a pad: along its front edge and at its corners)
   for (const a of aisles) for (let x = x0 + 0.9; x <= x1 - 0.9 + 1e-6; x += 2.3) if (!(lift && Math.abs(x) < 3.0 && Math.abs(a) < 3.0)) spots.push({ x, z: a, face: null, via: [[0, a]], idle: true });
   if (pad && room !== 'empty') for (const s of [-1, 1]) spots.push({ x: s * hw * 0.92, z: -hd * 0.86, face: null, via: [[s * hw * 0.92, hd * 0.86], [0, hd * 0.86]], idle: true });
