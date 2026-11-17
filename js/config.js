@@ -22,7 +22,7 @@ const fill = (n, room) => Array(n).fill(room);
 const deg = (xs) => xs.map((x) => x * Math.PI / 180);
 
 export const C = {
-  version: '0.11.4',
+  version: '0.11.5',
 
   groups: [
     { id: 'structure', name: 'STRUCTURE' }, { id: 'platform', name: 'FIRE SUPPORT' }, { id: 'habitation', name: 'HABITATION' }, { id: 'docking', name: 'DOCKING' },
@@ -89,7 +89,7 @@ export const C = {
     pylon:    { name: 'Docking Pylon', group: 'docking', tier: 1, cost: 150, up: 4, pw: 2, build: 6, berth: [5, 4.9, 0, 0, 1, 0], ships: ['freighter', 'shuttle'], crates: 8, center: [2.5, 0, 0], r: 4,
       about: 'A tall arm with a berth at its tip for heavy freighters (8 crates).', ports: [[0, 0, 0, -1, 0, 0, 'L']] },
     bigring:  { name: 'Docking Ring', group: 'docking', tier: 1, cost: 380, up: 6, pw: 3, build: 10, center: [0, 0, 0], r: 12.5, rooms: ['quarters', 'cargostore', 'quarters', 'cargostore', 'quarters', 'cargostore', 'quarters', 'cargostore', 'quarters', 'cargostore', 'quarters', 'cargostore'],
-      about: 'A wide outer ring on six spokes: quarters and cargo stores, and six rim ports for docks.', ports: [...spine(1.2), ...ring6(12.7)] },
+      about: 'A wide outer ring on six spokes: quarters and cargo stores, and six rim ports for docks.', ports: [...spine(1.2), ...ring6(13.0)] },
     hangar:   { name: 'Hangar', group: 'docking', tier: 2, cost: 360, up: 6, pw: 3, build: 9, bay: true, center: [4, 0, 0], r: 4.6, rooms: ['shuttlebay', 'workshop', 'cargostore'],
       berth: [8.2, 0, 0, 1, 0, 0], ships: ['shuttle'], berthRoom: 'shuttlebay',
       about: 'A big bay with a door at the end. Build a Shuttle Bay inside and shuttles land in it.', ports: [[0, -1.18, 0, -1, 0, 0, 'L'], [4, 1.7, 1.88, 0, 1, 0, 'L'], [2.85, -1.18, 2.7, 0, 0, 1, 'L'], [2.85, -1.18, -2.7, 0, 0, -1, 'L']] },
@@ -130,18 +130,19 @@ export const C = {
   //   shaft: a lift up the middle, one stop on every deck, and a gallery round each deck at radius g, just inside the hull.
   //   hall:  a hallway along the part at floor height y, to one side at z. fx: how far in from an end port its entry lies.
   //   ring:  a hallway round the part at radius R; spokes are the angles of the hallways in to the lift at the hub.
-  // hw: half the hallway's width, where it is not the standard 0.19 (1.7 m either side of the centre line).
+  // hw: half the hallway's width, where it is not the standard 0.19 (1.7 m either side of the centre line). h0: where the hull is
+  // full width, if the hallway would otherwise start in the narrow collar before it.
   ways: {
     command: { k: 'shaft', g: 1.06 }, core: { k: 'shaft', g: 1.06 }, longcore: { k: 'shaft', g: 1.06 }, junction: { k: 'shaft', g: 1.42 }, tower: { k: 'shaft', g: 1.4 }, dome: { k: 'shaft' },
     reactor: { k: 'ring', R: 0.86, y: -0.4, spokes: deg([225]), hub: 0.56, hw: 0.12 },
-    hab: { k: 'hall', y: -0.4, z: 0.6, fx: 0.5 }, cargo: { k: 'hall', y: -0.4, z: 0.6, fx: 0.5 },
+    hab: { k: 'hall', y: -0.4, z: 0.6, fx: 0.65 }, cargo: { k: 'hall', y: -0.4, z: 0.6, fx: 0.65 },
     ring: { k: 'ring', R: 6.45, y: -0.4, spokes: deg([0, 90, 180, 270]) }, bigring: { k: 'ring', R: 11.72, y: -0.4, spokes: deg([30, 90, 150, 210, 270, 330]), hw: 0.15 },
     drum: { k: 'ring', R: 3.38, spokes: deg([0, 90, 180, 270]) }, disc: { k: 'ring', R: 4.55, y: -0.4, spokes: deg([0, 45, 90, 135, 180, 225, 270, 315]) },
     blister: { k: 'hall', y: -0.4, z: 0 }, dockport: { k: 'hall', y: -0.4, z: 0 }, tube: { k: 'hall', y: -0.4, z: 0 }, truss: { k: 'hall', y: -0.4, z: 0 }, node: { k: 'hall', y: -0.4, z: 0, tz: -0.3 },
     hangar: { k: 'hall', y: -1.58, z: 2.15, fx: 0.22 }, pelicanbay: { k: 'hall', y: -1.58, z: 2.15, fx: 0.22 }, eaglehangar: { k: 'hall', y: -1.38, z: 2.0, fx: 0.22 },
-    drydock: { k: 'hall', y: -0.4, z: 0.75, fx: 0.12, hw: 0.15 }, refinery: { k: 'hall', y: -0.4, z: 0.62, fx: 0.33 },
-    gunmount: { k: 'hall', y: -0.4, z: 0.62, fx: 0.34 }, battery: { k: 'hall', y: -0.4, z: 0.62, fx: 0.34 }, dronebay: { k: 'hall', y: -0.4, z: 0.62, fx: 0.34 },
-    barracks: { k: 'hall', y: -0.4, z: 0.72, fx: 0.28 }, fabshop: { k: 'hall', y: -0.4, z: 0.72, fx: 0.27 }, lance: { k: 'hall', y: -0.4, z: 0.8, fx: 0.36 },
+    drydock: { k: 'hall', y: -0.4, z: 0.75, fx: 0.12, hw: 0.15 }, refinery: { k: 'hall', y: -0.4, z: 0.62, fx: 0.4 },
+    gunmount: { k: 'hall', y: -0.4, z: 0.62, fx: 0.34, h0: 0.24 }, battery: { k: 'hall', y: -0.4, z: 0.62, fx: 0.34, h0: 0.24 }, dronebay: { k: 'hall', y: -0.4, z: 0.62, fx: 0.34, h0: 0.24 },
+    barracks: { k: 'hall', y: -0.4, z: 0.72, fx: 0.28 }, fabshop: { k: 'hall', y: -0.4, z: 0.72, fx: 0.27 }, lance: { k: 'hall', y: -0.4, z: 0.8, fx: 0.36, h0: 0.24 },
   },
 
   // Rooms: what a slot inside a part does. bay: only in a Hangar or Drydock. tier: when it unlocks.

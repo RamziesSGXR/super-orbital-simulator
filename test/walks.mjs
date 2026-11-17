@@ -75,7 +75,7 @@ for (const type of Object.keys(WALK)) {
           if (last && Math.abs(y - last) > 0.004) { why = `changes height in the open at ${x.toFixed(2)}, ${y.toFixed(2)}, ${z.toFixed(2)}`; break; }
           last = y;
           // 1. floor under every step (the very edge of a port, in the hull's own thickness, is let off)
-          const atPort = [A, B].some((E) => E.j && Math.hypot(x - E.j[0], z - E.j[2]) < 0.06);
+          const atPort = [A, B].some((E) => E.j && Math.hypot(x - E.j[0], z - E.j[2]) < 0.06);      // in the port's own opening
           const f = atPort ? 0 : floorUnder(x, y, z);
           if (f === null || Math.abs(f) > 0.035) { why = `no floor at ${x.toFixed(2)}, ${y.toFixed(2)}, ${z.toFixed(2)}${f === null ? '' : ` (the nearest is ${f.toFixed(3)} below)`}`; break; }
           // 2. nothing in the way: in every room the step is inside (rooms.mjs has already cleared each person's way to their own door)

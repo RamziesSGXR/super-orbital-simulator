@@ -54,16 +54,7 @@ export const SLOTS = {
 //   hall:  a hallway along the part, to one side of its rooms.      ring: a hallway round the part, and hallways in to the lift at its hub.
 // Nobody is drawn while they are inside a lift: the lift is a closed tube, so there is nothing to see and nothing to walk through.
 export const WALK = C.ways;
-// THE DOCKING LAMPS on each kind of berth, in the part's own frame: where a real port has its guidance lights, on the collar or
-// the mouth of the bay. The view lights them by the berth's state (green: clear to approach; amber: a ship at it; red: closed).
-export const BERTH_LAMPS = {
-  dockport: [[2.35, 0.6, 0.6], [2.35, -0.6, 0.6], [2.35, 0.6, -0.6], [2.35, -0.6, -0.6]],
-  pylon: [[5.62, 4.87, 0], [4.38, 4.87, 0], [5, 4.87, 0.62], [5, 4.87, -0.62]],
-  hangar: [[8.14, 1.0, 2.7], [8.14, -1.0, 2.7], [8.14, 1.0, -2.7], [8.14, -1.0, -2.7]],
-  pelicanbay: [[8.14, 1.0, 2.7], [8.14, -1.0, 2.7], [8.14, 1.0, -2.7], [8.14, -1.0, -2.7]],
-  eaglehangar: [[7.14, 0.9, 2.4], [7.14, -0.9, 2.4], [7.14, 0.9, -2.4], [7.14, -0.9, -2.4]],
-  drydock: [[17.1, 2.3, 2.3], [17.1, -2.3, 2.3], [17.1, 2.3, -2.3], [17.1, -2.3, -2.3]],
-};
+const PROBE = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
 export const HW = 0.19, FL = 0.04, LIFT_R = 0.15, TUBE_R = 0.075;      // half a hallway; how far a floor stands above its deck height; a lift; a one-person lift tube
 const decksOf = (type) => { const lay = SLOTS[type]; return lay ? [...new Set(lay.map((s) => s.p[1]))].sort((a, b) => a - b) : []; };
 // The deck someone stands on at height y inside a part: the highest floor at or just below it.
@@ -249,7 +240,7 @@ function skin(geom, k = 0.5) {
   return g;
 }
 
-export function buildPart(type) {
+export function buildPart(type, raw = false) {      // raw: the pieces as built, not merged (for checks)
   const g = new THREE.Group();
   const put = (geom, role, x = 0, y = 0, z = 0, opt = {}) => {
     geom.translate(x, y, z);
@@ -335,13 +326,13 @@ export function buildPart(type) {
       break;
     }
     case 'ring': case 'bigring': {
-      const big = type === 'bigring', R = big ? 12 : 7, tube = big ? 0.6 : 0.95, hubH = big ? 1.2 : 1.4, spokes = big ? 6 : 4;
+      const big = type === 'bigring', R = big ? 12 : 7, tube = big ? 0.98 : 0.95, hubH = big ? 1.2 : 1.4, spokes = big ? 6 : 4;
       put(new THREE.CylinderGeometry(1.3, 1.3, hubH, 24), 'hull');
       for (let i = 0; i < spokes; i++) {
         const a = (big ? Math.PI / 6 : 0) + i * TAU / spokes, len = R - tube * 0.6 - 1.2, sr = big ? 0.5 : 0.56, s = new THREE.CylinderGeometry(sr, sr, len, 10);      // each spoke is a hallway to the hub
         along(s); s.rotateY(-a); put(s, 'hull', Math.cos(a) * (1.2 + len / 2), 0, Math.sin(a) * (1.2 + len / 2), { angle: 50 });
       }
-      put(flat(new THREE.TorusGeometry(R, tube, big ? 8 : 12, big ? 96 : 72)), 'hull', 0, 0, 0, { angle: 35 });
+      put(flat(new THREE.TorusGeometry(R, tube, 12, big ? 120 : 72)), 'hull', 0, 0, 0, { angle: 35 });
       windows(big ? 48 : 32, R + tube + 0.01, 0, 0.22, 0.14);
       decks(R - tube * 0.75, R + tube * 0.75, [-0.4], big ? 96 : 72);
       break;
@@ -384,14 +375,14 @@ export function buildPart(type) {
     case 'dockport': {
       put(along(new THREE.CylinderGeometry(0.7, 0.7, 2.2, 16)), 'hull', 1.1, 0, 0);
       put(new THREE.TorusGeometry(0.85, 0.13, 6, 20).rotateY(Math.PI / 2), 'trim', 2.2, 0, 0, { noEdges: true });
-      for (const [y, z] of [[0.6, 0.6], [-0.6, 0.6], [0.6, -0.6], [-0.6, -0.6]]) box(0.05, 0.14, 0.14, 'dark', 2.31, y, z);      // lamp housings: the view lights the lamps (BERTH_LAMPS)
+      for (const [y, z] of [[0.6, 0.6], [-0.6, 0.6], [0.6, -0.6], [-0.6, -0.6]]) box(0.1, 0.12, 0.12, 'glow', 2.32, y, z);
       break;
     }
     case 'pylon': {
       box(5, 0.7, 0.7, 'hull', 2.5, 0, 0); box(0.9, 0.9, 0.9, 'hull', 5, 0, 0); box(0.6, 4.2, 0.6, 'hull', 5, 2.5, 0);
       put(flat(new THREE.TorusGeometry(0.75, 0.14, 6, 20)), 'trim', 5, 4.7, 0, { noEdges: true });
       for (const y of [1.2, 2.4, 3.6]) box(0.62, 0.1, 0.62, 'glow', 5, y, 0);
-      for (const [x, z] of [[0.62, 0], [-0.62, 0], [0, 0.62], [0, -0.62]]) box(0.14, 0.05, 0.14, 'dark', 5 + x, 4.84, z);      // lamp housings on the collar
+      put(new THREE.SphereGeometry(0.14, 8, 6), 'glow', 5, 5.05, 0);
       break;
     }
     case 'hangar': case 'pelicanbay': { bay(8, 1.7, 2.7); break; }
@@ -490,8 +481,8 @@ export function buildPart(type) {
     }
     case 'cargo': case 'hab': {
       put(along(new THREE.CylinderGeometry(1, 1, 3.6, 20)), 'hull', 2.4, 0, 0);
-      put(along(new THREE.CylinderGeometry(1, 0.55, 0.6, 20)), 'hull', 4.5, 0, 0);
-      put(along(new THREE.CylinderGeometry(0.55, 1, 0.6, 20)), 'hull', 0.3, 0, 0);
+      put(along(new THREE.CylinderGeometry(0.55, 1, 0.6, 20)), 'hull', 4.5, 0, 0);      // the ends taper to the ports, like a capsule
+      put(along(new THREE.CylinderGeometry(1, 0.55, 0.6, 20)), 'hull', 0.3, 0, 0);
       for (const x of [1.2, 2.4, 3.6]) put(new THREE.TorusGeometry(1.04, 0.08, 6, 20).rotateY(Math.PI / 2), 'trim', x, 0, 0, { noEdges: true });
       box(3.4, 0.07, 2.02, 'trim', 2.4, -0.2, 0, { noEdges: true });
       if (type === 'cargo') for (const z of [1.01, -1.01]) box(2.6, 0.08, 0.04, 'glow', 2.4, 0.5, z);
@@ -518,7 +509,7 @@ export function buildPart(type) {
       break;
     }
     case 'refinery': {
-      box(3.6, 2.4, 2, 'hull', 2, 0, 0);
+      box(3.6, 2.4, 2, 'hull', 2, 0, 0); collar(); put(along(new THREE.CylinderGeometry(0.62, 0.62, 0.3, 16)), 'trim', 3.9, 0, 0);
       for (const [x, z] of [[1.3, 0.45], [2.7, -0.45]]) {
         put(new THREE.CylinderGeometry(0.28, 0.36, 1.6, 12), 'hull', x, 2.0, z);
         put(new THREE.CylinderGeometry(0.2, 0.2, 0.05, 12), 'glow', x, 2.82, z);
@@ -632,14 +623,43 @@ export function buildPart(type) {
     }
   };
   // AN AIRLOCK at a side port: a heavy door frame standing on the deck just inside the hull, striped and lit, open to the part beyond.
-  const airlock = (q, F) => {
-    const a = Math.atan2(q[5], q[3]), nx = Math.cos(a), nz = Math.sin(a), px = q[0] - nx * 0.11, pz = q[2] - nz * 0.11, y = F + FL;
+  const airlock = (q, F, at = null) => {      // at: the inside face of the hull there (wallAt)
+    const a = Math.atan2(q[5], q[3]), nx = Math.cos(a), nz = Math.sin(a), px = (at ? at[0] : q[0]) - nx * 0.08, pz = (at ? at[2] : q[2]) - nz * 0.08, y = F + FL;
     const pc = (w, h, d, off, ly, role, opt) => turned(new THREE.BoxGeometry(d, h, w), a, role, px - nz * off, y + ly, pz + nx * off, opt);      // d: through the door; w: across it
     for (const s of [-1, 1]) { pc(0.05, 0.3, 0.09, s * 0.145, 0.15, 'locker'); pc(0.016, 0.3, 0.094, s * 0.118, 0.15, 'craftTrim'); pc(0.01, 0.2, 0.1, s * 0.11, 0.13, 'lane', {}); }
     pc(0.34, 0.05, 0.09, 0, 0.325, 'locker'); pc(0.24, 0.014, 0.094, 0, 0.298, 'craftTrim'); pc(0.1, 0.02, 0.1, 0, 0.33, 'lane', {});
     pc(0.24, 0.006, 0.2, 0, 0.003, 'steel'); pc(0.22, 0.004, 0.03, 0, 0.008, 'lane', {});
   };
   const side = def && W ? def.ports.filter((q) => Math.abs(q[4]) < 0.7) : [], roof = def && W ? def.ports.filter((q) => Math.abs(q[4]) > 0.7) : [];
+  // THE INSIDE FACE OF THE HULL at a side port, at deck height F: a ray from well inside, out towards the port, against the hull
+  // pieces. A ring's tube or a disc's rim curves in below its port, so the wall at the deck is nearer than the port itself.
+  const shell = []; g.updateMatrixWorld(true); g.traverse((o) => { if (o.isMesh && (o.userData.role === 'hull' || o.userData.role === 'trim')) shell.push(o); });
+  const rc = new THREE.Raycaster();
+  // A PASSAGE through a sloping or curved hull: where the wall at deck height stands well in from the port, a short enclosed
+  // corridor runs from the wall out to the port, with a floor, so nobody walks through open space under the curve.
+  const passage = (q, F, at) => {
+    const n = new THREE.Vector3(q[3], 0, q[5]).normalize(), dx = q[0] - at[0], dz = q[2] - at[2], len = Math.hypot(dx, dz);
+    if (len < 0.08) return;
+    const a = Math.atan2(n.z, n.x), mx = (q[0] + at[0]) / 2 - n.x * 0.02, mz = (q[2] + at[2]) / 2 - n.z * 0.02, H = 0.36;
+    for (const [w, h, y, role] of [[0.42, 0.05, F - 0.02, 'hull'], [0.42, 0.05, F + H, 'hull'], [0.05, H + 0.07, F + H / 2, 'hull']]) {
+      if (role && w === 0.05) { for (const sd of [1, -1]) turned(new THREE.BoxGeometry(len + 0.06, h, 0.05), a, 'hull', mx - n.z * sd * 0.19, y, mz + n.x * sd * 0.19); continue; }
+      turned(new THREE.BoxGeometry(len + 0.06, h, w), a, role, mx, y, mz);
+    }
+    runner([[at[0], F, at[2]], [q[0] - n.x * 0.02, F, q[2] - n.z * 0.02]], 0.12, false);
+  };
+  const wallAt = (q, F) => {
+    const n = new THREE.Vector3(q[3], 0, q[5]).normalize(), was = shell.map((o) => o.material);
+    for (const o of shell) o.material = o.geometry.groups.length ? o.geometry.groups.map(() => PROBE) : PROBE;      // something to hit: both faces, every group
+    let d = 0.9;
+    for (const dy of [0.005, FL + 0.06, 0.25]) {      // the floor, the waist, the head: a curved wall is nearest at one of them
+      const from = new THREE.Vector3(q[0], F + dy, q[2]).addScaledVector(n, -0.9);
+      from.x += n.z * 0.0137; from.z -= n.x * 0.0137;      // a hair off the line, so the ray cannot slip down a seam between triangles
+      rc.set(from, n); rc.far = 1.4; const h = rc.intersectObjects(shell, false).filter((x) => x.distance > 0.05)[0];
+      if (h) d = Math.min(d, h.distance - 0.04);
+    }
+    shell.forEach((o, i) => { o.material = was[i]; });
+    return [q[0] + n.x * (d - 0.9), F, q[2] + n.z * (d - 0.9)];
+  };
   // decks under hallway parts, by the shape of their hulls
   const DECK = {
     hab: [[0.03, 0.42], [0.6, 0.9], [4.2, 0.9], [4.77, 0.42]], cargo: [[0.03, 0.42], [0.6, 0.9], [4.2, 0.9], [4.77, 0.42]],
@@ -647,14 +667,14 @@ export function buildPart(type) {
     barracks: [[0.03, 0.45], [0.1, 0.45], [0.1, 1.05], [5.1, 1.05], [5.1, 0.45], [5.17, 0.45]], fabshop: [[0.03, 0.45], [0.1, 0.45], [0.1, 1.05], [4.3, 1.05], [4.3, 0.45], [4.37, 0.45]],
     lance: [[0.03, 0.5], [0.2, 0.5], [0.2, 1.15], [6.18, 1.15]], refinery: [[0.03, 0.45], [0.2, 0.45], [0.2, 0.95], [3.8, 0.95], [3.8, 0.45], [3.97, 0.45]],
     drydock: [[0.02, 1.15], [1.98, 1.15]], hangar: [[0.2, 2.58], [7.9, 2.58]], pelicanbay: [[0.2, 2.58], [7.9, 2.58]], eaglehangar: [[0.2, 2.28], [6.9, 2.28]],
-    tube: [[0.02, 0.29], [3.98, 0.29]], truss: [[0, 0.26], [5, 0.26]], dockport: [[0.02, 0.45], [2.18, 0.45]], blister: [[0.02, 0.3], [0.5, 0.3]], node: [[0.02, 0.3], [1.78, 0.3]],
+    tube: [[0.06, 0.26], [3.94, 0.26]], truss: [[0, 0.26], [5, 0.26]], dockport: [[0.02, 0.45], [2.18, 0.45]], blister: [[0.02, 0.3], [0.5, 0.3]], node: [[0.04, 0.24], [1.76, 0.24]],
   };
   if (W && W.k === 'hall') {
     const F = W.y;
     if (DECK[type]) slab(DECK[type], F);
     if (type === 'node') { put(new THREE.CylinderGeometry(0.62, 0.62, 0.03, 20), 'inner', 0.9, F + FL - 0.021, 0, { angle: 60 }); box(0.5, 0.03, 1.74, 'inner', 0.9, F + FL - 0.022, 0, { noEdges: true }); }
     // the hallway: from one entry to the other (or to the end of the deck), with a waist-high wall, a handrail and lights on the side with no rooms
-    const far = side.find((q) => q[3] > 0.7), dk = DECK[type], x0 = W.fx ? W.fx - hw : 0.02, x1 = far ? (W.fx ? far[0] - W.fx + hw : far[0] - 0.02) : dk ? dk[dk.length - 1][0] - 0.06 : 2;
+    const far = side.find((q) => q[3] > 0.7), dk = DECK[type], x0 = Math.max(W.h0 || 0, W.fx ? W.fx - hw : 0.02), x1 = far ? (W.fx ? far[0] - W.fx + hw : far[0] - 0.02) : dk ? dk[dk.length - 1][0] - 0.06 : 2;
     const through = lay && lay.some((sl) => Math.abs(sl.p[2] - W.z) < 0.1);      // the walk runs through the room itself (a blister)
     if (!through) {
       runner([[x0, F, W.z], [x1, F, W.z]]);
@@ -673,11 +693,11 @@ export function buildPart(type) {
       }
     }
     // the way in from every side port: the same line people walk
-    for (const q of side) { const w = wayIn({ type }, q).pts; if (w.length > 1) runner(w, Math.min(hw, 0.12)); airlock(q, F); }
+    for (const q of side) { const w = wayIn({ type }, q).pts; if (w.length > 1) { w[0] = wallAt(q, F); runner(w, Math.min(hw, 0.12)); } const at = wallAt(q, F); passage(q, F, at); airlock(q, F, at); }
     // a lift tube under every port in the roof (or over one in the floor), and a hatch in the hallway where a tube from below comes up
     for (const q of roof) {
       const w = wayIn({ type }, q), [tx, tz] = w.tube, up = q[4] > 0, a = Math.atan2(W.z - tz, 0.0001);
-      lift(tx, tz, up ? F + 0.004 : q[1] - 0.3, up ? q[1] + 0.3 : F + FL + 0.3, TUBE_R, [F], [a]);
+      lift(tx, tz, up ? F + 0.004 : q[1] + 0.02, up ? q[1] - 0.02 : F + FL + 0.3, TUBE_R, [F], [a]);      // from the hallway to the roof (or the floor), no further
       runner(w.pts, 0.07, false);
     }
     if (def.ports[0] && Math.abs(def.ports[0][3]) > 0.7 && !through) { const cx = def.center[0]; box(0.24, 0.004, 0.24, 'steel', cx, F + FL + 0.002, W.z, { noEdges: true }); for (const [ox, oz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) box(0.03, 0.004, 0.03, 'lane', cx + ox * 0.095, F + FL + 0.005, W.z + oz * 0.095); }
@@ -709,7 +729,7 @@ export function buildPart(type) {
         if (i % 3 === 0) turned(new THREE.BoxGeometry(0.004, 0.012, 0.14), a, 'lane', Math.cos(a) * (wr - sd * 0.008), F + FL + 0.122, Math.sin(a) * (wr - sd * 0.008), {});
       }
     }
-    for (const q of side) { const F = sillY(type, q[1]), w = wayIn({ type }, q).pts; runner(w, Math.min(hw, 0.12)); airlock(q, F); }
+    for (const q of side) { const F = sillY(type, q[1]), w = wayIn({ type }, q).pts, at = wallAt(q, F); w[0] = at; runner(w, Math.min(hw, 0.12)); passage(q, F, at); airlock(q, F, at); }
   } else if (W && W.k === 'shaft' && lay) {
     // A deck plate under every deck, out to the hull; a gallery round it; the lift up the middle; and a way in from every side port.
     const rd = { command: 1.16, core: 1.16, longcore: 1.16, junction: 1.5, tower: 1.76, dome: 2.05 }[type] || 1.16, seg = type === 'tower' ? 6 : type === 'junction' ? 12 : 28;
@@ -721,9 +741,9 @@ export function buildPart(type) {
       put(new THREE.RingGeometry(W.g - 0.1, W.g + 0.1, 40).rotateX(-Math.PI / 2), 'hall', 0, F + FL, 0, { noEdges: true });
       for (let i = 0; i < 12; i++) { const a = (i + 0.5) * TAU / 12; turned(new THREE.BoxGeometry(0.022, 0.004, 0.14), a, 'lane', Math.cos(a) * W.g, F + FL + 0.002, Math.sin(a) * W.g, {}); }
     }
-    for (const q of side) { const F = sillY(type, q[1]), a = Math.atan2(q[2], q[0]); runner([[q[0], F, q[2]], [Math.cos(a) * W.g, F, Math.sin(a) * W.g]], 0.12); airlock(q, F); }
+    for (const q of side) { const F = sillY(type, q[1]), a = Math.atan2(q[2], q[0]), at = wallAt(q, F); runner([at, [Math.cos(a) * W.g, F, Math.sin(a) * W.g]], 0.12); passage(q, F, at); airlock(q, F, at); }
   }
-  return bake(g);
+  return raw ? g : bake(g);
 }
 
 // ---------------------------------------------------------------- rooms: a floor tile and everything rooms.js planned for it
@@ -877,7 +897,9 @@ export function buildShip(kind) {
     put(P([[1, -0.1], [1, 0.1], [0.78, 0.26], [-0.8, 0.24], [-1, 0.12], [-1, -0.12], [-0.8, -0.24], [0.78, -0.26]], 0.42, -0.2), 'hull');
     for (const g of [-1, 1]) {
       put(P([[0.2, g * 0.24], [0.02, g * 0.95], [-0.3, g * 0.95], [-0.36, g * 0.24]], 0.06, 0.12), 'hull');
-      const fin = new THREE.BoxGeometry(0.34 * k, 0.4 * k, 0.04); fin.rotateX(g * -0.35); fin.rotateY(g * -0.25); put(fin, 'hull', -0.9 * k, 0.36, g * 0.26 * k);
+      // a tail fin, rooted on the top of the tail and canted outward from its root (not floating beside it), with a fairing at the root
+      const fin = new THREE.BoxGeometry(0.34 * k, 0.4 * k, 0.045); fin.translate(0, 0.2 * k, 0); fin.rotateX(g * 0.3); put(fin, 'hull', -0.92 * k, 0.2, g * 0.13 * k);
+      put(new THREE.BoxGeometry(0.4 * k, 0.05, 0.09), 'hull', -0.92 * k, 0.215, g * 0.13 * k);
       put(along(new THREE.CylinderGeometry(0.13 * k, 0.15 * k, 0.62 * k, 10)), 'hull', -0.12 * k, 0.02, g * 0.62 * k);
       put(along(new THREE.CylinderGeometry(0.09 * k, 0.09 * k, 0.05, 10)), 'glow', -0.45 * k, 0.02, g * 0.62 * k);
       put(new THREE.BoxGeometry(0.05, 0.05, 0.05), 'glow', -0.14 * k, 0.2, g * 0.95 * k);

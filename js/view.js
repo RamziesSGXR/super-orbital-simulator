@@ -6,7 +6,7 @@
 // The sky is a skybox: it moves with the camera, so stars, sun and moons never slide about when you pan or zoom.
 import * as THREE from './vendor/three.js';
 import { C } from './config.js';
-import { buildPart, buildShip, buildRoom, buildSuit, buildFigure, buildRaider, buildEagle, FIGURES, SLOTS, WALK, partPath, wayPoint, onWalk, slotSpot, doorSide, sillY, liftR, FL, LIFT_R, BERTH_LAMPS } from './parts.js';
+import { buildPart, buildShip, buildRoom, buildSuit, buildFigure, buildRaider, buildEagle, FIGURES, SLOTS, WALK, partPath, wayPoint, onWalk, slotSpot, doorSide, sillY, liftR, FL, LIFT_R } from './parts.js';
 import { paintWorld, WORLDS, WORLD_TYPES } from './planets.js';
 import { RNG } from './rng.js';
 
@@ -522,7 +522,6 @@ export class View {
     this._shots(dt);
     this._lifts(dt);
     this._airlocks();
-    this._beacons(now);
     if (this.edit) { const p = st.parts.get(this.edit); if (p && p.rooms.join(',') !== this.editSig) this._editLabels(); }
     // The cut faces the camera and sits a little in front of what you are looking at, so it works from any side and any distance.
     if (this.cutaway && !this.edit) {
@@ -897,32 +896,6 @@ export class View {
       }
       c.obj.position.set(p.pos[0], c.y, p.pos[2]); c.obj.visible = show;
     }
-  }
-  // DOCKING LAMPS. No markers: the berth's own guidance lamps, on its collar or the mouth of its bay (parts.js, BERTH_LAMPS), say
-  // whether it can take a ship, the way a real port's do. Clear to approach: green, running round the collar in turn. A ship at
-  // it or coming in: steady amber. Closed (blocked, broken down, nothing fitted inside to take a ship): dim red. Being built: dark.
-  _beacons(now) {
-    const st = this.st, MAX = 480;
-    if (!this.bcn) {
-      this.bcn = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.035, 0.035, 0.03, 10).rotateZ(Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }), MAX);
-      this.bcn.count = 0; this.bcn.frustumCulled = false; this.scene.add(this.bcn); this.bcn.setColorAt(0, new THREE.Color());
-    }
-    this.bcn.visible = this.mode !== 'blueprint';
-    const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), one = new THREE.Vector3(1, 1, 1), col = new THREE.Color(), off = new THREE.Color(0x1a1c1e);
-    let n = 0;
-    for (const p of st.parts.values()) {
-      const L = BERTH_LAMPS[p.type], b = L && st.berthStatus(p); if (!b) continue;
-      q.set(...p.quat);
-      L.forEach((l, i) => {
-        if (n >= MAX) return;
-        if (b.k === 'open') { const on = Math.floor(now * 2.5 + p.id) % L.length === i; col.set(0x3dff7a).multiplyScalar(on ? 1 : 0.28); }
-        else if (b.k === 'busy') col.set(0xffb02e);
-        else if (b.k === 'building') col.copy(off);
-        else col.set(0xff3a2a).multiplyScalar(0.55);
-        m4.compose(new THREE.Vector3(...addRot(p.pos, p.quat, l)), q, one); this.bcn.setMatrixAt(n, m4); this.bcn.setColorAt(n, col); n++;
-      });
-    }
-    this.bcn.count = n; this.bcn.instanceMatrix.needsUpdate = true; if (this.bcn.instanceColor) this.bcn.instanceColor.needsUpdate = true;
   }
   // AIRLOCK DOORS. A side port with nowhere to walk to beyond it keeps its airlock shut. Every shut door on the station is one
   // batch: a steel door with a red bar across it, standing in the airlock frame that parts.js drew at the port.

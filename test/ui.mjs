@@ -94,7 +94,7 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
   await steps(page, 60);
   const mid = await page.evaluate(() => ({ crates: window.__st.stats.crates, res: window.__st.residents() }));
   check('ships dock and haulers carry crates to cargo', mid.crates > 0, JSON.stringify(mid));
-  check('every berth lights its own docking lamps (four on its collar or bay mouth), and nothing floats over it', await page.evaluate(() => { const v = window.__view, s = window.__st, n = [...s.parts.values()].filter((p) => s.def(p).berth).length; v._beacons(1); return v.bcn.count === n * 4 && n > 0 && !v.bcnLine; }));
+  check('no status markers or coloured lamps are drawn over the berths', await page.evaluate(() => !window.__view.bcn && !window.__view.bcnLine));
   check('a Propaganda Screen shows its programme on the front only, and a long line of your own fits inside the frame', await page.evaluate(async () => {
     const P = await import('/js/parts.js'), s = window.__st, v = window.__view, h = s.parts.get(1);
     const fp = s.freePorts().find((f) => s.canBuild('billboard', f.part, f.i).ok); if (!fp) return false;
