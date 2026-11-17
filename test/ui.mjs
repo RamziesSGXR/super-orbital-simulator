@@ -94,7 +94,22 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
   await steps(page, 60);
   const mid = await page.evaluate(() => ({ crates: window.__st.stats.crates, res: window.__st.residents() }));
   check('ships dock and haulers carry crates to cargo', mid.crates > 0, JSON.stringify(mid));
-  check('every berth shows a light: green free, amber in use, red when it cannot take ships', await page.evaluate(() => { const v = window.__view, s = window.__st, n = [...s.parts.values()].filter((p) => s.def(p).berth).length; v._beacons(1); return v.bcn.count === n && n > 0; }));
+  check('every berth lights its own docking lamps (four on its collar or bay mouth), and nothing floats over it', await page.evaluate(() => { const v = window.__view, s = window.__st, n = [...s.parts.values()].filter((p) => s.def(p).berth).length; v._beacons(1); return v.bcn.count === n * 4 && n > 0 && !v.bcnLine; }));
+  check('a Propaganda Screen shows its programme on the front only, and a long line of your own fits inside the frame', await page.evaluate(async () => {
+    const P = await import('/js/parts.js'), s = window.__st, v = window.__view, h = s.parts.get(1);
+    const fp = s.freePorts().find((f) => s.canBuild('billboard', f.part, f.i).ok); if (!fp) return false;
+    const id = s.build('billboard', fp.part, fp.i).id, p = s.parts.get(id); p.state = 'active';
+    s.setScreenLines('ALL HANDS: THE CAFETERIA ON DECK THREE IS NOW SERVING LIBERTY LOAF WITH EXTRA DEMOCRACY GRAVY'); s.setShow(id, 'own');
+    v.sync(999, 0.05); v._screens(999);
+    const o = v.partObjs.get(id); let mat = null; o.traverse((x) => { if (x.userData.role === 'screen') mat = x.material; });
+    const one = mat === v.shows.own.mat && mat.side === 0;      // THREE.FrontSide
+    // the words fitted: nothing drawn beyond the frame's inner edge, on either side
+    const c = v.shows.own.cv.getContext('2d'), W = v.shows.own.cv.width, d = c.getImageData(0, 60, 40, 300).data, e = c.getImageData(W - 40, 60, 40, 300).data;
+    const clear = (a) => { for (let i = 0; i < a.length; i += 4) if (a[i] > 200 && a[i + 1] > 180 && a[i + 2] < 90) return false; return true; };
+    s.setShow(id, 'news'); v.sync(999.1, 0.05); let m2 = null; o.traverse((x) => { if (x.userData.role === 'screen') m2 = x.material; });
+    s.demolish(id); const q = s.parts.get(id); if (q) s._remove(q);
+    return one && clear(d) && clear(e) && m2 === v.shows.news.mat && !!P;
+  }));
   check('no berth on this plain station is shut: every one has a clear way in', await page.evaluate(() => window.__view.shut.size === 0), await page.evaluate(() => JSON.stringify([...window.__view.shut].map(([id, by]) => `${window.__st.name(window.__st.parts.get(id))} by ${by}`))));
   // The fire support platform, the gravity standard and the livery.
   check('the ship gun is crewed and the top bar reads the platform ready', await page.evaluate(() => { const P = window.__st.platform(); return P.by.gun.n === 1 && P.by.gun.ready > 0.9 && /^\d+%$/.test(document.getElementById('r-rdy').textContent); }), await page.evaluate(() => JSON.stringify(window.__st.platform().sys.map((x) => [x.k, x.n, +x.ready.toFixed(2), x.why]))));
@@ -151,7 +166,7 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
   for (let i = 0; i < 3 && await page.evaluate(() => window.__st.parts.get(window.__ui.sel)?.type) !== 'hab'; i++) { await page.mouse.click(...await partXY(page, 'p.type === "hab"')); await page.waitForTimeout(300); }
   check('clicking a part selects it, with EDIT INSIDE', await page.evaluate(() => window.__st.parts.get(window.__ui.sel)?.type) === 'hab' && await page.isVisible('#a-edit'), await page.evaluate(() => `${window.__st.parts.get(window.__ui.sel)?.type} ${window.__ui.tool} ${window.__ui.edit}`));
   await page.keyboard.press('i'); await page.waitForTimeout(500);
-  check('I opens the part: a room palette and its rooms', await page.evaluate(() => window.__view.edit) && (await page.$$('#cmd .rb')).length === 28 && (await page.$$('#info .chip[data-i]')).length === 3);
+  check('I opens the part: a room palette and its rooms', await page.evaluate(() => window.__view.edit) && (await page.$$('#cmd .rb')).length === 29 && (await page.$$('#info .chip[data-i]')).length === 3);
   const habId = await page.evaluate(() => window.__view.edit), cr0 = await page.evaluate(() => window.__st.totals.build);      // what has been spent on building (the credits themselves move with trade)
   await page.click('.rb[data-r="mess"]');
   const t1 = await tileXY(page, 1);

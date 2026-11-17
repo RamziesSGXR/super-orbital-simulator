@@ -111,7 +111,13 @@ export function installLedger(Station) {
       if (room > 0) add('Build somewhere to spend an evening', Math.min(room, 3), `Liberty Lounge +3, Mess Hall, Observation Lounge and Recreation Deck +2 each (now ${Math.round(this.leisure)} of ${M.leisureMax})`);
       const bunks = this.roomCount('bunks'); if (bunks) add(`Turn ${bunks > 1 ? `${bunks} Bunk Rooms` : 'the Bunk Room'} into Quarters`, bunks, 'half the beds');
       if (mp.faults) add('Mend the faults in living quarters', -mp.faults, this.staff.engineer ? 'engineers are on it: more of them is faster' : 'no engineers on duty: raise Maintenance\'s spare parts');
-      if (mp.unrest < -0.5) add('Stop the contraband', -mp.unrest, 'unrest fades by itself; inspecting every ship stops more coming');
+      if (mp.unrest < -0.5) {
+        const am = this.canAmnesty(), every = o.security.order.checks === 'every';
+        add(`Declare a contraband amnesty${am.ok ? '' : ` (${am.why.toLowerCase()})`}`, -mp.unrest / 2, `${C.morale.amnesty.cost} CR, halves the unrest at once`, am.ok ? 'amnesty' : null);
+        if (!this.roomCount('customs')) add('Fit a Customs Scanner near the berths', -mp.unrest * 0.3, `${C.rooms.customs.cost} CR: stops 6 smuggled loads in 10 from then on, with no staff`);
+        if (this.staff.officer && !every) add('Inspect every ship', -mp.unrest * 0.3, 'officers catch every smuggler at bays near them; unloading waits a little', 'checks');
+        else if (!this.staff.officer && this.partOpen && C.rooms.secoffice.tier <= this.tier) add('Put Democracy Officers on duty', -mp.unrest * 0.3, 'a Security Office near the berths: they catch smugglers and calm the habs faster');
+      }
       if (mp.magazines) add('Move the magazines away from the beds', -mp.magazines, 'or the beds away from the magazines');
       return out.filter((w) => w.gain > 0.4).sort((a, b) => (!!b.do - !!a.do) || b.gain - a.gain);
     },

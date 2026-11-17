@@ -204,6 +204,7 @@ export const ROOMS = {
   bar: ['barCounter', 'booth', 'arcade', 'booth', 'kegs', 'gameTable', 'booth', 'plantPot'],
   medbay: ['reception', 'treatBed', 'treatBed', 'medCabinet', 'autoDoc', 'scanner', 'basin', 'treatBed', 'wet'],
   secoffice: ['dutyDesk', 'cell', 'gunLocker', 'monitorWall', 'cell', 'lockerRow', 'bench', 'bookshelf'],
+  customs: ['monitorWall', 'dutyDesk', 'lockerRow', 'bench', 'monitorWall', 'gunLocker'],
   truth: ['studio', 'sideConsole', 'posters', 'votingBooth', 'servers', 'posters', 'votingBooth', 'bookshelf'],
   brass: ['bigDesk', 'conference', 'drinksCabinet', 'bedDouble', 'wet', 'trophies', 'living', 'plantPot'],
   lab: ['labBench', 'specimenTank', 'gloveBox', 'centrifuge', 'whiteboard', 'servers', 'labBench', 'specimenTank'],

@@ -75,5 +75,24 @@ const mk = () => { const st = new Station(seed, 'run'); st.b = (t, h, p, r = 0) 
   check('and it wears off in a few days', (st.cheer || 0) === 0);
   check('a Recreation Deck is a room like any other, and adds leisure', C.rooms.gym.leisure === 2 && C.roomOrder.includes('gym'));
 }
+// 6. Contraband: unrest has a ceiling, and there is always a way to bring it down.
+{
+  const st = mk(); st.b('hab', 1, 4); st.b('dockport', 1, 2); st.b('cargo', 1, 3);
+  run(st, 200); st.unrest = 5000; run(st, 1);
+  check('unrest can never run away: it stops at its ceiling', st.unrest <= C.morale.unrestMax && st.moraleParts().unrest >= -C.morale.unrestMax, `unrest ${st.unrest.toFixed(0)}`);
+  st.requests.length = 0; st.unrest = 25; st.contraAsk = undefined;
+  for (let i = 0; i < 40 && !st.requests.some((r) => r.dilemma === 'contraband'); i++) { st.step(0.05); st.events.length = 0; }
+  const r = st.requests.find((x) => x.dilemma === 'contraband');
+  check('smuggled goods in the habs come to the commander\'s desk, at any tier', !!r && st.tier === 0 && r.options.join() === 'CRACK DOWN,AMNESTY · 80 CR,LET IT PASS', r && r.text);
+  const u0 = st.unrest; if (r) st.answer(r.id, 0);
+  check('cracking down brings it down at once', st.unrest <= u0 - 13, `${u0.toFixed(0)} → ${st.unrest.toFixed(0)}`);
+  st.unrest = 20; const w = st.ledger().morale.ways.find((x) => x.do === 'amnesty'), c0 = st.credits, u1 = st.unrest; st.amnesty();
+  check('an amnesty halves it, for its credits, and is listed among the ways to raise morale', !!w && Math.abs(st.unrest - u1 / 2) < 0.01 && Math.abs(c0 - st.credits - C.morale.amnesty.cost) < 0.5 && !st.canAmnesty().ok);
+  check('a Customs Scanner can be built at an Outpost, and is offered as a way out', C.rooms.customs.tier === 0 && st.ledger().morale.ways.some((x) => /Customs Scanner/.test(x.label)));
+  // a scanner near the berth catches smugglers with nobody on duty
+  const sc = mk(); const h = sc.b('cargo', 1, 3); sc.b('dockport', 1, 2); sc.b('hab', 1, 4); run(sc, 30); sc.setRoom(h, 1, 'customs'); C.ships.smuggler = 1;
+  run(sc, 600); C.ships.smuggler = 0.15;
+  check('a Customs Scanner stops most smuggled loads with no officers aboard', sc.stats.caught > sc.stats.contraband && sc.stats.caught >= 5 && !sc.staff.officer, `caught ${sc.stats.caught}, slipped through ${sc.stats.contraband}`);
+}
 console.log(bad ? `${bad} FAILED` : 'ALL PASS');
 process.exit(bad ? 1 : 0);

@@ -54,6 +54,16 @@ export const SLOTS = {
 //   hall:  a hallway along the part, to one side of its rooms.      ring: a hallway round the part, and hallways in to the lift at its hub.
 // Nobody is drawn while they are inside a lift: the lift is a closed tube, so there is nothing to see and nothing to walk through.
 export const WALK = C.ways;
+// THE DOCKING LAMPS on each kind of berth, in the part's own frame: where a real port has its guidance lights, on the collar or
+// the mouth of the bay. The view lights them by the berth's state (green: clear to approach; amber: a ship at it; red: closed).
+export const BERTH_LAMPS = {
+  dockport: [[2.35, 0.6, 0.6], [2.35, -0.6, 0.6], [2.35, 0.6, -0.6], [2.35, -0.6, -0.6]],
+  pylon: [[5.62, 4.87, 0], [4.38, 4.87, 0], [5, 4.87, 0.62], [5, 4.87, -0.62]],
+  hangar: [[8.14, 1.0, 2.7], [8.14, -1.0, 2.7], [8.14, 1.0, -2.7], [8.14, -1.0, -2.7]],
+  pelicanbay: [[8.14, 1.0, 2.7], [8.14, -1.0, 2.7], [8.14, 1.0, -2.7], [8.14, -1.0, -2.7]],
+  eaglehangar: [[7.14, 0.9, 2.4], [7.14, -0.9, 2.4], [7.14, 0.9, -2.4], [7.14, -0.9, -2.4]],
+  drydock: [[17.1, 2.3, 2.3], [17.1, -2.3, 2.3], [17.1, 2.3, -2.3], [17.1, -2.3, -2.3]],
+};
 export const HW = 0.19, FL = 0.04, LIFT_R = 0.15, TUBE_R = 0.075;      // half a hallway; how far a floor stands above its deck height; a lift; a one-person lift tube
 const decksOf = (type) => { const lay = SLOTS[type]; return lay ? [...new Set(lay.map((s) => s.p[1]))].sort((a, b) => a - b) : []; };
 // The deck someone stands on at height y inside a part: the highest floor at or just below it.
@@ -374,14 +384,14 @@ export function buildPart(type) {
     case 'dockport': {
       put(along(new THREE.CylinderGeometry(0.7, 0.7, 2.2, 16)), 'hull', 1.1, 0, 0);
       put(new THREE.TorusGeometry(0.85, 0.13, 6, 20).rotateY(Math.PI / 2), 'trim', 2.2, 0, 0, { noEdges: true });
-      for (const [y, z] of [[0.6, 0.6], [-0.6, 0.6], [0.6, -0.6], [-0.6, -0.6]]) box(0.1, 0.12, 0.12, 'glow', 2.32, y, z);
+      for (const [y, z] of [[0.6, 0.6], [-0.6, 0.6], [0.6, -0.6], [-0.6, -0.6]]) box(0.05, 0.14, 0.14, 'dark', 2.31, y, z);      // lamp housings: the view lights the lamps (BERTH_LAMPS)
       break;
     }
     case 'pylon': {
       box(5, 0.7, 0.7, 'hull', 2.5, 0, 0); box(0.9, 0.9, 0.9, 'hull', 5, 0, 0); box(0.6, 4.2, 0.6, 'hull', 5, 2.5, 0);
       put(flat(new THREE.TorusGeometry(0.75, 0.14, 6, 20)), 'trim', 5, 4.7, 0, { noEdges: true });
       for (const y of [1.2, 2.4, 3.6]) box(0.62, 0.1, 0.62, 'glow', 5, y, 0);
-      put(new THREE.SphereGeometry(0.14, 8, 6), 'glow', 5, 5.05, 0);
+      for (const [x, z] of [[0.62, 0], [-0.62, 0], [0, 0.62], [0, -0.62]]) box(0.14, 0.05, 0.14, 'dark', 5 + x, 4.84, z);      // lamp housings on the collar
       break;
     }
     case 'hangar': case 'pelicanbay': { bay(8, 1.7, 2.7); break; }
@@ -562,10 +572,24 @@ export function buildPart(type) {
       break;
     }
     case 'billboard': {
-      box(0.8, 0.25, 0.25, 'hull', 0.4, 0, 0);
-      box(0.15, 2.5, 4.1, 'hull', 0.9, 0, 0);
-      const s = new THREE.PlaneGeometry(3.8, 2.2); s.rotateY(Math.PI / 2);
-      put(s, 'screen', 0.98, 0, 0, { noEdges: true });
+      // A screen the size of a building front, built like one: the mast, a box frame behind the panel with ribs and a cable
+      // run, a deep bezel round the picture, service lamps on top. The picture is on the front only; from behind it is a back.
+      box(0.62, 0.3, 0.3, 'hull', 0.31, 0, 0); box(0.2, 0.5, 0.5, 'trim', 0.07, 0, 0, { noEdges: true });
+      box(0.26, 0.7, 0.24, 'dark', 0.62, 0, 0);                                   // the mount
+      for (const [y, z] of [[0.7, 1.1], [0.7, -1.1], [-0.7, 1.1], [-0.7, -1.1]]) {      // braces from the mast to the frame corners
+        const len = Math.hypot(0.28, y, z), g = new THREE.CylinderGeometry(0.035, 0.035, len, 6); g.rotateZ(-Math.atan2(0.28, y)); g.rotateX(Math.atan2(z, Math.hypot(0.28, y)));
+        put(g, 'trim', 0.6, y / 2, z / 2, { noEdges: true });
+      }
+      box(0.12, 2.42, 4.02, 'dark', 0.8, 0, 0);                                    // the back of the panel
+      for (const z of [-1.5, -0.5, 0.5, 1.5]) box(0.08, 2.42, 0.1, 'hull', 0.72, 0, z);      // ribs
+      for (const y of [-0.9, 0, 0.9]) box(0.07, 0.08, 4.02, 'hull', 0.71, y, 0);
+      box(0.06, 0.14, 1.4, 'trim', 0.69, -0.45, 0.6, { noEdges: true }); box(0.05, 0.26, 0.34, 'panel', 0.7, 0.45, -1.2);      // a cable run; a service hatch
+      box(0.14, 2.56, 0.12, 'trim', 0.92, 0, 2.04, { noEdges: true }); box(0.14, 2.56, 0.12, 'trim', 0.92, 0, -2.04, { noEdges: true });      // the bezel
+      box(0.14, 0.12, 4.2, 'trim', 0.92, 1.22, 0, { noEdges: true }); box(0.14, 0.12, 4.2, 'trim', 0.92, -1.22, 0, { noEdges: true });
+      box(0.04, 2.36, 3.96, 'dark', 0.88, 0, 0, { noEdges: true });
+      for (const z of [-1.6, 0, 1.6]) { box(0.16, 0.06, 0.16, 'dark', 0.86, 1.31, z); box(0.06, 0.03, 0.08, 'glow', 0.9, 1.35, z); }      // service lamps
+      const s = new THREE.PlaneGeometry(3.94, 2.3); s.rotateY(Math.PI / 2);
+      put(s, 'screen', 0.905, 0, 0, { noEdges: true });
       break;
     }
   }

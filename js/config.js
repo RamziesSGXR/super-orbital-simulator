@@ -22,7 +22,7 @@ const fill = (n, room) => Array(n).fill(room);
 const deg = (xs) => xs.map((x) => x * Math.PI / 180);
 
 export const C = {
-  version: '0.11.3',
+  version: '0.11.4',
 
   groups: [
     { id: 'structure', name: 'STRUCTURE' }, { id: 'platform', name: 'FIRE SUPPORT' }, { id: 'habitation', name: 'HABITATION' }, { id: 'docking', name: 'DOCKING' },
@@ -159,6 +159,7 @@ export const C = {
     market:     { name: 'Market', short: 'MKT', tier: 1, cost: 60, up: 1, income: 6, leisure: 1, col: '#9a5a7a', about: '+6 CR a minute while anyone lives aboard. Morale +1.' },
     bar:        { name: 'Liberty Lounge', short: 'BAR', tier: 1, cost: 60, up: 1, income: 4, leisure: 3, col: '#8a4a9a', about: '+4 CR a minute. Morale +3.' },
     medbay:     { name: 'Medbay', short: 'MED', tier: 1, cost: 60, up: 1, homes: { medic: 2 }, leisure: 1, col: '#3a9a8a', about: 'Places for 2 medics. Morale +1.' },
+    customs:    { name: 'Customs Scanner', short: 'SCAN', tier: 0, cost: 50, up: 1, col: '#7a5a3a', about: 'Scans the cargo of every freighter docking within reach and stops 6 smuggled loads in 10. No staff needed.' },
     secoffice:  { name: 'Security Office', short: 'SEC', tier: 1, cost: 60, up: 1, homes: { officer: 2 }, col: '#9a3a3a', about: 'Places for 2 Democracy Officers, who inspect ships nearby.' },
     truth:      { name: 'Truth Office', short: 'TRUTH', tier: 1, cost: 50, up: 1, leisure: 1, broadcast: 1, col: '#9a8a1a', about: 'Morale +1, and the Ministry of Truth\'s broadcasts carry further.' },
     shuttlebay: { name: 'Shuttle Bay', short: 'BAY', tier: 2, cost: 80, up: 2, bay: true, col: '#5a6a8a', about: 'Shuttles land inside the hangar.' },
@@ -175,7 +176,7 @@ export const C = {
     fab:        { name: 'Fabricator', short: 'FAB', tier: 2, cost: 90, up: 2, homes: { gunner: 1 }, col: '#6a6a3a', about: 'Prints and packs drop crates. A place for 1 packer.' },
     fighterbay: { name: 'Fighter Bay', short: 'FTR', tier: 2, cost: 120, up: 3, bay: true, defence: 5, col: '#6a4a4a', about: 'A flight of patrol fighters. Defence +5.' },
   },
-  roomOrder: ['quarters', 'bunks', 'mess', 'lounge', 'gym', 'hydro', 'workshop', 'cargostore', 'ops', 'market', 'bar', 'medbay', 'secoffice', 'truth', 'brass', 'lab', 'guncrew', 'magazine', 'barrack', 'armoury', 'dronerack', 'eaglepad', 'ordnance', 'pelicanpad', 'fab', 'shuttlebay', 'fighterbay', 'empty'],
+  roomOrder: ['quarters', 'bunks', 'mess', 'lounge', 'gym', 'hydro', 'workshop', 'cargostore', 'ops', 'market', 'bar', 'medbay', 'customs', 'secoffice', 'truth', 'brass', 'lab', 'guncrew', 'magazine', 'barrack', 'armoury', 'dronerack', 'eaglepad', 'ordnance', 'pelicanpad', 'fab', 'shuttlebay', 'fighterbay', 'empty'],
 
   // The divisions you fund and give standing orders to, from the Commander's comms panel.
   div: {
@@ -250,6 +251,16 @@ export const C = {
   // THE SCALE. One station unit is `m` metres and a person is `person` metres tall. Rooms are furnished in metres (rooms.js), so
   // changing these two numbers rescales the people and every fitting against the station; the hull itself does not change.
   scale: { m: 9, person: 1.8 },
+  // Propaganda Screens: what each one shows. Picked per screen on its card. `own` shows the commander's own lines (st.screenLines).
+  screens: {
+    programs: [['slogans', 'SLOGANS'], ['news', 'WAR NEWS'], ['recruit', 'RECRUITMENT'], ['station', 'THIS STATION'], ['own', 'YOUR OWN']],
+    slogans: ['LIBERTY', 'SUPER EARTH', 'REPORT FOR GRATITUDE', 'A HAPPY STATION IS A COMPLIANT STATION', 'DEMOCRACY NEVER SLEEPS', 'HAVE YOU PAID YOUR LIBERTY CONTRIBUTION?', 'FREEDOM IS EARNED IN ORBIT', 'EVERY CRATE A BULLET FOR LIBERTY'],
+    recruit: ['THE HELLDIVERS NEED YOU', 'ENLIST TODAY', 'SERVE WITH THE SEAF', 'BE A HERO OF SUPER EARTH', 'YOUR DEMOCRACY NEEDS DEFENDING', 'ASK A DEMOCRACY OFFICER HOW TO ENLIST'],
+    news: ['ENEMY OFFENSIVE REPELLED ON THE SOUTHERN FRONT', 'NEW ORBITAL BATTERIES COME ONLINE', 'HELLDIVERS LIBERATE ANOTHER COLONY', 'GROUND FORCES REPORT RECORD MORALE', 'MINISTRY: VICTORY IS IMMINENT', 'SUPPLY LINES SECURE ACROSS THE SECTOR'],
+    own: ['WELCOME ABOARD', 'KEEP THE STATION CLEAN', 'GLORY TO SUPER EARTH'],
+    maxLines: 8, maxChars: 110,
+  },
+
   // Station livery: the colours, hull plating, interior fit-out and emblem the commander picks.
   livery: {
     schemes: {
@@ -282,7 +293,7 @@ export const C = {
   market: { base: [9, 16, 26, 38], rep0: 0.5, repLo: 0.6, repHi: 1.4, served: 0.006, lost: -0.06, turned: -0.04, runPer: 3, runsMax: 9,
     cratesPerShip: 6.5, windowSec: 240, elastic: 0.6, priceLo: 0.55, priceHi: 1.6, occSec: 240 },
   // ration: what the rations order does to morale and to how fast rations go. festival: a Liberty Day, a one-off lift that fades.
-  morale: { ration: { normal: [0, 1], double: [6, 2], short: [-8, 0.5] }, festival: { cost: 150, gain: 12, days: 3, every: 7 }, magazine: 4, base: 70, taxFree: 10, taxPenalty: 2.5, taxBonus: 1, power: 25, leaveBelow: 30, leaveSec: 10, leisureMax: 25, contraband: 10, unrestDecaySec: 60, faulty: 3 },
+  morale: { ration: { normal: [0, 1], double: [6, 2], short: [-8, 0.5] }, festival: { cost: 150, gain: 12, days: 3, every: 7 }, magazine: 4, base: 70, taxFree: 10, taxPenalty: 2.5, taxBonus: 1, power: 25, leaveBelow: 30, leaveSec: 10, leisureMax: 25, contraband: 10, unrestDecaySec: 60, unrestMax: 30, amnesty: { cost: 80, every: 3 }, scanner: 0.6, faulty: 3 },
   faults: { meanSec: 480 },
   securityReach: 16,
 

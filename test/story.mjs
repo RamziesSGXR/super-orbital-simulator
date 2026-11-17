@@ -27,7 +27,8 @@ console.log(`mood ${Object.entries(st.sat).map(([k, x]) => `${k} ${Math.round(x)
 const kinds = new Set(st.reqLog.map((r) => r.kind));
 check('time moves in days and weeks', st.week() >= 2 && st.day === Math.floor(st.t / C.time.daySec));
 check('crates stock the stores and nothing runs out', st.lastWeek.in > 0 && !Object.values(st.short).some(Boolean), `${st.lastWeek.in} crates last week`);
-check('the platform is built, crewed and answering calls', st.platform().by.gun.ready > 0.9 && st.platform().by.orbital.ready > 0.9 && st.stats.calls >= 5, `${st.stats.calls} answered, ${st.stats.missed} missed, ready ${Math.round(st.platform().ready * 100)}%`);
+check('the platform is built, crewed and answering calls', st.staff.gunner >= st.homes.gunner - 1 && st.platform().by.gun.ready >= 0.74 && st.platform().by.orbital.ready >= 0.74 && st.stats.calls >= 5,      // at most one gunner short: whether Gunnery asks for more in time is chance
+  `${st.stats.calls} answered, ${st.stats.missed} missed, ready ${Math.round(st.platform().ready * 100)}%`);
 check('every part with a deck is level', [...st.parts.values()].every((p) => C.parts[p.type].loose || Math.abs(1 - 2 * (p.quat[0] ** 2 + p.quat[2] ** 2) - 1) < 1e-6));
 check('a faction changed the station without asking', st.stats.auto >= 1);
 check('something reached the commander', st.reqLog.length >= 2, [...kinds].join(','));

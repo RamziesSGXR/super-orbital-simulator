@@ -673,7 +673,7 @@ function ledgerPage() {
 }
 // A way to raise morale that is an order: given on the spot. (On pointer down, because the page redraws itself as numbers change.)
 const WAYS = {
-  tax: () => st.setTax(C.morale.taxFree), festival: () => st.celebrate(), rations2: () => st.setOrder('supply', 'rations', 'double'), rations1: () => st.setOrder('supply', 'rations', 'normal'),
+  tax: () => st.setTax(C.morale.taxFree), festival: () => st.celebrate(), amnesty: () => st.amnesty(), checks: () => st.setOrder('security', 'checks', 'every'), rations2: () => st.setOrder('supply', 'rations', 'double'), rations1: () => st.setOrder('supply', 'rations', 'normal'),
   shift: () => st.setOrder('supply', 'shift', 'normal'), care: () => st.setOrder('medical', 'care', 'free'), patriotic: () => st.setOrder('truth', 'broadcast', 'patriotic'),
 };
 $('cm-main').addEventListener('pointerdown', (e) => {
@@ -995,10 +995,14 @@ function info(peek) {
     const cd = st.canDemolish(p.id), ed = SLOTS[p.type];
     setInfo(`<div class="in">${st.name(p).toUpperCase()}</div>${chips ? `<div class="chips">${chips}</div>` : `<div class="ia">${d.about}</div>`}`
       + `<div class="st">${stat('STATUS', state)}${stat('POWER', pw(d))}${extra}</div>`
+      + (p.type === 'billboard' ? `<div class="show"><span class="bl">ON SCREEN</span>${C.screens.programs.map(([k, l]) => `<button class="btn${(p.show || 'slogans') === k ? ' on' : ''}" type="button" data-show="${k}">${l}</button>`).join('')}`
+        + ((p.show || 'slogans') === 'own' ? `<textarea id="a-lines" rows="3" maxlength="${C.screens.maxLines * (C.screens.maxChars + 1)}" spellcheck="false" aria-label="Your own lines, one per line">${(st.screenLines || C.screens.own).join('\n')}</textarea><small class="hint">One line per message, up to ${C.screens.maxLines}. Every screen set to YOUR OWN shows them in turn.</small>` : '') + '</div>' : '')
       + `<div class="acts"><button class="btn" id="a-focus" type="button">FOCUS <small>F</small></button>`
       + (ed ? `<button class="btn hl" id="a-edit" type="button" ${p.state === 'active' ? '' : 'disabled'}>EDIT INSIDE <small>I</small></button>` : '')
       + (p.type !== 'command' ? `<button class="btn" id="a-demo" type="button" ${cd.ok ? '' : 'disabled'} title="${cd.why}">DEMOLISH <small>X</small> ${cd.ok ? `+${Math.round(d.cost * C.demolish.refund)} CR` : ''}</button>` : '') + '</div>', () => {
       $('a-focus').onclick = () => view.focus(p.id);
+      for (const b of document.querySelectorAll('[data-show]')) b.onclick = () => { st.setShow(p.id, b.dataset.show); audio.play('click'); info(); };
+      if ($('a-lines')) $('a-lines').onchange = (e) => { st.setScreenLines(e.target.value); audio.play('click'); };
       if ($('a-edit')) $('a-edit').onclick = () => startEdit(p.id);
       if ($('a-demo')) $('a-demo').onclick = () => demolishSel();
     });

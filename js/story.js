@@ -17,6 +17,15 @@ for (const [k, d] of Object.entries(C.div)) if (d.uses) SUPPLY_OF[d.uses] = k;
 // Choices about people. `need(st)` returns the cast (or null); `text(cast, st)` the line; `opts` the answers and what they do.
 // fx: goodwill by faction; morale: a one-off nudge to unrest (positive is bad); note: what goes in each person's story.
 const DILEMMAS = [
+  // Asked at any tier, as soon as smuggled goods have the habs restless (see _requests): unrest must always have a way down.
+  { id: 'contraband', urgent: true,
+    need: (st) => st.unrest >= 12 && st.residents() ? { a: st.someone('resident'), b: st.someone('officer') || st.someone('hauler') || st.someone('resident') } : null,
+    text: (c, st) => `Smuggled goods are all over the habs. Resident ${c.a.name} was found selling them from a bunk; ${c.b.name} brought it to your desk. How do we deal with it?`,
+    opts: [
+      { label: 'CRACK DOWN', fx: { security: 8, command: -3 }, unrest: -14, note: ['Lost a bunk full of goods in the crackdown.', 'Took part in the Commander\'s crackdown.'], say: ['security', 'Every bunk searched. The habs are quiet, and not happy about it.'] },
+      { label: 'AMNESTY · 80 CR', fx: { security: -3, command: 2 }, unrest: -10, credits: -80, note: ['Handed it in under the amnesty.', 'Ran the amnesty bins.'], say: ['colonists', 'The amnesty bins filled in an hour. Nobody asked any questions.'] },
+      { label: 'LET IT PASS', fx: { security: -8 }, unrest: 3, note: ['Kept selling, with the Commander\'s blind eye.', 'Was told to let it pass.'], say: ['security', 'Understood. We will not search the habs.'] },
+    ] },
   { id: 'checkpoint',
     need: (st) => st.staff.officer && st.staff.hauler && st.stats.ships > 4 ? { a: st.someone('hauler'), b: st.someone('officer'), p: st.berths('freighter')[0] } : null,
     text: (c, st) => `Hauler ${c.a.name} shoved Officer ${c.b.name} at the ${st.name(c.p)} checkpoint, after a third search this shift. Both want you to rule on it.`,
@@ -251,7 +260,7 @@ export function installStory(Station) {
       if (this.requests.length >= C.faction.pending) return;
       const pool = this.rng.shuffle([...DILEMMAS]);
       for (const D of pool) {
-        if (this.requests.some((r) => r.dilemma === D.id)) continue;
+        if (D.urgent || this.requests.some((r) => r.dilemma === D.id)) continue;
         const cast = D.need(this);
         if (!cast || !cast.a || !cast.b) continue;
         const opts = D.opts.filter((o) => !o.need || this.roomCount(o.need) > 0);
@@ -274,6 +283,8 @@ export function installStory(Station) {
         this.timers.request = this.rng.range(F.requestSec[0], F.requestSec[1]);
         if (this.requests.length < F.pending) this._propose();
       }
+      // smuggled goods in the habs come to the desk at any tier, and before anything else (once every two days at most)
+      if (this.unrest >= 12 && this.t - (this.contraAsk ?? -1e9) > 2 * C.time.daySec && !this.requests.some((r) => r.dilemma === 'contraband')) { const D = DILEMMAS[0], c = D.need(this); if (c && c.a && c.b && this.requests.length < C.faction.pending + 1) { this.contraAsk = this.t; this._ask({ k: 'security', kind: 'dilemma', dilemma: D.id, cast: [c.a.id, c.b.id], opts: [0, 1, 2], text: D.text(c, this), options: D.opts.map((o) => o.label), from: 'desk' }); } }
       if (this.tier >= 1 && (this.timers.dilemma -= dt) <= 0) { this.timers.dilemma = this.rng.range(F.dilemmaSec[0], F.dilemmaSec[1]); this._dilemma(); }
     },
     _close(r, outcome, label) { this.requests.splice(this.requests.indexOf(r), 1); this.reqLog.push({ k: r.k, kind: r.kind, outcome, t: this.t }); this.events.push({ type: 'request', id: r.id, outcome, label }); },
@@ -309,6 +320,7 @@ export function installStory(Station) {
         const D = DILEMMAS.find((x) => x.id === r.dilemma), o = D.opts[r.opts[i]];
         for (const [k, x] of Object.entries(o.fx || {})) this._favor(k, x);
         if (o.unrest) this.unrest = Math.max(0, this.unrest + o.unrest);
+        if (o.credits && !this.sandbox) this._money(o.credits, 'desk');
         if (o.research) this.stats.research += o.research;
         for (const [t, x] of Object.entries(o.stock || {})) this.stock[t] = Math.max(0, (this.stock[t] || 0) + x);
         r.cast.forEach((aid, j) => this.note(this.agents.find((a) => a.id === aid), o.note[j]));

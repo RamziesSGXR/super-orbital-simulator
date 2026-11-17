@@ -6,7 +6,7 @@
 // The sky is a skybox: it moves with the camera, so stars, sun and moons never slide about when you pan or zoom.
 import * as THREE from './vendor/three.js';
 import { C } from './config.js';
-import { buildPart, buildShip, buildRoom, buildSuit, buildFigure, buildRaider, buildEagle, FIGURES, SLOTS, WALK, partPath, wayPoint, onWalk, slotSpot, doorSide, sillY, liftR, FL, LIFT_R } from './parts.js';
+import { buildPart, buildShip, buildRoom, buildSuit, buildFigure, buildRaider, buildEagle, FIGURES, SLOTS, WALK, partPath, wayPoint, onWalk, slotSpot, doorSide, sillY, liftR, FL, LIFT_R, BERTH_LAMPS } from './parts.js';
 import { paintWorld, WORLDS, WORLD_TYPES } from './planets.js';
 import { RNG } from './rng.js';
 
@@ -167,7 +167,8 @@ export class View {
     const sc = this.screenCv = document.createElement('canvas'); sc.width = 384; sc.height = 224;
     this.screenTex = new THREE.CanvasTexture(sc); this.screenTex.colorSpace = THREE.SRGBColorSpace;
     M.fscreen.map = this.screenTex;
-    M.screen = B({ map: this.screenTex, side: THREE.DoubleSide }); M.bpScreen = B({ map: this.screenTex, transparent: true, opacity: 0.35, side: THREE.DoubleSide });
+    M.screen = B({ map: this.screenTex }); M.bpScreen = B({ map: this.screenTex, transparent: true, opacity: 0.35 });      // the front only: from behind, a screen is its back
+    this.shows = {};
     this.slogan = -1; this._drawSlogan(0);
     this.clipped = ['bpHull', 'bpLine', 'bpGlow', 'bpPanel', 'hull', 'hullLine', 'glow', 'glass', 'panel', 'wire', 'pod', 'trim', 'decal', 'dark', 'blue', 'xHull', 'xLine', 'xGlow', 'build', 'gone', 'screen', 'bpScreen', 'dimHull', 'dimLine'];
     for (const k of this.clipped) M[k].clipIntersection = true;
@@ -288,6 +289,35 @@ export class View {
     M.glow.color.set(D.lights[L.lights] || D.lights.warm);
     this._drawDecal();
     this.thumbs = null;
+  }
+  // PROPAGANDA SCREENS. Each programme has its own picture, shared by every screen showing it. Words are wrapped and sized to fit
+  // inside the frame, whatever their length.
+  _show(prog) {
+    let x = this.shows[prog];
+    if (!x) {
+      const cv = document.createElement('canvas'); cv.width = 768; cv.height = 448;
+      const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
+      const mat = new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }); mat.clipIntersection = true; mat.clippingPlanes = this.M.screen.clippingPlanes;
+      x = this.shows[prog] = { cv, tex, mat, k: -1, at: -1 };
+    }
+    return x;
+  }
+  _showOn(o, p) {
+    if (p.type !== 'billboard') return;
+    const prog = p.show || 'slogans', m = this._show(prog).mat; o.userData.show = prog;
+    const ours = new Set([this.M.screen, ...Object.values(this.shows).map((y) => y.mat)]);      // the picture, not a blueprint or build look
+    o.traverse((x) => { if (x.userData.role === 'screen' && ours.has(x.material)) x.material = m; });
+  }
+  _screens(now) {
+    const st = this.st, used = new Set(); for (const p of st.parts.values()) if (p.type === 'billboard') used.add(p.show || 'slogans');
+    for (const prog of used) {
+      const x = this._show(prog), S = C.screens, live = prog === 'station', k = Math.floor(now / (prog === 'news' ? 7 : 5));
+      if (k === x.k && !(live && now - x.at > 2)) continue;
+      x.k = k; x.at = now;
+      const lines = prog === 'own' ? st.screenLines || S.own : prog === 'station' ? null : S[prog];
+      drawScreen(x.cv, prog, lines ? lines[k % lines.length] : null, st, this.livery, k);
+      x.tex.needsUpdate = true;
+    }
   }
   _drawSlogan(i) {
     const c = this.screenCv.getContext('2d'), W = c.canvas.width, H = c.canvas.height;
@@ -451,12 +481,12 @@ export class View {
   setOverlay(on) { this.overlay = on; this.grids.visible = on && this.mode === 'blueprint'; this.markers.visible = on; if (this.selLines) this.selLines.visible = on && !this.edit; if (this.editLbl) this.editLbl.visible = on; }
   _redress() {
     if (!this.partObjs) return;
-    for (const [id, o] of this.partObjs) { const p = this.st.parts.get(id); this._dress(o, p ? p.state : 'active', this._dim(id), this.edit === id); }
+    for (const [id, o] of this.partObjs) { const p = this.st.parts.get(id); this._dress(o, p ? p.state : 'active', this._dim(id), this.edit === id); if (p) this._showOn(o, p); }
     for (const [id, r] of this.roomObjs) this._dressRoom(r.group, this._dim(id), this.edit === id);
     for (const o of this.shipObjs.values()) this._dress(o, 'active', !!this.edit, false, true);
     // The cut takes the hull and everything inside it that is nearer than the plane: decks, rooms, fittings and people.
     const planes = this.cutaway && !this.edit ? this.clip : null;
-    for (const m of [...this.clipped.map((k) => this.M[k]), ...CUT_IN.map((k) => this.M[k]), ...Object.values(this.tileMats), this.figMat, this.crateIM && this.crateIM.material]) if (m) { m.clippingPlanes = planes; m.needsUpdate = true; }
+    for (const m of [...this.clipped.map((k) => this.M[k]), ...Object.values(this.shows || {}).map((x) => x.mat), ...CUT_IN.map((k) => this.M[k]), ...Object.values(this.tileMats), this.figMat, this.crateIM && this.crateIM.material]) if (m) { m.clippingPlanes = planes; m.needsUpdate = true; }
     const life = this.mode === 'life';
     this.agentMat.size = life ? 0.9 : 0.55;
     this.agentMat.depthTest = !life && !this.cutaway && !this.open && !this.edit;
@@ -480,7 +510,8 @@ export class View {
         o.traverse((x) => { x.userData.part = p.id; });
         this.scene.add(o); this.partObjs.set(p.id, o); o.userData.state = '';
       }
-      if (o.userData.state !== p.state) { o.userData.state = p.state; this._dress(o, p.state, this._dim(p.id), this.edit === p.id); }
+      if (o.userData.state !== p.state) { o.userData.state = p.state; this._dress(o, p.state, this._dim(p.id), this.edit === p.id); this._showOn(o, p); }
+      if (p.type === 'billboard' && o.userData.show !== (p.show || 'slogans')) this._showOn(o, p);
       this._rooms(p);
     }
     this.zone.scale.setScalar(st.radius);
@@ -502,6 +533,7 @@ export class View {
     }
     if (this.selLines) { const o = this.partObjs.get(this.sel); if (o) { this.selLines.position.copy(o.position); this.selLines.quaternion.copy(o.quaternion); } }
     const k = Math.floor(now / 5); if (k !== this.slogan) { this.slogan = k; this._drawSlogan(k); }
+    this._screens(now);
     if (this.clouds) this.clouds.rotation.y += dt * 0.004;
   }
   // Each part's rooms: rebuilt only when they change.
@@ -866,37 +898,31 @@ export class View {
       c.obj.position.set(p.pos[0], c.y, p.pos[2]); c.obj.visible = show;
     }
   }
-  // BERTH LIGHTS. Every berth shows whether it can take a ship: green when it is free, amber while a ship is at it or coming in,
-  // red when it cannot take one (shut, broken down, or no room fitted inside). A shut berth also shows a red line
-  // out along its approach, as far as the part that is in the way. Seen in the hull view, where ships are.
+  // DOCKING LAMPS. No markers: the berth's own guidance lamps, on its collar or the mouth of its bay (parts.js, BERTH_LAMPS), say
+  // whether it can take a ship, the way a real port's do. Clear to approach: green, running round the collar in turn. A ship at
+  // it or coming in: steady amber. Closed (blocked, broken down, nothing fitted inside to take a ship): dim red. Being built: dark.
   _beacons(now) {
-    const st = this.st, MAX = 120, COL = { open: 0x5dff8a, busy: 0xf5d547, building: 0x8a8f96 };
+    const st = this.st, MAX = 480;
     if (!this.bcn) {
-      this.bcn = new THREE.InstancedMesh(new THREE.OctahedronGeometry(0.42, 0), new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }), MAX);
-      this.bcnLine = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 0.06, 0.06), new THREE.MeshBasicMaterial({ color: 0xff4a3a, transparent: true, opacity: 0.75, toneMapped: false }), MAX);
-      for (const im of [this.bcn, this.bcnLine]) { im.count = 0; im.frustumCulled = false; this.scene.add(im); }
-      this.bcn.setColorAt(0, new THREE.Color());
+      this.bcn = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.035, 0.035, 0.03, 10).rotateZ(Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }), MAX);
+      this.bcn.count = 0; this.bcn.frustumCulled = false; this.scene.add(this.bcn); this.bcn.setColorAt(0, new THREE.Color());
     }
-    const show = this.mode === 'hull' && !this.edit;
-    this.bcn.visible = this.bcnLine.visible = show;
-    if (!show) return;
-    const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), s3 = new THREE.Vector3(), col = new THREE.Color(), blink = 0.75 + 0.25 * Math.sin(now * 5);
-    let n = 0, nl = 0;
+    this.bcn.visible = this.mode !== 'blueprint';
+    const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), one = new THREE.Vector3(1, 1, 1), col = new THREE.Color(), off = new THREE.Color(0x1a1c1e);
+    let n = 0;
     for (const p of st.parts.values()) {
-      const b = st.berthStatus(p); if (!b || n >= MAX) continue;
-      const B = this._berthAt(p, st.def(p).ships[0]), at = B.mouth.clone().addScaledVector(B.out, 0.6).add(UP.clone().multiplyScalar(0.7)), bad = !COL[b.k];
-      s3.setScalar(bad ? blink : b.k === 'open' ? 1 : 0.8); q.identity(); q.setFromAxisAngle(UP, now * 1.5);
-      m4.compose(at, q, s3); this.bcn.setMatrixAt(n, m4); this.bcn.setColorAt(n, col.set(bad ? 0xff4a3a : COL[b.k])); n++;
-      if (b.k === 'shut' && nl < MAX) {      // the approach, out to where it is blocked
-        const from = B.mouth.clone(), far = from.clone().addScaledVector(B.out, 12), P = new THREE.Vector3();
-        let len = 12; for (let t = 1; t <= 12; t += 0.5) if (this._gap(P.copy(from).addScaledVector(B.out, t), p.id) < 0.6) { len = t; break; }
-        q.setFromUnitVectors(new THREE.Vector3(1, 0, 0), B.out); s3.set(len, 1, 1);
-        m4.compose(from.addScaledVector(B.out, len / 2), q, s3); this.bcnLine.setMatrixAt(nl++, m4);
-        void far;
-      }
+      const L = BERTH_LAMPS[p.type], b = L && st.berthStatus(p); if (!b) continue;
+      q.set(...p.quat);
+      L.forEach((l, i) => {
+        if (n >= MAX) return;
+        if (b.k === 'open') { const on = Math.floor(now * 2.5 + p.id) % L.length === i; col.set(0x3dff7a).multiplyScalar(on ? 1 : 0.28); }
+        else if (b.k === 'busy') col.set(0xffb02e);
+        else if (b.k === 'building') col.copy(off);
+        else col.set(0xff3a2a).multiplyScalar(0.55);
+        m4.compose(new THREE.Vector3(...addRot(p.pos, p.quat, l)), q, one); this.bcn.setMatrixAt(n, m4); this.bcn.setColorAt(n, col); n++;
+      });
     }
-    this.bcn.count = n; this.bcnLine.count = nl;
-    this.bcn.instanceMatrix.needsUpdate = true; if (this.bcn.instanceColor) this.bcn.instanceColor.needsUpdate = true; this.bcnLine.instanceMatrix.needsUpdate = true;
+    this.bcn.count = n; this.bcn.instanceMatrix.needsUpdate = true; if (this.bcn.instanceColor) this.bcn.instanceColor.needsUpdate = true;
   }
   // AIRLOCK DOORS. A side port with nowhere to walk to beyond it keeps its airlock shut. Every shut door on the station is one
   // batch: a steel door with a red bar across it, standing in the airlock frame that parts.js drew at the port.
@@ -1363,6 +1389,42 @@ export class View {
 }
 
 function lerp(a, b, t) { return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]; }
+// Words wrapped to a width, at the largest size that fits in a box: [lines, font size].
+function fitText(c, text, w, h, max, min, weight, family) {
+  const words = String(text).split(/\s+/).filter(Boolean);
+  for (let fs = max; fs >= min; fs -= 2) {
+    c.font = `${weight} ${fs}px ${family}`; const lines = []; let cur = '';
+    for (const wd of words) { const t = cur ? `${cur} ${wd}` : wd; if (c.measureText(t).width <= w) cur = t; else { if (cur) lines.push(cur); cur = wd; } }
+    if (cur) lines.push(cur);
+    if (lines.every((l) => c.measureText(l).width <= w) && lines.length * fs * 1.12 <= h) return [lines, fs];
+  }
+  c.font = `${weight} ${min}px ${family}`; return [[String(text).slice(0, 40)], min];
+}
+// One programme's picture: a header bar with the channel and the station's name, the message fitted in the middle, a footer.
+function drawScreen(cv, prog, msg, st, liv, k) {
+  const c = cv.getContext('2d'), W = cv.width, H = cv.height, Y = '#ffe600', F = 'ui-sans-serif, "Helvetica Neue", Arial, sans-serif';
+  const head = { slogans: 'MINISTRY OF TRUTH', news: 'WAR NEWS · LIVE', recruit: 'ENLIST · SEAF', station: 'STATION BULLETIN', own: 'COMMANDER’S NOTICE' }[prog];
+  const bg = c.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, prog === 'recruit' ? '#2a0606' : '#06090c'); bg.addColorStop(1, prog === 'recruit' ? '#0d0202' : '#020305');
+  c.fillStyle = bg; c.fillRect(0, 0, W, H);
+  c.fillStyle = Y; c.fillRect(0, 0, W, 54); c.fillStyle = '#111'; c.textBaseline = 'middle'; c.textAlign = 'left'; c.font = `700 26px ${F}`; c.fillText(head, 28, 28);
+  c.textAlign = 'right'; c.font = `600 22px ${F}`; c.fillText(String((liv && liv.name) || 'SUPER EARTH').toUpperCase().slice(0, 26), W - 28, 28);
+  c.textAlign = 'center';
+  if (prog === 'station') {
+    const nm = String((liv && liv.name) || 'Orbital Station').toUpperCase(), [l1, f1] = fitText(c, nm, W - 120, 150, 76, 30, 800, F);
+    c.fillStyle = Y; c.font = `800 ${f1}px ${F}`; l1.forEach((l, i) => c.fillText(l, W / 2, 150 + (i - (l1.length - 1) / 2) * f1 * 1.1));
+    const rows = [['RESIDENTS', st.residents()], ['MORALE', Math.round(st.morale)], ['CRATES', st.stats.crates], ['SHIPS SERVED', st.stats.ships]];
+    rows.forEach(([a, b], i) => { const x = W / 2 + (i - 1.5) * 175; c.fillStyle = '#9fb0a8'; c.font = `600 18px ${F}`; c.fillText(a, x, 300); c.fillStyle = '#fff'; c.font = `700 46px ${F}`; c.fillText(String(b), x, 346); });
+  } else {
+    const [lines, fs] = fitText(c, msg || '', W - 110, H - 54 - 90, 92, 20, 800, F);
+    c.fillStyle = prog === 'news' ? '#ffffff' : Y; c.font = `800 ${fs}px ${F}`;
+    const mid = 54 + (H - 54 - 40) / 2; lines.forEach((l, i) => c.fillText(l, W / 2, mid + (i - (lines.length - 1) / 2) * fs * 1.12));
+  }
+  c.fillStyle = 'rgba(255,230,0,0.85)'; c.fillRect(28, H - 34, W - 56, 3);
+  c.fillStyle = '#9fb0a8'; c.font = `600 17px ${F}`; c.textAlign = 'left'; c.fillText(prog === 'news' ? 'REPORTED BY THE MINISTRY OF TRUTH' : prog === 'recruit' ? 'SEE A DEMOCRACY OFFICER' : 'FOR SUPER EARTH', 28, H - 15);
+  c.textAlign = 'right'; c.fillText(`WEEK ${st.week()} · DAY ${st.dow()}`, W - 28, H - 15);
+  c.fillStyle = 'rgba(0,0,0,0.18)'; for (let y = 0; y < H; y += 3) c.fillRect(0, y, W, 1);
+  void k;
+}
 function addRot(pos, quat, l) {
   const [x, y, z, w] = quat, [px, py, pz] = l;
   const ix = w * px + y * pz - z * py, iy = w * py + z * px - x * pz, iz = w * pz + x * py - y * px, iw = -x * px - y * py - z * pz;

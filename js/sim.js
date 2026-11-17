@@ -219,6 +219,15 @@ export class Station {
   }
   // `by` is 'player' when the commander paints the room, or a faction when it does so itself or you approved its request.
   // Rearrange a room: the same fittings, laid out another way. Free, and it changes nothing but how the room looks.
+  // A Propaganda Screen's programme, and the station's own lines for screens set to YOUR OWN.
+  setShow(id, prog) {
+    const p = this.parts.get(id); if (!p || p.type !== 'billboard' || !C.screens.programs.some(([k]) => k === prog)) return false;
+    p.show = prog; this.events.push({ type: 'show', part: id }); return true;
+  }
+  setScreenLines(text) {
+    const S = C.screens, lines = String(text || '').split(/\n+/).map((x) => { const t = x.replace(/\s+/g, ' ').trim().toUpperCase(); return t.length <= S.maxChars ? t : t.slice(0, S.maxChars).replace(/\s+\S*$/, '') + '…'; }).filter(Boolean).slice(0, S.maxLines);
+    this.screenLines = lines.length ? lines : null; this.events.push({ type: 'show', part: 0 }); return this.screenLines || S.own;
+  }
   refit(id, slot) {
     const p = this.parts.get(id);
     if (!p || !p.rooms[slot] || p.rooms[slot] === 'empty') return { ok: false, why: 'Nothing to rearrange' };
@@ -365,6 +374,21 @@ export class Station {
   setTax(x) { this.tax = Math.max(0, Math.min(30, Math.round(x))); }
   // A LIBERTY DAY: a day of flags, speeches and an open bar, paid for in credits. Morale goes up at once and wears off over a few
   // days. One a week at most.
+  // A CONTRABAND AMNESTY: hand it in, no questions asked. Unrest is halved at once; it costs credits; one every few days.
+  canAmnesty() {
+    const A = C.morale.amnesty, wait = (this.amnestyT ?? -1e9) + A.every * C.time.daySec - this.t;
+    if (this.unrest < 2) return { ok: false, why: 'There is no unrest to calm' };
+    if (wait > 0) return { ok: false, why: `The next can be held in ${Math.ceil(wait / C.time.daySec)} days` };
+    if (!this.sandbox && this.credits < A.cost) return { ok: false, why: `It costs ${A.cost} CR` };
+    return { ok: true, why: '' };
+  }
+  amnesty() {
+    const chk = this.canAmnesty(); if (!chk.ok) return chk;
+    if (!this.sandbox) this._money(-C.morale.amnesty.cost, 'amnesty');
+    this.amnestyT = this.t; this.unrest /= 2;
+    this.say('security', 'Contraband amnesty declared. Bring it to the nearest officer, no questions asked. The bins are filling up.', { gold: true });
+    return chk;
+  }
   canCelebrate() {
     const F = C.morale.festival, wait = (this.cheerT ?? -1e9) + F.every * C.time.daySec - this.t;
     if (!this.residents()) return { ok: false, why: 'Nobody lives aboard yet' };
@@ -589,7 +613,8 @@ export class Station {
     const w = this.wages(); if (w) this._money(-w * k, 'wages');
     const p = this.moraleParts(), target = Math.max(0, Math.min(100, Object.values(p).reduce((s, x) => s + x, 0)));
     this.morale += Math.max(-1.5 * dt, Math.min(1.5 * dt, target - this.morale));
-    this.unrest = Math.max(0, this.unrest - dt * C.morale.contraband / C.morale.unrestDecaySec);
+    // Unrest fades by itself, faster with Democracy Officers on duty, and never runs past its ceiling.
+    this.unrest = Math.min(C.morale.unrestMax, Math.max(0, this.unrest - dt * C.morale.contraband / C.morale.unrestDecaySec * (1 + 0.25 * Math.min(4, this.staff.officer || 0))));
     if (this.cheer) this.cheer = Math.max(0, this.cheer - dt * C.morale.festival.gain / (C.morale.festival.days * C.time.daySec));      // a Liberty Day wears off
     this._factions(dt);
     this._requests(dt);
@@ -888,8 +913,10 @@ export class Station {
     const every = this.div.security.order.checks === 'every';
     const post = this.staff.officer ? this.list((d, x) => this.has(x, 'secoffice')).find((o) => { const r = this.route(o.id, (x) => x.id === p.id); return r && this.walkDist(o.id, r) <= C.securityReach; }) : null;
     if (post && every) s.inspect = C.walk.inspectSec;
+    // A Customs Scanner scans every freighter docking within reach, staff or none.
+    const scan = this.list((d, x) => this.has(x, 'customs')).some((o) => { const r = this.route(o.id, (x) => x.id === p.id); return r && this.walkDist(o.id, r) <= C.securityReach; });
     if (s.smuggler) {
-      const caught = post && (every || this.rng.chance(0.5));
+      const caught = (post && (every || this.rng.chance(0.5))) || (scan && this.rng.chance(C.morale.scanner));
       if (caught) {
         this.stats.caught++; this._money(C.econ.fine, 'trade', 'fines');
         this.say('security', `Unapproved goods seized from ${s.name}. A ${C.econ.fine} CR fine has been collected. Democracy is safe.`, { gold: true });
@@ -897,7 +924,7 @@ export class Station {
         if (off) { this._go(off, (x) => x.id === p.id, 'inspect'); this.note(off, `Seized unapproved goods from ${s.name}.`); }
       } else {
         this.stats.contraband++; this.unrest += C.morale.contraband;
-        this.say('security', `Unapproved goods from ${s.name} have reached the residents. ${post ? 'Our spot check missed it.' : 'No officers were near that bay.'}`, { warn: true });
+        this.say('security', `Unapproved goods from ${s.name} have reached the residents. ${post || scan ? 'Our checks missed it.' : 'Nothing watches that bay: a Customs Scanner or a Security Office nearby would.'}`, { warn: true });
       }
     }
   }
