@@ -9,6 +9,7 @@ import { v, q } from './math3.js';
 import { installPlatform } from './platform.js';
 import { installStory } from './story.js';
 import { installLedger } from './ledger.js';
+import { installMarket } from './market.js';
 
 const NAMES = ['Honest Work', 'Steady Progress', 'Fair Weather', 'Good Neighbors', 'Quiet Resolve', 'Open Skies', 'Sturdy Ballots',
   'Shared Prosperity', 'Cheerful Compliance', 'Sensible Shoes', 'Unanimous Consent', 'Bright Mornings', 'Fair Play', 'Civic Duty',
@@ -776,7 +777,7 @@ export class Station {
       if (s) s.reserved = Math.max(0, s.reserved - 1);
     } else if (what === 'drop') {
       a.carry = false; a.task = null;
-      this._money(C.econ.crateFee + this.refineN * C.parts.refinery.refine, 'trade', 'crates'); this.stats.crates++; this.crateTimes.push(this.t);
+      this._money(this.crateFee(), 'trade', 'crates'); this._sawCrate(); this.stats.crates++; this.crateTimes.push(this.t);
       this.stock[a.cargo || 'rations'] = (this.stock[a.cargo || 'rations'] || 0) + 1; this.weekIn++;
       if (++a.n % 25 === 0) this.note(a, `Carried a ${a.n}th crate to the stores.`);
       this.events.push({ type: 'crate', part: a.at });
@@ -824,7 +825,7 @@ export class Station {
     if (this.traffic) {
       const fb = this.berths('freighter');
       if (fb.length && mix !== 'colonists' && (this.timers.freighter -= dt) <= 0) {
-        this.timers.freighter = S.freighterSec / (1 + 0.5 * (fb.length - 1)) / this.trafficMul / rate * this.rng.range(0.75, 1.25);
+        this.timers.freighter = this._freighterGap(rate);      // by the market's demand, not by how many berths there are
         this._arrival('freighter');
       }
       const recruit = this.div.truth.order.broadcast === 'recruitment' ? 1.5 : 1;
@@ -835,14 +836,16 @@ export class Station {
         if ((this.timers.warship -= dt) <= 0) { this.timers.warship = S.warshipSec * this.rng.range(0.8, 1.3); this._arrival('warship'); }
       }
     }
+    this._occ(dt);
     for (const s of this.ships.filter((x) => x.state === 'hold').sort((a, b) => a.born - b.born)) {
-      const b = this.berths(s.kind).find((p) => !this.ships.some((o) => o.dock === p.id && o.state !== 'depart'));
+      const b = this.pickBerth(s.kind);
       if (!b) continue;
-      s.dock = b.id; s.state = 'approach'; s.t = 0;
+      s.dock = b.id; s.state = 'approach'; s.t = 0; this._usedBerth(b.id);
+      if (s.t0 !== undefined && this.t - s.t0 > C.ships.waitSec * 0.5) this._rep(C.market.lost * 0.25);      // kept waiting a long while
     }
     for (const s of [...this.ships]) {
       s.t += dt;
-      if (s.state === 'hold' && s.t > S.waitSec) { this.stats.lost++; this.say('traffic', `${s.name} gave up waiting for a berth and jumped away. Trade lost.`, { warn: true }); this._depart(s, true); }
+      if (s.state === 'hold' && s.t > S.waitSec) { this.stats.lost++; if (s.kind === 'freighter') this._rep(C.market.lost); this.say('traffic', `${s.name} gave up waiting for a berth and jumped away. Trade lost.`, { warn: true }); this._depart(s, true); }
       else if (s.state === 'approach' && s.t >= S.approachSec) this._docked(s);
       else if (s.state === 'docked') {
         if (!this.parts.get(s.dock)) { this._depart(s, true); continue; }
@@ -858,11 +861,11 @@ export class Station {
   }
   _arrival(kind) {
     if (this.ships.filter((s) => s.state === 'hold').length >= C.ships.queueMax) {
-      this.stats.lost++; this.say('traffic', 'A ship was turned away: every berth and holding slot is full.', { warn: true }); return;
+      this.stats.lost++; if (kind === 'freighter') this._rep(C.market.turned); this.say('traffic', 'A ship was turned away: every berth and holding slot is full.', { warn: true }); return;
     }
     const name = kind === 'warship' ? this.rng.pick(WARSHIPS) : `${kind === 'shuttle' ? 'Shuttle' : 'Freighter'} ${this.rng.pick(NAMES)}`;
     this.ships.push({ id: this.nextId++, kind, name, born: this.t, state: 'hold', t: 0, dock: 0, crates: 0, reserved: 0, inspect: 0, repair: 0, crew: 0,
-      seed: this.rng.next(), lastDock: 0, smuggler: kind === 'freighter' && this.rng.chance(C.ships.smuggler) });
+      seed: this.rng.next(), lastDock: 0, t0: this.t, smuggler: kind === 'freighter' && this.rng.chance(C.ships.smuggler) });
     if (kind === 'warship') this.say('traffic', `${name} is inbound with battle damage, requesting the drydock.`);
   }
   _docked(s) {
@@ -899,8 +902,9 @@ export class Station {
     }
   }
   _depart(s, lost) {
+    if (!lost && s.kind === 'freighter') this._rep(C.market.served);
     if (!lost) { this.stats.ships++; if (s.dockedAt != null) { this.berthTimes.push(this.t - s.dockedAt); if (this.berthTimes.length > 20) this.berthTimes.shift(); } }
-    else if (s.state === 'docked' && s.crates > 0) this.stats.lost++;
+    else if (s.state === 'docked' && s.crates > 0) { this.stats.lost++; if (s.kind === 'freighter') this._rep(C.market.lost); }
     s.lastDock = s.dock || s.lastDock; s.state = 'depart'; s.t = 0; s.dock = 0; s.crates = 0; s.reserved = 0;
     for (const a of this.agents) if ((a.task === 'pick' || a.task === 'drydock') && a.ship === s.id) { a.task = null; a.path = []; a.s = 0; a.eva = false; }
   }
@@ -939,3 +943,4 @@ export class Station {
 installStory(Station);
 installPlatform(Station);
 installLedger(Station);
+installMarket(Station);

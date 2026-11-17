@@ -2,7 +2,7 @@
 
 Run a space station and the people aboard it. A browser game for the **Super Earth Special Forces** community, in the same look as [Orbital Fury](https://orbitalfury.com/).
 
-> **Prototype 0.11.2: the accounts, what you are asked for, morale, traffic and a proper menu.** Hover any number on the top bar to see where it comes from and goes; COMMANDER opens on the full ACCOUNTS. The station now tells you what it needs next and warns before the credits turn. Morale has a chart, a breakdown and ways to raise it. Ships go round the station instead of through it. The menu is a pause menu with settings, help, a radio log, save codes and credits, and nothing in it plays the game.
+> **Prototype 0.11.3: supply and demand.** Freighters come for the trade, not for the berths: how many depends on the station's standing, its reputation and what it is short of. The price of a crate rises and falls with supply against demand. Every berth shows a light: green free, amber in use, red when it cannot take ships.
 
 **Your station. Its people. What happens to them.** It is a space station simulator: think Deep Space Nine in the Helldivers universe, with you as the station's commander. You start with Station Command in empty space, snap parts onto it and set their rooms. Then the people move in, and the station becomes theirs as much as yours.
 
@@ -11,6 +11,23 @@ Run a space station and the people aboard it. A browser game for the **Super Ear
 It runs in your browser on a computer, or on a phone or tablet held sideways. There is nothing to install. Turn the sound on.
 
 **Quick start:** press **NEW STATION**. Open **FIRE** and put a Ship Gun on a side port. Open the **DOCK** group at the bottom left, press `Q` for a Docking Port, move the pointer near Station Command and click when the little dot lights up. Add a Cargo Module from **INDUS** and a Hab Module from **HAB** the same way. Ships and colonists arrive within a minute, and soon after that the first thing lands on your desk.
+
+## What's new in 0.11.3
+
+Asked for: some docking spaces don't work; the more berths you have, the more ships show up; there should be supply and demand.
+
+**Why it happened.** A freighter came every 38 seconds divided by (1 + half the number of berths beyond the first), so nine berths brought one every 7.6 seconds. Ships always took the first free berth in the list, so the newest berths were hardly used. Berths that were shut, broken down or missing their room showed nothing in the world.
+
+- **Freighters come for the trade.** The sector sends a number of crates a minute (the DEMAND), set by the station's tier, its REPUTATION, any Spire or Operations Centre, and supply runs when the stores are short. Traffic Control asks for more or fewer. The number of berths no longer changes it: with 2 berths or 8, the same station sees 34 ships in 20 minutes.
+- **Reputation.** Each freighter served on time raises it a little. One kept waiting, turned away or left half unloaded lowers it more. It runs demand from ×0.6 to ×1.4. Too few berths for the trade means lost ships, a falling reputation and less trade: a busy station with one berth fell to 0.24 and lost 5 ships; with four it kept 1.00 and lost none.
+- **Price.** A crate's fee is multiplied by the market price, ×0.55 to ×1.6, which answers crates taken in against the demand. Opening the lanes (high traffic) brought 54% more crates but only 26% more money, because each was worth less. Thinning it brought fewer crates worth ×1.43 each.
+- **Every berth is used.** A ship goes to the free berth that has stood idle longest.
+- **Berth lights.** Green: free. Amber: a ship is at it or coming in. Red, blinking: it cannot take ships. A shut berth also shows a red line along its approach to where it is blocked. The berth's card says why: shut (and by what), broken down, or needs a Shuttle Bay or Workshop fitted inside.
+- **The accounts** have a TRADE section: why freighters come, line by line; crates taken in and the market price; berths, how many are busy on average, and how many are more than the trade needs (each still costs upkeep). Hovering SHIPS on the top bar shows it.
+- **Asks:** spare berths the trade does not need; freighters waiting and reputation falling; a hangar or drydock with no room fitted.
+- New check: `node test/market.mjs [minutes] [seed]`.
+
+Not done yet: there is one market for the whole sector, not one per kind of goods. Shuttles and warships still come on their own timers (shuttles only while there are free beds). Reputation is not saved in 0.11.2 saves; an older save starts at middling reputation.
 
 ## What's new in 0.11.2
 
@@ -241,6 +258,7 @@ index.html          the page, the title card and the menu
 css/style.css       the Orbital Fury theme plus the Age of Empires-style HUD
 js/config.js        every tuning number: parts, rooms, divisions, orders and tiers
 js/math3.js         small vector and quaternion helpers for the simulation
+js/market.js        the market: why freighters come, reputation, the price of a crate, which berth a ship takes
 js/ledger.js        the accounts and the asks: where everything comes from and goes, and what the station needs next
 js/story.js         the story layer: days and weeks, supplies, what reaches the commander, raids, the Broken Station, saving
 js/sim.js           the simulation: parts and rooms, walking, staff, ships, faults, economy, morale, tiers (no DOM, no 3D)
@@ -253,6 +271,7 @@ js/main.js          the loop, input, HUD, comms, the Commander's channel, the up
 js/vendor/three.js  three.js (MIT), see js/vendor/THREE-LICENSE
 test/headless.mjs   runs a station without a browser and prints the economy, capability and faction moods (add `approve` as a fifth argument to say yes to every request)
 test/story.mjs      plays the story with no browser: supplies, requests, a raid, a save and the Broken Station
+test/market.mjs     freighters come for the trade, not the berths; the price answers supply against demand
 test/ledger.mjs     the accounts add up to what the credits really do; every way to raise morale does what it says
 test/traffic.mjs    flies a crowded station in the real page: no ship, raider or craft may touch a hull or each other
 test/walks.mjs      walks every route through every kind of part: floor under every step, nothing in the way

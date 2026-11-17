@@ -22,7 +22,7 @@ const fill = (n, room) => Array(n).fill(room);
 const deg = (xs) => xs.map((x) => x * Math.PI / 180);
 
 export const C = {
-  version: '0.11.2',
+  version: '0.11.3',
 
   groups: [
     { id: 'structure', name: 'STRUCTURE' }, { id: 'platform', name: 'FIRE SUPPORT' }, { id: 'habitation', name: 'HABITATION' }, { id: 'docking', name: 'DOCKING' },
@@ -275,6 +275,12 @@ export const C = {
   ships: { freighterSec: 38, shuttleSec: 42, warshipSec: 95, shuttleMorale: 35, colonists: 4, approachSec: 14, departSec: 11,
     waitSec: 60, queueMax: 3, smuggler: 0.15, repairSec: 30, repairFee: 150, rate: { low: 0.6, normal: 1, high: 1.5 } },
   econ: { crateFee: 8, dockFee: 6, fine: 80, taxPerPct: 0.6 },
+  // The market (market.js). base: crates a minute the sector wants moved through a station of each tier, at middling reputation.
+  // rep: reputation 0 to 1 (rep0 at the start); it scales demand from repLo to repHi. served/lost/turned: what each ship does to it.
+  // runs: supply runs the Ministry adds, per kind of supply the station is short of. elastic: how hard the price answers supply
+  // against demand, between priceLo and priceHi. occSec: how long the average of busy berths runs over.
+  market: { base: [9, 16, 26, 38], rep0: 0.5, repLo: 0.6, repHi: 1.4, served: 0.006, lost: -0.06, turned: -0.04, runPer: 3, runsMax: 9,
+    cratesPerShip: 6.5, windowSec: 240, elastic: 0.6, priceLo: 0.55, priceHi: 1.6, occSec: 240 },
   // ration: what the rations order does to morale and to how fast rations go. festival: a Liberty Day, a one-off lift that fades.
   morale: { ration: { normal: [0, 1], double: [6, 2], short: [-8, 0.5] }, festival: { cost: 150, gain: 12, days: 3, every: 7 }, magazine: 4, base: 70, taxFree: 10, taxPenalty: 2.5, taxBonus: 1, power: 25, leaveBelow: 30, leaveSec: 10, leisureMax: 25, contraband: 10, unrestDecaySec: 60, faulty: 3 },
   faults: { meanSec: 480 },

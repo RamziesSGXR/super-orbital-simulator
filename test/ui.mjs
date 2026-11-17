@@ -94,6 +94,7 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
   await steps(page, 60);
   const mid = await page.evaluate(() => ({ crates: window.__st.stats.crates, res: window.__st.residents() }));
   check('ships dock and haulers carry crates to cargo', mid.crates > 0, JSON.stringify(mid));
+  check('every berth shows a light: green free, amber in use, red when it cannot take ships', await page.evaluate(() => { const v = window.__view, s = window.__st, n = [...s.parts.values()].filter((p) => s.def(p).berth).length; v._beacons(1); return v.bcn.count === n && n > 0; }));
   check('no berth on this plain station is shut: every one has a clear way in', await page.evaluate(() => window.__view.shut.size === 0), await page.evaluate(() => JSON.stringify([...window.__view.shut].map(([id, by]) => `${window.__st.name(window.__st.parts.get(id))} by ${by}`))));
   // The fire support platform, the gravity standard and the livery.
   check('the ship gun is crewed and the top bar reads the platform ready', await page.evaluate(() => { const P = window.__st.platform(); return P.by.gun.n === 1 && P.by.gun.ready > 0.9 && /^\d+%$/.test(document.getElementById('r-rdy').textContent); }), await page.evaluate(() => JSON.stringify(window.__st.platform().sys.map((x) => [x.k, x.n, +x.ready.toFixed(2), x.why]))));
@@ -168,6 +169,7 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
   await page.keyboard.press('o'); await page.waitForTimeout(300);
   check('O opens the Commander\'s channel with nine divisions', await page.isVisible('#cmdr') && (await page.$$('#cm-tabs .dt:not(.lgt)')).length === 9);
   // The accounts: the first page of the channel, the hover on the top bar, the click through, and what the station is asked for.
+  check('the accounts say why freighters come and what a crate is worth: trade, reputation, price, berths', await page.evaluate(() => { const t = document.getElementById('lg-trade').innerText; return /WHY FREIGHTERS COME/.test(t) && /Reputation/.test(t) && /Market price/.test(t) && /More berths do not bring more ships/.test(t); }));
   check('the channel opens on the ACCOUNTS: credits in and out line by line, the stores, power, people, morale and the score', await page.evaluate(() => {
     const t = document.getElementById('lg').innerText, L = window.__st.ledger();
     return document.querySelector('#cm-tabs .dt.lgt.on') && ['lg-credits', 'lg-stores', 'lg-power', 'lg-people', 'lg-morale', 'lg-cap'].every((id) => document.getElementById(id))
@@ -177,7 +179,7 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
   await page.hover('.ri:has(#r-cr)'); await page.waitForTimeout(300);
   check('hovering the credits says where they come from and where they go', await page.evaluate(() => { const t = document.getElementById('tip'); return !t.classList.contains('hidden') && /CREDITS/.test(t.innerText) && /COMING IN/.test(t.innerText) && /GOING OUT/.test(t.innerText) && /Click for the full accounts/.test(t.innerText); }));
   const tips = {};
-  for (const [id, word] of [['r-pw', 'MADE BY'], ['r-pop', 'STAFF ON DUTY'], ['r-mo', 'MORALE'], ['r-cap', 'CAPABILITY'], ['r-rdy', 'THE PLATFORM'], ['r-sh', 'Berths']]) { await page.hover(`.ri:has(#${id})`); await page.waitForTimeout(150); tips[id] = (await page.evaluate(() => document.getElementById('tip').innerText)).includes(word); }
+  for (const [id, word] of [['r-pw', 'MADE BY'], ['r-pop', 'STAFF ON DUTY'], ['r-mo', 'MORALE'], ['r-cap', 'CAPABILITY'], ['r-rdy', 'THE PLATFORM'], ['r-sh', 'WHY FREIGHTERS COME']]) { await page.hover(`.ri:has(#${id})`); await page.waitForTimeout(150); tips[id] = (await page.evaluate(() => document.getElementById('tip').innerText)).includes(word); }
   check('and so does every other readout on the top bar: power, people, morale, capability, readiness, ships', Object.values(tips).every(Boolean), JSON.stringify(tips));
   await page.click('.ri:has(#r-pw)'); await page.waitForTimeout(300);
   check('clicking a readout opens the accounts at that section, and the hover goes away', await page.isVisible('#cmdr') && await page.evaluate(() => { const m = document.getElementById('lg-power').getBoundingClientRect(), c = document.getElementById('cmdr').getBoundingClientRect(); return document.getElementById('tip').classList.contains('hidden') && m.top >= c.top - 2 && m.top < c.bottom; }));

@@ -491,6 +491,7 @@ export class View {
     this._shots(dt);
     this._lifts(dt);
     this._airlocks();
+    this._beacons(now);
     if (this.edit) { const p = st.parts.get(this.edit); if (p && p.rooms.join(',') !== this.editSig) this._editLabels(); }
     // The cut faces the camera and sits a little in front of what you are looking at, so it works from any side and any distance.
     if (this.cutaway && !this.edit) {
@@ -864,6 +865,38 @@ export class View {
       }
       c.obj.position.set(p.pos[0], c.y, p.pos[2]); c.obj.visible = show;
     }
+  }
+  // BERTH LIGHTS. Every berth shows whether it can take a ship: green when it is free, amber while a ship is at it or coming in,
+  // red when it cannot take one (shut, broken down, or no room fitted inside). A shut berth also shows a red line
+  // out along its approach, as far as the part that is in the way. Seen in the hull view, where ships are.
+  _beacons(now) {
+    const st = this.st, MAX = 120, COL = { open: 0x5dff8a, busy: 0xf5d547, building: 0x8a8f96 };
+    if (!this.bcn) {
+      this.bcn = new THREE.InstancedMesh(new THREE.OctahedronGeometry(0.42, 0), new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }), MAX);
+      this.bcnLine = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 0.06, 0.06), new THREE.MeshBasicMaterial({ color: 0xff4a3a, transparent: true, opacity: 0.75, toneMapped: false }), MAX);
+      for (const im of [this.bcn, this.bcnLine]) { im.count = 0; im.frustumCulled = false; this.scene.add(im); }
+      this.bcn.setColorAt(0, new THREE.Color());
+    }
+    const show = this.mode === 'hull' && !this.edit;
+    this.bcn.visible = this.bcnLine.visible = show;
+    if (!show) return;
+    const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), s3 = new THREE.Vector3(), col = new THREE.Color(), blink = 0.75 + 0.25 * Math.sin(now * 5);
+    let n = 0, nl = 0;
+    for (const p of st.parts.values()) {
+      const b = st.berthStatus(p); if (!b || n >= MAX) continue;
+      const B = this._berthAt(p, st.def(p).ships[0]), at = B.mouth.clone().addScaledVector(B.out, 0.6).add(UP.clone().multiplyScalar(0.7)), bad = !COL[b.k];
+      s3.setScalar(bad ? blink : b.k === 'open' ? 1 : 0.8); q.identity(); q.setFromAxisAngle(UP, now * 1.5);
+      m4.compose(at, q, s3); this.bcn.setMatrixAt(n, m4); this.bcn.setColorAt(n, col.set(bad ? 0xff4a3a : COL[b.k])); n++;
+      if (b.k === 'shut' && nl < MAX) {      // the approach, out to where it is blocked
+        const from = B.mouth.clone(), far = from.clone().addScaledVector(B.out, 12), P = new THREE.Vector3();
+        let len = 12; for (let t = 1; t <= 12; t += 0.5) if (this._gap(P.copy(from).addScaledVector(B.out, t), p.id) < 0.6) { len = t; break; }
+        q.setFromUnitVectors(new THREE.Vector3(1, 0, 0), B.out); s3.set(len, 1, 1);
+        m4.compose(from.addScaledVector(B.out, len / 2), q, s3); this.bcnLine.setMatrixAt(nl++, m4);
+        void far;
+      }
+    }
+    this.bcn.count = n; this.bcnLine.count = nl;
+    this.bcn.instanceMatrix.needsUpdate = true; if (this.bcn.instanceColor) this.bcn.instanceColor.needsUpdate = true; this.bcnLine.instanceMatrix.needsUpdate = true;
   }
   // AIRLOCK DOORS. A side port with nowhere to walk to beyond it keeps its airlock shut. Every shut door on the station is one
   // batch: a steel door with a red bar across it, standing in the airlock frame that parts.js drew at the port.

@@ -649,10 +649,16 @@ function ledgerSec(sec, L, full) {
     return `<b class="lh">THE PLATFORM · ${Math.round(P.ready * 100)}% ready</b>${P.sys.filter((x) => x.open).map((x) => lrow(x.name, x.n ? `${Math.round(x.ready * 100)}%` : 'not built', x.n ? (x.ready > 0.8 ? 'up' : x.ready > 0.4 ? 'warn' : 'down') : 'dim', x.n && !x.why ? '' : x.why)).join('')}`
       + `<p>Calls from the ground answered: ${st.stats.calls || 0}. Missed: ${st.stats.missed || 0}.</p>`;
   }
-  if (sec === 'ships') {
-    const by = (k) => st.ships.filter((x) => x.state === k).length, shut = st._shut ? st._shut.size : 0;
-    return `<b class="lh">SHIPS · ${st.stats.ships} served<i class="${st.stats.lost ? 'down' : 'dim'}">${st.stats.lost} lost</i></b>${lrow('Berths: freighters · shuttles · warships', `${st.berths('freighter').length} · ${st.berths('shuttle').length} · ${st.berths('warship').length}`)}${lrow('Waiting · coming in · docked', `${by('hold')} · ${by('approach')} · ${by('docked')}`)}${lrow('Crates unloaded a minute', st.cratesPerMin().toFixed(1))}`
-      + (shut ? `<p class="warn">${shut} berth${shut > 1 ? 's are' : ' is'} shut: no clear way in for ships.</p>` : '') + '<p>A ship that waits too long for a berth leaves, and its trade is lost.</p>';
+  if (sec === 'ships' || sec === 'trade') {
+    const T = L.trade, by = (k) => st.ships.filter((x) => x.state === k).length, shut = st._shut ? [...st._shut] : [], D = T.demand, rateK = C.ships.rate[st.div.traffic.order.rate];
+    const repW = T.rep > 0.7 ? 'good' : T.rep > 0.4 ? 'fair' : 'poor';
+    return `<b class="lh">TRADE · ${Math.round(D.total * rateK)} crates a minute asked for<i class="${T.price >= 1 ? 'up' : 'warn'}">${T.fee} CR a crate</i></b>`
+      + `<div class="lsub">WHY FREIGHTERS COME, crates a minute</div>${lrow(`The sector's trade for a ${C.tiers[st.tier].name.toLowerCase()}`, D.base.toFixed(0))}${lrow(`Reputation: ${repW}`, `× ${D.repK.toFixed(2)}`, T.rep > 0.5 ? 'up' : 'down', 'ships served on time raise it; ships kept waiting or lost lower it')}${D.hub > 1.001 ? lrow('Spires and Operations Centres', `× ${D.hub.toFixed(2)}`, 'up') : ''}${D.runs ? lrow('Supply runs: the stores are short', `+${D.runs.toFixed(0)}`, 'up') : ''}${rateK !== 1 ? lrow(`Traffic Control: ${st.div.traffic.order.rate} traffic`, `× ${rateK}`, rateK > 1 ? 'warn' : 'dim') : ''}`
+      + `<div class="lsub">THE PRICE OF A CRATE</div>${lrow('Crates taken in, a minute', T.supply.toFixed(1))}${lrow('Market price', `× ${T.price.toFixed(2)}`, T.price >= 1 ? 'up' : 'down', T.price < 0.95 ? 'more crates come in than the sector wants moved: each is worth less' : T.price > 1.05 ? 'fewer crates come in than the sector wants: each is worth more' : 'supply and demand are level')}`
+      + `<div class="lsub">BERTHS</div>${lrow('For freighters · shuttles · warships', `${st.berths('freighter').length} · ${st.berths('shuttle').length} · ${st.berths('warship').length}`)}${lrow('Enough for this much trade', `about ${T.needBerths}`, T.berths.n >= T.needBerths ? 'up' : 'warn')}${lrow('Busy now · busy on average', `${T.berths.busy} · ${T.berths.occ.toFixed(1)}`)}${T.berths.spare ? lrow('More than the trade needs', `${T.berths.spare}`, T.berths.spare > 1 ? 'warn' : '', `each still costs ${C.parts.dockport.up} CR a minute`) : ''}${lrow('Waiting · coming in · docked', `${by('hold')} · ${by('approach')} · ${by('docked')}`)}${lrow('Served · lost', `${st.stats.ships} · ${st.stats.lost}`, st.stats.lost ? 'warn' : '')}`
+      + shut.map(([id, w]) => `<p class="warn">${st.name(st.parts.get(id))} is shut: ${w} is across its approach.</p>`).join('')
+      + T.notYet.map((x) => `<p class="warn">${x.name} takes no ships until a ${x.room} is fitted inside it.</p>`).join('')
+      + (full ? '<p>More berths do not bring more ships. Ships come for the trade; berths serve them. A berth past what the trade needs stands idle and still costs upkeep.</p>' : '');
   }
   return '';
 }
@@ -663,7 +669,7 @@ function asksHtml(max) {
 function ledgerPage() {
   const L = st.ledger(), asks = asksHtml(6);
   return (asks ? `<section id="lg-asks"><b class="lh">ASKED OF YOU<i>most pressing first</i></b>${asks}</section>` : '')
-    + ['credits', 'stores', 'power', 'people', 'morale', 'cap'].map((k) => `<section id="lg-${k}">${ledgerSec(k, L, true)}</section>`).join('');
+    + ['credits', 'trade', 'stores', 'power', 'people', 'morale', 'cap'].map((k) => `<section id="lg-${k}">${ledgerSec(k, L, true)}</section>`).join('');
 }
 // A way to raise morale that is an order: given on the spot. (On pointer down, because the page redraws itself as numbers change.)
 const WAYS = {
@@ -677,10 +683,10 @@ $('cm-main').addEventListener('pointerdown', (e) => {
   cmdrText();
 });
 // Hover a readout on the top bar: where it comes from and where it goes. Click it: the full accounts.
-const RI = { 'r-cap': 'cap', 'r-cr': 'credits', 'r-pw': 'power', 'r-pop': 'people', 'r-mo': 'morale', 'r-rdy': 'ready', 'r-sh': 'ships' };
+const RI = { 'r-cap': 'cap', 'r-cr': 'credits', 'r-pw': 'power', 'r-pop': 'people', 'r-mo': 'morale', 'r-rdy': 'ready', 'r-sh': 'trade' };
 function riTip() { $('tip').innerHTML = `<div class="lg tipl">${ledgerSec(ui.riTip, st.ledger(), false)}<p class="dim">Click for the full accounts.</p></div>`; }
 function openLedger(sec) {
-  ui.div = sec === 'ready' ? 'gunnery' : sec === 'ships' ? 'traffic' : 'ledger';
+  ui.div = sec === 'ready' ? 'gunnery' : 'ledger';
   audio.play('click'); closeFloats('cmdr'); $('cmdr').classList.remove('hidden'); drawCmdr();
   const el = $(`lg-${sec}`); if (el) el.scrollIntoView({ block: 'start' });
 }
@@ -983,7 +989,7 @@ function info(peek) {
     const s = roomSums(p.rooms), housed = st.agents.filter((a) => a.home === p.id);
     if (s.beds) extra += stat('RESIDENTS', `${housed.filter((a) => a.role === 'resident').length}/${s.beds}`);
     const staff = housed.filter((a) => a.role !== 'resident').length; if (staff) extra += stat('STAFF', staff);
-    if (d.berth) { const sh = st.ships.find((x) => x.dock === p.id); extra += stat('BERTH', st._shut && st._shut.has(p.id) ? `<span class="down">shut: ${st._shut.get(p.id)} is in the way</span>` : d.berthRoom && !st.has(p, d.berthRoom) ? `needs a ${C.rooms[d.berthRoom].name}` : sh ? `${sh.name}${sh.state === 'docked' && sh.kind === 'freighter' ? `, ${sh.crates} crates` : sh.state === 'approach' ? ', approaching' : ''}` : 'empty'); }
+    if (d.berth) { const b = st.berthStatus(p); extra += stat('BERTH', ['open', 'busy'].includes(b.k) ? b.why : `<span class="down">${b.why}</span>`); }
     const counts = {}; for (const r of p.rooms) counts[r] = (counts[r] || 0) + 1;
     const chips = Object.entries(counts).map(([r, n]) => `<span class="chip" style="--c:${C.rooms[r].col}">${C.rooms[r].short || 'EMPTY'}${n > 1 ? ` ×${n}` : ''}</span>`).join('');
     const cd = st.canDemolish(p.id), ed = SLOTS[p.type];

@@ -31,7 +31,7 @@ export function installLedger(Station) {
       // ------------------------------------------------ credits, a minute
       const ins = [], outs = [];
       const cpm = this.cratesPerMin();
-      ins.push({ label: 'Crates unloaded', v: this.flow('crates'), note: `${cpm.toFixed(1)} a minute at ${E.crateFee + this.refineN * C.parts.refinery.refine} CR each`, live: true });
+      ins.push({ label: 'Crates unloaded', v: this.flow('crates'), note: `${cpm.toFixed(1)} a minute at ${this.crateFee()} CR each (market price ×${this.priceK().toFixed(2)})`, live: true });
       ins.push({ label: 'Docking fees', v: this.flow('docking'), note: `${E.dockFee + this.fuelN * C.parts.tanks.fuel} CR a ship`, live: true });
       for (const [k, label] of [['repairs', 'Warships repaired'], ['fines', 'Smugglers fined']]) { const v = this.flow(k); if (v > 0.05) ins.push({ label, v, live: true }); }
       ins.push({ label: 'Colonist tax', v: res ? this.taxPerMin() : 0, note: `${res} residents at ${this.tax}%` });
@@ -79,7 +79,13 @@ export function installLedger(Station) {
         ['Staff on duty', staff * K.staff], ['Research', st.research * K.research], ['Raids beaten off', st.raidsWon * K.raid], ['Calls from the ground answered', (st.calls || 0) * K.call], ['The platform', this.platform().score * K.platform]]
         .filter(([, v]) => v > 0.05).map(([label, v]) => ({ label, v }));
       const cap = { now: this.capability(), lines, mood: 0.7 + 0.6 * sat / 100 };
-      return { credits, power, people, morale, stores, cap };
+      // ------------------------------------------------ trade: why freighters come, and what a crate is worth (market.js)
+      const D = this.tradeDemand(), use = this.berthUse();
+      const trade = { demand: D, supply: this.tradeSupply(), price: this.priceK(), fee: this.crateFee(), rep: this._mk().rep, berths: use,
+        needBerths: use.need,
+        waiting: this.ships.filter((s) => s.state === 'hold' && s.kind === 'freighter').length,
+        notYet: [...this.parts.values()].filter((p) => p.state === 'active' && this.def(p).berth && this.def(p).berthRoom && !this.has(p, this.def(p).berthRoom)).map((p) => ({ name: this.name(p), room: C.rooms[this.def(p).berthRoom].name })) };
+      return { credits, power, people, morale, stores, cap, trade };
     },
     // WAYS TO RAISE MORALE, from where it stands now: each with what it would add, what it costs, and (where it is an order the
     // commander can give on the spot) the order. Biggest gain first. Things already done are left out.
@@ -129,6 +135,11 @@ export function installLedger(Station) {
         add('ministry', 'credits', this.credits < 0 ? `The station is ${r1(this.credits)} CR in debt and losing ${r1(c.net)} CR a minute.` : `The station is losing ${r1(c.net)} CR a minute: ${r1(c.income)} in, ${r1(c.spend)} out. The credits run out in ${c.runway < 1 ? 'under a day' : `${Math.round(c.runway)} days`}.`, fix, true);
       }
       else if (c.net < -0.5) add('ministry', 'net', `The station spends ${r1(c.net)} CR a minute more than it earns${c.runway !== null && c.runway < 40 ? `: the credits last ${Math.round(c.runway)} more days` : ''}.`, !fb ? noDock || 'Trade is what pays for a station: build a Docking Port and a Cargo Bay.' : c.idle.n ? `${c.idle.n} ${c.idle.n > 1 ? 'parts stand' : 'part stands'} empty or broken and cost ${r1(c.idle.v)} CR a minute.` : 'Build what earns before what costs: berths, cargo stores and residents pay; everything else is upkeep.');
+      // -- trade: berths standing idle, or too few, or a berth that needs a room before it is one
+      const T = L.trade;
+      if (T.berths.spare >= 2) add('traffic', 'idle', `The station has ${T.berths.n} freighter berths and the trade keeps about ${T.berths.occ < 1 ? 'one' : Math.round(T.berths.occ)} busy.`, `The sector sends about ${Math.round(T.demand.total)} crates a minute, enough for ${T.needBerths} berth${T.needBerths > 1 ? 's' : ''}. More berths do not bring more ships: reputation, standing and a Spire or Operations Centre do. Each idle Docking Port still costs ${C.parts.dockport.up} CR a minute.`);
+      if (T.waiting >= 2 || (this.stats.lost && T.rep < 0.35)) add('traffic', 'berths', `Freighters are waiting for a berth${T.rep < 0.45 ? ', and the station\'s reputation is falling' : ''}.`, 'Ships kept waiting or turned away lower the reputation, and fewer come. Another berth, or more haulers to unload faster, keeps them moving.', T.rep < 0.3);
+      for (const x of T.notYet.slice(0, 2)) add('traffic', `room-${x.name}`, `${x.name} takes no ships yet.`, `Fit a ${x.room} inside it (select it, then EDIT INSIDE).`);
       // -- power
       if (this.eff < 1) add('maintenance', 'power', `Power is short: the station needs ${this.demand} and makes ${this.supply}. Everything runs at ${Math.round(this.eff * 100)}%.`, 'Build a Solar Array or a Reactor Core, or mend one that has broken down.', true);
       // -- supplies
