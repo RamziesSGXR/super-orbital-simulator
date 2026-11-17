@@ -433,10 +433,12 @@ export class View {
   }
   // Fly the camera and what it looks at together. fwd and right run along the deck (never up or down); up is straight up; turn
   // swings the camera round what it is looking at. Speed grows with distance, so it is fine close in and quick far out.
+  // Drawing quality: how many pixels are drawn for each one on the screen.
+  setQuality(q) { const d = devicePixelRatio || 1; this.renderer.setPixelRatio(q === 'low' ? Math.min(d, 1) * 0.75 : q === 'high' ? Math.min(d, 3) : Math.min(d, 2)); }
   fly(fwd, right, up, turn, dt) {
     const cam = this.camera.position, tg = this.controls.target, off = this._fo || (this._fo = new THREE.Vector3()), f = this._ff || (this._ff = new THREE.Vector3()), r = this._fr || (this._fr = new THREE.Vector3());
     off.copy(cam).sub(tg);
-    const dist = off.length(), sp = Math.max(1.2, dist * 0.9) * dt;
+    const dist = off.length(), sp = Math.max(1.2, dist * 0.9) * dt * (this.flyK || 1);
     f.set(-off.x, 0, -off.z); if (f.lengthSq() < 1e-8) f.set(0, 0, -1).applyQuaternion(this.camera.quaternion).setY(0); f.normalize();
     r.set(-f.z, 0, f.x);
     const mx = (f.x * fwd + r.x * right) * sp, mz = (f.z * fwd + r.z * right) * sp, my = up * sp;

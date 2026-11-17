@@ -17,7 +17,8 @@ console.log(await page.evaluate(() => {
 await page.waitForTimeout(1500);
 await page.evaluate(() => { for (const id of ['c-x']) { const e = document.getElementById(id); if (e) e.click(); } });
 await page.screenshot({ path: `test/shots/acc-overview-${size}.png`, timeout: 120000 });
-for (const id of ['r-cr', 'r-pw', 'r-pop', 'r-mo']) { await page.hover(`.ri:has(#${id})`); await page.waitForTimeout(500); await page.screenshot({ path: `test/shots/acc-hover-${id}-${size}.png`, timeout: 120000 }); }
+for (const id of ['r-cr', 'r-pw', 'r-pop', 'r-mo']) { if (!(await page.isVisible(`.ri:has(#${id})`))) continue;      // a narrow screen hides some readouts: the ACCOUNTS page still has them all
+  await page.hover(`.ri:has(#${id})`); await page.waitForTimeout(500); await page.screenshot({ path: `test/shots/acc-hover-${id}-${size}.png`, timeout: 120000 }); }
 await page.click('.ri:has(#r-cr)'); await page.waitForTimeout(800);
 await page.screenshot({ path: `test/shots/acc-page-${size}.png`, timeout: 120000 });
 await page.evaluate(() => { document.getElementById('cm-main').scrollTop = 99999; const s = document.querySelector('.cm-body'); if (s) s.scrollTop = 99999; const c = document.getElementById('cmdr'); c.scrollTop = 99999; }); await page.waitForTimeout(500);

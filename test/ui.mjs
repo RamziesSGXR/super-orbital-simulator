@@ -138,7 +138,7 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
   }));
   check('the people size setting changes how large people are drawn', await page.evaluate(() => {
     const i = document.getElementById('in-people'); i.value = 140; i.dispatchEvent(new Event('input'));
-    const big = window.__view.peopleK === 1.4 && document.getElementById('bv-people').textContent === '140%';
+    const big = window.__view.peopleK === 1.4 && i.nextElementSibling.textContent === '140%';
     i.value = 100; i.dispatchEvent(new Event('input'));
     return big && window.__view.peopleK === 1;
   }));
@@ -460,6 +460,42 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
   check('the Broken Station is a dark, stripped station', w0.mode === 'broken' && w0.n >= 15 && w0.dark >= 5 && /Parts repaired/.test(await page.textContent('#info')), JSON.stringify(w0));
   await page.screenshot({ path: 'test/shots/broken.png' });
   await steps(page, 90);
+  // The menu: nothing in it plays the game. It pauses the station; settings, help, the radio log, saving and credits live there.
+  await page.keyboard.press('m'); await page.waitForTimeout(300);
+  check('M opens the menu and pauses the station', await page.isVisible('#s-menu .mpage[data-p="main"]') && await page.evaluate(() => window.__ui.paused) && /PAUSED/.test(await page.textContent('#m-title')));
+  check('nothing in the menu plays the game: no tax and no accounts in it', await page.evaluate(() => { const m = document.getElementById('s-menu'); return !m.querySelector('#in-tax') && !m.querySelector('#ledger') && !/TAX|CR\/min|Upkeep/i.test(m.innerText); }));
+  check('it has Resume, Settings, Help, Radio Log, Save, Title Screen, Feedback and Credits', await page.evaluate(() => ['settings', 'help', 'log', 'save', 'credits'].every((p) => document.querySelector(`#s-menu [data-go="${p}"]`)) && !!document.getElementById('b-close') && !!document.getElementById('b-restart') && /discord/.test(document.querySelector('#s-menu a.fb').href)));
+  await page.click('#s-menu [data-go="settings"]'); await page.waitForTimeout(200);
+  const set0 = await page.evaluate(() => ({ rows: document.querySelectorAll('#set-body .set-row').length, secs: [...document.querySelectorAll('#set-body .set-sec')].map((x) => x.textContent), pr: window.__view.renderer.getPixelRatio() }));
+  check('SETTINGS: sound, display, camera and the station, each setting with what it does', set0.rows === 10 && set0.secs.join() === 'SOUND,DISPLAY,CAMERA,THE STATION' && await page.evaluate(() => [...document.querySelectorAll('#set-body .set-row small')].every((x) => x.textContent.length > 15)), JSON.stringify(set0));
+  await page.selectOption('#set-body select[data-k="quality"]', 'low'); await page.click('#set-body .tog[data-k="calm"]'); await page.click('#set-body .tog[data-k="advice"]');
+  await page.evaluate(() => { for (const [k, v] of [['volume', 0.4], ['fly', 2]]) { const r = document.querySelector(`#set-body input[data-k="${k}"]`); r.value = v; r.dispatchEvent(new Event('input')); } }); await page.waitForTimeout(200);
+  check('the settings do what they say: quality, calm display, volume, flying speed, advice', await page.evaluate((pr) => { const v = window.__view; return v.renderer.getPixelRatio() < pr + 1e-6 && v.renderer.getPixelRatio() <= 0.76 && document.getElementById('app').classList.contains('calm') && Math.abs(v.flyK - 2) < 1e-6 && window.__st._noAdvice === true; }, set0.pr));
+  check('and they are remembered', await page.evaluate(() => { const s = JSON.parse(localStorage.getItem('sos.settings')); return s.quality === 'low' && s.calm === true && s.volume === 0.4 && s.fly === 2 && s.advice === false; }));
+  await page.selectOption('#set-body select[data-k="quality"]', 'auto'); await page.click('#set-body .tog[data-k="calm"]'); await page.click('#set-body .tog[data-k="advice"]');
+  await page.evaluate(() => { for (const [k, v] of [['volume', 1], ['fly', 1]]) { const r = document.querySelector(`#set-body input[data-k="${k}"]`); r.value = v; r.dispatchEvent(new Event('input')); } });
+  await page.keyboard.press('Escape'); await page.waitForTimeout(150);
+  check('Esc on a page of the menu goes back to the menu, not out of it', await page.isVisible('#s-menu .mpage[data-p="main"]'));
+  await page.click('#s-menu [data-go="help"]'); await page.waitForTimeout(150);
+  check('HELP lists the keys, touch, and how the station works', await page.evaluate(() => { const t = document.querySelector('.mpage[data-p="help"]').innerText; return /W A S D/.test(t) && /pinch/.test(t) && /ACCOUNTS/.test(t) && /Trade pays/.test(t); }));
+  await page.click('#m-back'); await page.click('#s-menu [data-go="log"]'); await page.waitForTimeout(150);
+  check('RADIO LOG keeps what was said on comms', await page.evaluate(() => document.querySelectorAll('#m-log .rl').length >= 2 && /MINISTRY/.test(document.getElementById('m-log').innerText)));
+  await page.click('#m-back'); await page.click('#s-menu [data-go="credits"]'); await page.waitForTimeout(100);
+  check('CREDITS says whose it is and that it is unofficial', await page.evaluate(() => { const t = document.querySelector('.mpage[data-p="credits"]').innerText; return /Robert Troumbley/.test(t) && /Not affiliated/.test(t) && /three\.js/.test(t) && /Prototype \d/.test(t); }));
+  await page.click('#m-back'); await page.click('#s-menu [data-go="save"]'); await page.waitForTimeout(200);
+  const code = await page.inputValue('#sv-code');
+  check('SAVE shows a save code for the station', /^SOS1:[A-Za-z0-9+/=]{200,}$/.test(code), `${code.length} characters`);
+  const snap = await page.evaluate(() => ({ parts: window.__st.parts.size, t: Math.round(window.__st.t), credits: Math.round(window.__st.credits) }));
+  await page.fill('#sv-in', 'not a code'); await page.click('#sv-load'); await page.waitForTimeout(100);
+  check('a wrong code is refused, and says why', /not a save code/.test(await page.textContent('#sv-msg')) && await page.isVisible('#s-menu'));
+  await page.fill('#sv-in', `  ${code}\n`); await page.click('#sv-load'); await page.waitForTimeout(900);
+  check('loading the code brings the same station back, running', await page.evaluate((a) => { const s = window.__st; return !document.getElementById('s-menu').classList.contains('on') && !window.__ui.paused && s.parts.size === a.parts && Math.abs(s.t - a.t) < 5 && Math.abs(s.credits - a.credits) < 60; }, snap), JSON.stringify(snap));
+  await page.keyboard.press('m'); await page.waitForTimeout(150); await page.click('#b-close'); await page.waitForTimeout(150);
+  check('RESUME closes the menu and the station runs again', !(await page.isVisible('#s-menu')) && await page.evaluate(() => !window.__ui.paused));
+  await page.keyboard.press('o'); await page.waitForTimeout(250); await page.click('#cm-tabs .dt.lgt'); await page.waitForTimeout(250);
+  await page.evaluate(() => { const i = document.getElementById('in-tax'); i.value = 14; i.dispatchEvent(new Event('input')); }); await page.waitForTimeout(150);
+  check('the tax is set on the ACCOUNTS page now, with what it brings in and what it costs in morale', await page.evaluate(() => window.__st.tax === 14 && /14%/.test(document.getElementById('bv-tax').textContent) && /CR a minute/.test(document.getElementById('bn-tax').textContent) && /morale/.test(document.getElementById('bn-tax').textContent)));
+  await page.evaluate(() => { const i = document.getElementById('in-tax'); i.value = 10; i.dispatchEvent(new Event('input')); }); await page.keyboard.press('o'); await page.waitForTimeout(150);
   await page.keyboard.press('m'); await page.click('#b-restart'); await page.waitForTimeout(600);      // leaving for the title saves
   check('Continue appears once the station has been saved', await page.isVisible('#b-continue'));
   const before = await page.evaluate(() => JSON.parse(localStorage.getItem('sos.save.06')).t);

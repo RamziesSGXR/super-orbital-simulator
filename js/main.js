@@ -76,6 +76,7 @@ view.camera.position.set(34, 16, 40);
 function start(mode, saved) {
   audio.unlock();
   st = saved || new Station(Number(qs.get('seed')) || (Date.now() % 100000), mode);
+  st._noAdvice = !SET.advice;
   mode = st.mode;
   window.__st = st; window.__ui = ui; window.__edit = startEdit; window.__follow = setFollow;
   view.setStation(st);
@@ -100,7 +101,7 @@ function start(mode, saved) {
 }
 function loadLivery() { try { return { ...C.livery.def, ...(JSON.parse(localStorage.getItem(LIVERY_KEY)) || {}) }; } catch (e) { return { ...C.livery.def }; } }
 const readSave = () => { try { return Station.load(JSON.parse(localStorage.getItem(SAVE_KEY))); } catch (e) { return null; } };
-function writeSave() { if (!ui.started || st.sandbox) return; try { localStorage.setItem(SAVE_KEY, JSON.stringify(st.save())); } catch (e) { /* no storage here: the game plays on without saving */ } }
+function writeSave() { if (!ui.started || st.sandbox) return; try { localStorage.setItem(SAVE_KEY, JSON.stringify(st.save())); lastSave = performance.now(); } catch (e) { /* no storage here: the game plays on without saving */ } }
 function titleButtons() { $('b-continue').classList.toggle('hidden', !readSave()); $('b-economy').classList.toggle('primary', !readSave()); }
 titleButtons();
 $('b-economy').onclick = () => start('run');
@@ -108,7 +109,7 @@ $('b-broken').onclick = () => start('broken');
 $('b-free').onclick = () => start('sandbox');
 $('b-continue').onclick = () => { const s = readSave(); if (s) start(s.mode, s); else titleButtons(); };
 $('b-restart').onclick = () => {
-  $('s-menu').classList.remove('on'); endEdit(); setTool(null);
+  $('s-menu').classList.remove('on'); if (ui.paused) pause(false); endEdit(); setTool(null);
   closeFloats(null); $('simpanel').classList.add('hidden');
   writeSave(); ui.started = false; setClean(false); $('hud').classList.add('hidden'); $('s-title').classList.add('on'); clearBubbles(); titleButtons();
   st = demoStation(); view.setStation(st); view.setMode('hull'); view.setCutaway(false); view.setOpen(false); view.controls.autoRotate = true; view.camera.position.set(34, 16, 40); view.controls.target.set(0, 0, 0);
@@ -378,7 +379,7 @@ addEventListener('keydown', (e) => {
   else if (k === 'f' && ui.person) setFollow(ui.follow === ui.person ? 0 : ui.person);
   else if (k === 'i') { if (ui.edit) endEdit(); else if (ui.sel && canEdit(ui.sel)) startEdit(ui.sel); }
   else if (k === 'escape') {
-    if ($('s-menu').classList.contains('on')) menu(false);
+    if ($('s-menu').classList.contains('on')) { if (ui.mpage !== 'main' && menuFrom === 'game') menuPage('main'); else menu(false); }
     else if (!$('cmdr').classList.contains('hidden')) cmdr(false);
     else if (!$('upg').classList.contains('hidden')) upg(false);
     else if (ui.edit) { if (ui.room) { ui.room = null; paletteState(); info(); } else endEdit(); }
@@ -393,7 +394,7 @@ addEventListener('keydown', (e) => {
   else if (k === 'o') cmdr();
   else if (k === 'u') upg();
   else if (k === 'c') { setComms(!ui.comms); audio.play('click'); }
-  else if (k === 'j') { setDots(); audio.play('click'); }
+  else if (k === 'j') { setDots(); SET.dots = ui.dots; applySet('dots'); audio.play('click'); }
   else if (k === 'h') setClean(true);
 });
 addEventListener('keyup', (e) => { const k = e.key.toLowerCase(); held.delete(k); if (k === ' ' && e.target.tagName !== 'INPUT') e.preventDefault(); });
@@ -440,6 +441,7 @@ function drawDesk() {
 const clock = (t) => `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
 function radio(from, text, o = {}) {
   const ch = CH[from] || CH.ministry, list = $('c-list');
+  radioLog.push({ who: `CH ${ch.n} · ${ch.name}`, col: ch.col, at: ui.started ? clock(st.t) : '', text, cls: o.warn ? ' warn' : o.gold ? ' gold' : o.dim ? ' dim' : '' }); if (radioLog.length > 400) radioLog.shift();
   const el = document.createElement('div');
   el.className = `cm new${o.warn ? ' warn' : ''}${o.gold ? ' gold' : ''}${o.dim ? ' dim' : ''}`;
   el.style.setProperty('--c', ch.col);
@@ -508,7 +510,12 @@ function drawCmdr() {
     b.onclick = () => { ui.div = k; audio.play('click'); drawCmdr(); };
     tabs.appendChild(b);
   }
-  if (ui.div === 'ledger') { $('cm-main').innerHTML = `<div class="dh" style="--c:#f5d547"><b>THE STATION'S ACCOUNTS</b><span class="sig">▂▄▆█</span></div><div class="lg" id="lg"></div>`; cmType = null; facSig = ''; cmdrText(); return; }
+  if (ui.div === 'ledger') { $('cm-main').innerHTML = `<div class="dh" style="--c:#f5d547"><b>THE STATION'S ACCOUNTS</b><span class="sig">▂▄▆█</span></div>`
+      + (st.sandbox ? '' : `<div class="brow"><span class="bl">LIBERTY CONTRIBUTION · THE COLONIST TAX</span><span class="bv" id="bv-tax"></span><input id="in-tax" type="range" min="0" max="30" step="1" value="${st.tax}"><span class="bn" id="bn-tax"></span></div>`)
+      + '<div class="lg" id="lg"></div>';
+    if ($('in-tax')) $('in-tax').oninput = (e) => { st.setTax(+e.target.value); cmdrText(); };
+    cmType = null; facSig = ''; cmdrText(); return;
+  }
   const k = ui.div, d = C.div[k], ch = CH[k], div = st.div[k];
   let h = `<div class="dh" style="--c:${d.col}"><b>CH ${ch.n} · ${d.name.toUpperCase()}</b><span class="sig">▂▄▆█</span></div><div class="rep" id="cm-rep"></div><div id="cm-fac"></div>`;
   if (d.uses) h += `<div class="brow"><span class="bl">WEEKLY ALLOTMENT · ${C.supplies[d.uses].name.toUpperCase()}</span><span class="bv" id="cm-bv"></span>`
@@ -559,6 +566,10 @@ function cmdrText() {
     s.textContent = d.staff ? `${st.staff[d.staff]}` : k === 'truth' ? (st.div.truth.order.broadcast === 'silence' ? 'off' : 'on') : st.div.traffic.order.rate;
   }
   if ($('dt-ledger')) { const n = st.sandbox ? 0 : st.ledger().credits.net; $('dt-ledger').textContent = st.sandbox ? '' : `${n >= 0 ? '+' : '−'}${Math.abs(Math.round(n))}`; $('dt-ledger').style.color = n < -0.5 ? 'var(--red)' : ''; }
+  if (ui.div === 'ledger' && $('in-tax')) {
+    const p = st.moraleParts(), i = $('in-tax'); if (document.activeElement !== i) i.value = st.tax;
+    $('bv-tax').textContent = `${st.tax}%`; $('bn-tax').textContent = `+${Math.round(st.taxPerMin())} CR a minute from ${st.residents()} residents · morale ${p.tax >= 0 ? '+' : ''}${Math.round(p.tax)}. Up to ${C.morale.taxFree}% they do not mind; every point above costs ${C.morale.taxPenalty} morale.`;
+  }
   if (ui.div === 'ledger') { const box = $('lg'); if (box) { const html = ledgerPage(); if (html !== box._html) { box._html = html; box.innerHTML = html; } } return; }
   const k = ui.div, d = C.div[k], div = st.div[k];
   if ($('cm-bv')) {
@@ -787,27 +798,94 @@ function simStats() {
     + `<span class="wide">${Object.entries(p).filter(([k, x]) => k === 'base' || Math.round(x)).map(([k, x]) => `${k === 'base' ? Math.round(x) : sgn(x)} ${k}`).join(' ')}</span>`;
 }
 
-// ---------------------------------------------------------------- menu
-function menu(on = !$('s-menu').classList.contains('on')) { $('s-menu').classList.toggle('on', on); audio.play('click'); if (on) { $('in-tax').value = st.tax; menuText(); } }
-$('b-menu').onclick = () => menu(); $('b-close').onclick = () => menu(false);
-$('b-mute').onclick = () => { audio.unlock(); audio.mute(!audio.muted); $('b-mute').textContent = audio.muted ? 'SOUND OFF' : 'SOUND ON'; };
-$('in-tax').oninput = (e) => { st.setTax(+e.target.value); menuText(); };
-// People size: a display setting only. 100% is the standard (C.scale); the station and its rooms do not change.
-const PEOPLE_KEY = 'sos.people';
-function setPeople(v, save = true) { const n = Math.max(60, Math.min(160, +v || 100)); view.peopleK = n / 100; $('in-people').value = n; $('bv-people').textContent = `${n}%`; if (save) try { localStorage.setItem(PEOPLE_KEY, String(n)); } catch (e) { /* no storage here */ } }
-$('in-people').oninput = (e) => setPeople(e.target.value);
-try { setPeople(localStorage.getItem(PEOPLE_KEY) || 100, false); } catch (e) { setPeople(100, false); }
-function menuText() {
-  const p = st.moraleParts();
-  $('bv-tax').textContent = `${st.tax}%`;
-  $('bn-tax').textContent = `+${Math.round(st.taxPerMin())} CR/min from ${st.residents()} residents · morale ${p.tax >= 0 ? '+' : ''}${Math.round(p.tax)}`;
-  const net = st.netPerMin(), row = (k, v, c) => `<span>${k}</span><span class="${c}">${v}</span>`;
-  $('ledger').innerHTML = row('Tax', `+${Math.round(st.taxPerMin())} /min`, 'up') + row('Shops and bars', `+${Math.round(st.incomePerMin())} /min`, 'up')
-    + row('Upkeep', `−${Math.round(st.upkeep())} /min`, 'down') + row('Free care', `−${Math.round(st.wages())} /min`, 'down')
-    + row('Trade so far', `+${Math.round(st.totals.trade)}`, 'up')
-    + `<span><b>Running profit, last minute</b></span><span class="${net >= 0 ? 'up' : 'down'}"><b>${net >= 0 ? '+' : '−'}${Math.abs(Math.round(net))} /min</b></span>`;
+// ---------------------------------------------------------------- THE MENU: nothing in it plays the game. It pauses the station.
+// Settings, help, the radio log, saving and credits, laid out the way Orbital Fury's pause menu is. (The tax and the accounts
+// that used to be here are in the Commander's channel, under ACCOUNTS.)
+const SET_KEY = 'sos.settings', PEOPLE_KEY = 'sos.people';
+const SET = { volume: 1, muted: false, quality: 'auto', fps: 'auto', people: 100, dots: true, calm: false, fly: 1, zoom: 1, advice: true };
+try { Object.assign(SET, JSON.parse(localStorage.getItem(SET_KEY)) || {}); const p = +localStorage.getItem(PEOPLE_KEY); if (p && !localStorage.getItem(SET_KEY)) SET.people = p; } catch (e) { /* no storage here: the settings last for this visit */ }
+function applySet(key) {
+  const all = !key, is = (k) => all || key === k;
+  if (is('volume') || is('muted')) { audio.volume(SET.volume); audio.mute(SET.muted); }
+  if (is('quality')) view.setQuality(SET.quality);
+  if (is('people')) view.peopleK = Math.max(60, Math.min(160, +SET.people || 100)) / 100;
+  if (is('dots') && ui.dots !== SET.dots) setDots(SET.dots);
+  if (is('calm')) $('app').classList.toggle('calm', SET.calm);
+  if (is('fly')) view.flyK = SET.fly;
+  if (is('zoom')) view.controls.zoomSpeed = 2.2 * SET.zoom;
+  if (is('advice') && st) st._noAdvice = !SET.advice;
+  if (key) try { localStorage.setItem(SET_KEY, JSON.stringify(SET)); } catch (e) { /* no storage here */ }
 }
-
+function setPeople(v) { SET.people = Math.max(60, Math.min(160, +v || 100)); applySet('people'); const i = $('in-people'); if (i) { i.value = SET.people; i.nextElementSibling.textContent = `${SET.people}%`; } }
+function buildSettings() {
+  const body = $('set-body'); body.innerHTML = '';
+  const sec = (name) => { const h = document.createElement('h3'); h.className = 'set-sec'; h.textContent = name; body.appendChild(h); };
+  const row = (label, hint, control) => { const r = document.createElement('div'); r.className = 'set-row'; r.innerHTML = `<div>${label}<small>${hint}</small></div>`; r.appendChild(control); body.appendChild(r); };
+  const toggle = (key) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'btn tog'; b.dataset.k = key; const paint = () => { b.textContent = SET[key] ? 'ON' : 'OFF'; b.classList.toggle('on', !!SET[key]); }; b.onclick = () => { SET[key] = !SET[key]; paint(); applySet(key); audio.unlock(); audio.play('click'); }; paint(); return b; };
+  const select = (key, opts) => { const el = document.createElement('select'); el.dataset.k = key; for (const [v, l] of opts) { const o = document.createElement('option'); o.value = v; o.textContent = l; el.appendChild(o); } el.value = String(SET[key]); el.onchange = () => { SET[key] = el.value; applySet(key); }; return el; };
+  const range = (key, min, max, step, show, id) => { const w = document.createElement('span'); w.className = 'set-vol'; const r = document.createElement('input'), v = document.createElement('b'); r.type = 'range'; r.min = min; r.max = max; r.step = step; r.value = SET[key]; r.dataset.k = key; if (id) r.id = id; const paint = () => { v.textContent = show(+r.value); }; r.oninput = () => { SET[key] = +r.value; paint(); applySet(key); }; paint(); w.append(r, v); return w; };
+  const pct = (x) => `${Math.round(x * 100)}%`;
+  sec('SOUND');
+  row('Volume', 'Everything the station makes a noise about.', range('volume', 0, 1, 0.05, pct));
+  row('Mute', 'Silence, without losing the volume you set.', toggle('muted'));
+  sec('DISPLAY');
+  row('Drawing quality', 'Low draws fewer pixels: smoother on a phone or an old laptop. High is sharper on a fine screen.', select('quality', [['auto', 'Auto'], ['high', 'High'], ['low', 'Low']]));
+  row('Frames a second', 'A limit saves battery and keeps a laptop cool.', select('fps', [['auto', 'As many as the screen shows'], ['60', '60'], ['30', '30']]));
+  row('People size', '100% is true to scale: a person is 1.8 m and a deck unit is 9 m.', range('people', 60, 160, 10, (x) => `${x}%`, 'in-people'));
+  row('Port dots', 'The little dots that show where a part can go (J).', toggle('dots'));
+  row('Calm display', 'No blinking lights or flashing banners.', toggle('calm'));
+  sec('CAMERA');
+  row('Flying speed', 'How fast W A S D, Space and Shift move the camera.', range('fly', 0.4, 2.5, 0.1, pct));
+  row('Zoom speed', 'How far one turn of the wheel, or one pinch, goes.', range('zoom', 0.4, 2, 0.1, pct));
+  sec('THE STATION');
+  row('Advice on the radio', 'The Ministry and the factions say what the station needs when it matters, and once a week. Off: it is still listed under ACCOUNTS.', toggle('advice'));
+}
+buildSettings(); applySet();
+const radioLog = [];      // everything said on comms this visit, for the RADIO LOG
+let menuWas = false, menuFrom = 'game', lastSave = 0;
+function menuPage(p) {
+  for (const el of document.querySelectorAll('#s-menu .mpage')) el.classList.toggle('on', el.dataset.p === p);
+  const title = { main: ui.started ? 'PAUSED' : 'MENU', settings: 'SETTINGS', help: 'HELP', log: 'RADIO LOG', save: 'SAVE', credits: 'CREDITS' }[p];
+  $('m-title').textContent = title; $('m-backrow').classList.toggle('hidden', p === 'main'); $('m-eye').textContent = ui.started ? 'The station is paused' : 'Super Orbital Simulator';
+  ui.mpage = p;
+  if (p === 'settings') buildSettings();
+  if (p === 'main') { $('m-status').textContent = ui.started ? `${st.sandbox ? 'Free play' : C.tiers[st.tier].name} · week ${st.week()}, day ${st.dow()} · ${st.parts.size} parts · ${st.residents()} residents` : ''; $('m-saved').textContent = st.sandbox ? 'Free play is not saved' : lastSave ? `Saved ${Math.max(0, Math.round((performance.now() - lastSave) / 1000))} s ago` : 'Saves by itself'; $('m-ver').textContent = `Prototype ${C.version}`; }
+  if (p === 'log') { const box = $('m-log'); box.innerHTML = radioLog.length ? radioLog.map((x) => `<div class="rl${x.cls}" style="--c:${x.col}"><b>${x.who}</b><time>${x.at}</time><span>${x.text}</span></div>`).join('') : '<p class="fine">Nothing has been said yet.</p>'; box.scrollTop = box.scrollHeight; }
+  if (p === 'save') saveText();
+  if (p === 'credits') $('cr-ver').textContent = `Prototype ${C.version}.`;
+}
+function menu(on = !$('s-menu').classList.contains('on'), page = 'main') {
+  const was = $('s-menu').classList.contains('on');
+  $('s-menu').classList.toggle('on', on); audio.play('click');
+  if (on && !was) { menuFrom = ui.started ? 'game' : 'title'; menuWas = ui.paused; if (ui.started && !ui.paused) pause(true); }
+  if (!on && was && ui.started && !menuWas && ui.paused) pause(false);      // the station goes on from where it was
+  if (on) menuPage(page);
+}
+$('b-menu').onclick = () => menu(); $('b-close').onclick = () => menu(false); $('m-x').onclick = () => menu(false);
+$('m-back').onclick = () => { audio.play('click'); if (menuFrom === 'title') menu(false); else menuPage('main'); };
+$('b-settings-t').onclick = () => { audio.unlock(); menu(true, 'settings'); };
+for (const b of document.querySelectorAll('#s-menu [data-go]')) b.onclick = () => { audio.play('click'); menuPage(b.dataset.go); };
+// Saving: by itself every few seconds; here, now; and as a code that can be carried to another device.
+const toCode = (o) => `SOS1:${btoa(unescape(encodeURIComponent(JSON.stringify(o))))}`;
+const fromCode = (t) => { const m = /SOS1:([A-Za-z0-9+/=\s]+)/.exec(t || ''); if (!m) return null; try { return JSON.parse(decodeURIComponent(escape(atob(m[1].replace(/\s+/g, ''))))); } catch (e) { return null; } };
+function saveText() {
+  const free = st.sandbox || !ui.started;
+  $('sv-status').textContent = !ui.started ? 'No station is running. A save code can still be loaded below.' : st.sandbox ? 'Free play is not saved: it is a sandbox.' : `The station saves itself every 15 seconds, and when you leave for the title screen. ${lastSave ? `Last saved ${Math.max(0, Math.round((performance.now() - lastSave) / 1000))} seconds ago.` : ''}`;
+  $('sv-now').disabled = free; $('sv-copy').disabled = free;
+  $('sv-code').value = free ? '' : toCode(st.save()); $('sv-msg').textContent = '';
+}
+$('sv-now').onclick = () => { writeSave(); audio.play('built'); saveText(); $('sv-msg').textContent = 'Saved.'; };
+$('sv-copy').onclick = async () => {
+  const t = $('sv-code'); t.focus(); t.select();
+  let ok = false; try { await navigator.clipboard.writeText(t.value); ok = true; } catch (e) { try { ok = document.execCommand('copy'); } catch (e2) { ok = false; } }
+  $('sv-msg').textContent = ok ? `Copied: ${t.value.length.toLocaleString('en-US')} characters.` : 'Could not copy from here. The code is selected: copy it by hand.';
+};
+$('sv-load').onclick = () => {
+  const data = fromCode($('sv-in').value), s = data && (() => { try { return Station.load(data); } catch (e) { return null; } })();
+  if (!s) { audio.play('deny'); $('sv-msg').textContent = data ? `That code is from another version of the game (this is ${C.version}).` : 'That is not a save code. It starts with SOS1:'; return; }
+  $('sv-in').value = ''; $('s-menu').classList.remove('on'); $('s-title').classList.remove('on'); ui.paused = false; $('b-pause').textContent = 'II'; $('b-pause').classList.remove('on');
+  start(s.mode, s); writeSave();
+};
 // ---------------------------------------------------------------- events from the simulation
 let bannerT = 0;
 function showBanner(title, sub, sec, bad = false) { const b = $('banner'); b.innerHTML = `${title}<small>${sub}</small>`; b.classList.toggle('bad', bad); b.classList.add('show'); bannerT = sec; }
@@ -857,7 +935,6 @@ function hud() {
   $('tier-next').textContent = st.sandbox ? '' : n ? ` · next ${n.items.filter((i) => i.ok).length}/${n.items.length}` : ' · top of the path';
   gridState();
   if (!ui.tool) info();
-  if ($('s-menu').classList.contains('on')) menuText();
   if (st.sandbox && !$('simpanel').classList.contains('hidden')) simStats();
   if (!$('cmdr').classList.contains('hidden')) { cmdrText(); drawFac(); }
   if (!$('upg').classList.contains('hidden')) drawUpg();
@@ -923,7 +1000,7 @@ function info(peek) {
   }
   const n = st.next();
   setInfo(`<div class="in">${st.sandbox ? 'FREE PLAY' : `STATION OVERVIEW · ${C.tiers[st.tier].name}`}</div>`
-    + (() => { const a = st.asks()[0]; return `<div class="ia${a ? ' asked' : ''}">${st.requests.length ? `<b>${st.requests.length} on your desk.</b> ` : ''}${a ? `<b class="${a.urgent ? 'down' : ''}">${a.text}</b> ${a.why} <button type="button" class="lk2" id="a-accts">ACCOUNTS</button>` : 'Pick a part on the left and click near a port. Select a part to set its rooms. The factions do the rest: their moods are below.'}</div>`; })()
+    + (() => { const a = st.asks()[0]; return `<div class="ia${a ? ' asked' : ''}">${st.requests.length ? `<b>${st.requests.length} on your desk.</b> ` : ''}${a ? `<b class="${a.urgent ? 'down' : ''}">${a.text}</b> <span class="why">${a.why}</span> <button type="button" class="lk2" id="a-accts">ACCOUNTS</button>` : 'Pick a part on the left and click near a port. Select a part to set its rooms. The factions do the rest: their moods are below.'}</div>`; })()
     + (st.goal && !st.goal.done ? `<ul class="ms">${st.goalItems().map((i) => `<li class="${i.ok ? 'ok' : ''}">${i.label} ${Math.min(i.have, i.need)}/${i.need}</li>`).join('')}<li class="nx">Bring the station back: every item above.</li></ul>` : '')
     + `<div class="st moods">${Object.keys(C.factions).filter((k) => st.roomOpen(C.factions[k].room)).map((k) => stat(C.factions[k].who.toUpperCase(), Math.round(st.sat[k]), st.sat[k] < C.faction.low ? 'bad' : st.sat[k] >= 65 ? 'ok' : 'warn')).join('')}</div>`
     + (st.sandbox || !n || (st.goal && !st.goal.done) ? '' : `<ul class="ms">${n.items.map((i) => `<li class="${i.ok ? 'ok' : ''}">${i.label} ${Math.min(i.have, i.need)}/${i.need}</li>`).join('')}<li class="nx">Next: ${n.name}. The full path is under UPGRADES (U).</li></ul>`), () => { const b = $('a-accts'); if (b) b.onclick = () => openLedger('asks'); });
@@ -1041,6 +1118,7 @@ fx();
 const STEP = 1 / 30;
 let last = performance.now(), acc = 0, hudT = 0, miniT = 0, saveT = 15;
 function frame(nowMs) {
+  if (SET.fps !== 'auto' && nowMs - last < 1000 / +SET.fps - 2) { requestAnimationFrame(frame); return; }      // a limit on frames a second
   const now = nowMs / 1000, dt = Math.min(0.1, (nowMs - last) / 1000); last = nowMs;
   if (!ui.paused) {
     acc += dt * (ui.started ? ui.speed : 1);

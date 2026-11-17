@@ -1,6 +1,6 @@
 // Synthesised sound, built the same way as Orbital Fury's: noise and oscillators, no audio files.
 export class Audio {
-  constructor() { this.ctx = null; this.master = null; this.muted = false; this.last = {}; this.noise = null; }
+  constructor() { this.ctx = null; this.master = null; this.muted = false; this.vol = 1; this.last = {}; this.noise = null; }
 
   // Browsers only allow audio after a user gesture, so this is called from a click or tap.
   unlock() {
@@ -9,13 +9,14 @@ export class Audio {
     if (!AC) return;
     try {
       this.ctx = new AC();
-      this.master = this.ctx.createGain(); this.master.gain.value = 0.45; this.master.connect(this.ctx.destination);
+      this.master = this.ctx.createGain(); this.master.gain.value = this.muted ? 0 : 0.45 * this.vol; this.master.connect(this.ctx.destination);
       const len = this.ctx.sampleRate, buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate), d = buf.getChannelData(0);
       let s = 12345; for (let i = 0; i < len; i++) { s = (s * 1103515245 + 12345) & 0x7fffffff; d[i] = s / 0x3fffffff - 1; }
       this.noise = buf;
     } catch { this.ctx = null; }
   }
-  mute(on) { this.muted = on; if (this.master) this.master.gain.value = on ? 0 : 0.45; }
+  mute(on) { this.muted = on; if (this.master) this.master.gain.value = on ? 0 : 0.45 * this.vol; }
+  volume(v) { this.vol = Math.max(0, Math.min(1, v)); this.mute(this.muted); }
   _ok(key, gap) { if (!this.ctx) return false; const t = this.ctx.currentTime; if (t - (this.last[key] || -9) < gap) return false; this.last[key] = t; return true; }
   _tone(f0, f1, dur, gain, type = 'sine', delay = 0) {
     const c = this.ctx, t = c.currentTime + delay, o = c.createOscillator(), g = c.createGain();

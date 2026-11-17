@@ -126,6 +126,7 @@
         <button id="b-economy" class="btn primary big" type="button">NEW STATION</button>
         <button id="b-broken" class="btn big" type="button">BROKEN STATION</button>
         <button id="b-free" class="btn big" type="button">FREE PLAY</button>
+        <button id="b-settings-t" class="btn" type="button">SETTINGS</button>
       </div>
       <p class="fine"><b>New station:</b> Station Command, 2,500 CR and an Outpost permit. <b>Broken station:</b> take over a dark, stripped station and bring it back.
         <b>Free play:</b> every part and room, no costs, and controls to call in ships, colonists and raids.
@@ -135,34 +136,75 @@
   </section>
 
   <section id="s-menu" class="screen overlay">
-    <div class="card">
-      <div class="eyebrow">The station keeps running while this is open</div>
-      <h2>MENU</h2>
-      <div class="brow"><span class="bl">LIBERTY CONTRIBUTION (TAX)</span><span class="bv" id="bv-tax"></span>
-        <input id="in-tax" type="range" min="0" max="30" step="1"><span class="bn" id="bn-tax"></span></div>
-      <div class="brow"><span class="bl">PEOPLE SIZE</span><span class="bv" id="bv-people"></span>
-        <input id="in-people" type="range" min="60" max="160" step="10"><span class="bn">How large people are drawn against the station. 100% is true to scale: a person is 1.8 m and a deck unit is 9 m.</span></div>
-      <div class="ledger" id="ledger"></div>
-      <div class="keys">
-        <span>Move the camera</span><span>W A S D · Space up · Shift down</span>
-        <span>Swing the camera · zoom</span><span>Q E · wheel, toward the pointer</span>
-        <span>Parts in the open group</span><span>1 to 9</span>
-        <span>Next group</span><span>Tab</span>
-        <span>Turn part</span><span>R</span>
-        <span>Edit inside the selected part</span><span>I</span>
-        <span>Demolish · focus a part · follow a person</span><span>X · F · F</span>
-        <span>Views · inside · cutaway</span><span>V · T · G</span>
-        <span>Commander · upgrades · comms</span><span>O · U · C</span>
-        <span>Port dots · hide interface</span><span>J · H</span>
-        <span>Pause</span><span>P</span>
-        <span>Free play controls</span><span>K</span>
-        <span>Saving</span><span>by itself, every few seconds</span>
+    <div class="card mcard">
+      <button class="x mx" id="m-x" type="button" title="Close (Esc)">×</button>
+      <div class="eyebrow" id="m-eye">The station is paused</div>
+      <h2 id="m-title">PAUSED</h2>
+      <div class="mpage on" data-p="main">
+        <div class="pm">
+          <button id="b-close" class="btn primary big pm-w" type="button">RESUME</button>
+          <button class="btn" type="button" data-go="settings">SETTINGS<small>Sound, display, camera</small></button>
+          <button class="btn" type="button" data-go="help">HELP<small>Keys, touch, how it works</small></button>
+          <button class="btn" type="button" data-go="log">RADIO LOG<small>Everything said on comms</small></button>
+          <button class="btn" type="button" data-go="save">SAVE<small id="m-saved">Saves by itself</small></button>
+          <button id="b-restart" class="btn pm-w" type="button">TITLE SCREEN<small>Saves first</small></button>
+        </div>
+        <p class="fine" id="m-status"></p>
+        <div class="pm-foot"><a class="fb" href="https://discord.com/invite/qruRY4nkEz" target="_blank" rel="noopener">FEEDBACK</a><span>·</span><button type="button" data-go="credits">CREDITS</button><span>·</span><span id="m-ver"></span></div>
       </div>
-      <div class="btns">
-        <button id="b-close" class="btn primary" type="button">BACK TO THE STATION</button>
-        <button id="b-mute" class="btn" type="button">SOUND ON</button>
-        <button id="b-restart" class="btn" type="button">TITLE SCREEN</button>
+      <div class="mpage" data-p="settings"><div id="set-body"></div></div>
+      <div class="mpage" data-p="help">
+        <h3 class="set-sec">KEYS</h3>
+        <div class="keys">
+          <span>Move the camera</span><span>W A S D · Space up · Shift down</span>
+          <span>Swing the camera · zoom</span><span>Q E · wheel, toward the pointer</span>
+          <span>Parts in the open group</span><span>1 to 9</span>
+          <span>Next group</span><span>Tab</span>
+          <span>Turn part</span><span>R</span>
+          <span>Edit inside the selected part</span><span>I</span>
+          <span>Demolish · focus a part · follow a person</span><span>X · F · F</span>
+          <span>Views · inside · cutaway</span><span>V · T · G</span>
+          <span>Commander · upgrades · comms</span><span>O · U · C</span>
+          <span>Port dots · hide interface</span><span>J · H</span>
+          <span>Pause · this menu</span><span>P · M or Esc</span>
+          <span>Free play controls</span><span>K</span>
+        </div>
+        <h3 class="set-sec">TOUCH</h3>
+        <div class="keys">
+          <span>Turn the camera</span><span>drag with one finger</span>
+          <span>Move · zoom</span><span>drag with two · pinch</span>
+          <span>Pick a part, a room or a person</span><span>tap</span>
+          <span>Follow a person</span><span>tap them twice</span>
+        </div>
+        <h3 class="set-sec">HOW IT WORKS</h3>
+        <ol class="how">
+          <li><b>Build.</b> Pick a part at the bottom left and click near a port. Select a part and press EDIT INSIDE to set its rooms.</li>
+          <li><b>Trade pays for it.</b> Freighters dock, haulers unload, and every crate and ship is credits. Parts and rooms cost upkeep every minute, used or not.</li>
+          <li><b>Read the accounts.</b> Hover any number on the top bar for where it comes from and goes. Click it, or open COMMANDER, for the full ACCOUNTS: credits, stores, power, people, morale.</li>
+          <li><b>Do what is asked.</b> The overview and the accounts list what the station needs next, most pressing first, and how to do it.</li>
+          <li><b>Answer your desk.</b> Requests from the factions wait there. Unanswered ones go the way the faction wanted.</li>
+        </ol>
       </div>
+      <div class="mpage" data-p="log"><div id="m-log" class="mlog-list"></div></div>
+      <div class="mpage" data-p="save">
+        <p id="sv-status" class="fine"></p>
+        <div class="btns"><button id="sv-now" class="btn primary" type="button">SAVE NOW</button></div>
+        <h3 class="set-sec">SAVE CODE</h3>
+        <p class="fine">The whole station as text. Copy it somewhere safe, or to another device, and load it there.</p>
+        <textarea id="sv-code" readonly rows="3" spellcheck="false" aria-label="This station's save code"></textarea>
+        <div class="btns"><button id="sv-copy" class="btn" type="button">COPY THE CODE</button></div>
+        <h3 class="set-sec">LOAD A CODE</h3>
+        <textarea id="sv-in" rows="3" spellcheck="false" placeholder="Paste a save code here" aria-label="A save code to load"></textarea>
+        <div class="btns"><button id="sv-load" class="btn" type="button">LOAD IT</button></div>
+        <p id="sv-msg" class="fine"></p>
+      </div>
+      <div class="mpage" data-p="credits">
+        <p class="cred"><b>SUPER ORBITAL SIMULATOR</b><br>An unofficial fan project for the Super Earth Special Forces community, by Robert Troumbley.</p>
+        <p class="cred">Not affiliated with or endorsed by Arrowhead Game Studios or Sony Interactive Entertainment. Helldivers is their trademark.</p>
+        <p class="cred">Every part, room, ship and person is drawn in code. The 3D is <b>three.js</b> (MIT licence). The look, the sound and the planets follow <a href="https://orbitalfury.com/" target="_blank" rel="noopener">Orbital Fury</a>.</p>
+        <p class="cred" id="cr-ver"></p>
+      </div>
+      <div class="btns mback hidden" id="m-backrow"><button id="m-back" class="btn primary" type="button">BACK</button></div>
     </div>
   </section>
 </div>

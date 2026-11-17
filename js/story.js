@@ -141,7 +141,7 @@ export function installStory(Station) {
       if (!this.sandbox) this.say('ministry', `Week ${this.week() - 1} report. Capability ${capNow} (${gain >= 0 ? '+' : ''}${gain}). ${this.weekIn} crates into the stores. ${shorts.length ? `Short of: ${shorts.join(', ')}.` : 'No shortages.'}`, { gold: gain > 0 && !shorts.length });
       this.lastWeek = { in: this.weekIn, cap: capNow }; this.weekIn = 0;
       // and the one thing most worth doing next, so growing is never a guess
-      if (!this.sandbox) { const ask = this.asks().find((x) => !x.urgent); if (ask) this.say(ask.from === 'colonists' ? 'colonists' : ask.from, `Asked of you this week. ${ask.text} ${ask.why}`); }
+      if (!this.sandbox && !this._noAdvice) { const ask = this.asks().find((x) => !x.urgent); if (ask) this.say(ask.from === 'colonists' ? 'colonists' : ask.from, `Asked of you this week. ${ask.text} ${ask.why}`); }
       this.events.push({ type: 'week', week: this.week() });
       if (!this.sandbox) this._allotAsk();
     },

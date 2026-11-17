@@ -2,7 +2,7 @@
 
 Run a space station and the people aboard it. A browser game for the **Super Earth Special Forces** community, in the same look as [Orbital Fury](https://orbitalfury.com/).
 
-> **Prototype 0.11: hallways that join up, airlocks, and closed lifts.** Every side port now opens onto a deck at the same height, so floors meet level wherever two parts join, with an airlock between them. Every part has floor all the way from each port to its hallway. Lifts are closed tubes: people walk in and are out of sight until they walk out, so nothing passes through anything. The open lift frames and the spiral stairs are gone.
+> **Prototype 0.11.2: the accounts, what you are asked for, morale, traffic and a proper menu.** Hover any number on the top bar to see where it comes from and goes; COMMANDER opens on the full ACCOUNTS. The station now tells you what it needs next and warns before the credits turn. Morale has a chart, a breakdown and ways to raise it. Ships go round the station instead of through it. The menu is a pause menu with settings, help, a radio log, save codes and credits, and nothing in it plays the game.
 
 **Your station. Its people. What happens to them.** It is a space station simulator: think Deep Space Nine in the Helldivers universe, with you as the station's commander. You start with Station Command in empty space, snap parts onto it and set their rooms. Then the people move in, and the station becomes theirs as much as yours.
 
@@ -11,6 +11,41 @@ Run a space station and the people aboard it. A browser game for the **Super Ear
 It runs in your browser on a computer, or on a phone or tablet held sideways. There is nothing to install. Turn the sound on.
 
 **Quick start:** press **NEW STATION**. Open **FIRE** and put a Ship Gun on a side port. Open the **DOCK** group at the bottom left, press `Q` for a Docking Port, move the pointer near Station Command and click when the little dot lights up. Add a Cargo Module from **INDUS** and a Hab Module from **HAB** the same way. Ships and colonists arrive within a minute, and soon after that the first thing lands on your desk.
+
+## What's new in 0.11.2
+
+Four things were asked for.
+
+**1. A breakdown of where the credits and other resources go, on hover, on click and in the Commander's channel.**
+
+- **Hover** any readout on the top bar (capability, credits, power, people, morale, readiness, ships) for where it comes from and where it goes. **Click** it for the full page.
+- **ACCOUNTS** is the first page of the Commander's channel. Credits coming in and going out, line by line, with upkeep grouped by kind of part and room, biggest first. The stores: what is in them, what a week uses, how long it lasts and who uses it. Power made and used. People, beds and staff on duty. Morale. Capability.
+- It says plainly if the station is gaining or losing, and how many days the credits will last. Parts that stand empty or broken are counted with what they cost.
+- A check (`node test/ledger.mjs`) runs a station for twelve minutes and compares the accounts with what the credits actually did: 1.7% apart.
+
+**2. Being asked for what the station needs to grow, so there is no credit spiral for no reason.**
+
+- **ASKED OF YOU** heads the accounts and the overview: what the station needs next, most pressing first, each with who asks and how to do it. It covers losing credits, short power, empty stores, falling morale, a faction with nobody on duty, a shut berth, and every item the next tier still needs.
+- An urgent ask is said on the radio once, while there is still time to act, and again only if it is still true days later. One growth ask comes with each weekly report.
+- **Before you build:** a part in hand shows NET AFTER, the credits a minute once its upkeep is paid. The build tip warns if it would put the station in the red.
+
+**3. More ways to fix morale, and a way to track it.**
+
+- **Track:** a chart of morale four times a day for two weeks, with the two lines that matter (colonists stop coming, residents leave). What makes it up, line by line. The top bar shows which way it is heading.
+- **Ways to raise it:** a list worked out from the station as it stands, each with what it adds and what it costs. Those that are orders have a DO IT button.
+- **New ways:** a **rations** order (double rations: morale +6, rations go twice as fast; short rations: half the rations, morale −8), **Liberty Day** (150 CR, morale +12 wearing off over three days, one a week), and the **Recreation Deck** room (+2).
+- The colonist tax moved from the menu to the top of ACCOUNTS.
+
+**4. A clean menu, laid out like Orbital Fury's.**
+
+- The menu used to hold the tax slider and a small ledger. Those are gameplay and are now in the Commander's channel. Opening the menu pauses the station.
+- **RESUME · SETTINGS · HELP · RADIO LOG · SAVE · TITLE SCREEN**, with FEEDBACK and CREDITS underneath.
+- **Settings:** volume, mute, drawing quality, frames a second, people size, port dots, calm display (no blinking), flying speed, zoom speed, and advice on the radio. Remembered between visits. Also reachable from the title screen.
+- **Help:** keys, touch, and how the station works. **Radio log:** everything said on comms. **Save:** save now, and a save code you can copy to another device and load there.
+
+Also in this version: flying things see each part's true shape, not a box round it, so a gun barrel or the middle of a ring no longer shuts a berth that is clear.
+
+Not done yet: there is no music, so there is one volume. Settings that Orbital Fury has and this does not: language, interface size, colour-blind colours, rebinding keys. The radio log is this visit only. A save code is long (tens of thousands of characters).
 
 ## What's new in 0.11.1
 
@@ -206,6 +241,7 @@ index.html          the page, the title card and the menu
 css/style.css       the Orbital Fury theme plus the Age of Empires-style HUD
 js/config.js        every tuning number: parts, rooms, divisions, orders and tiers
 js/math3.js         small vector and quaternion helpers for the simulation
+js/ledger.js        the accounts and the asks: where everything comes from and goes, and what the station needs next
 js/story.js         the story layer: days and weeks, supplies, what reaches the commander, raids, the Broken Station, saving
 js/sim.js           the simulation: parts and rooms, walking, staff, ships, faults, economy, morale, tiers (no DOM, no 3D)
 js/parts.js         every part, room, ship and suit, drawn in code, plus the grid icons
@@ -217,6 +253,7 @@ js/main.js          the loop, input, HUD, comms, the Commander's channel, the up
 js/vendor/three.js  three.js (MIT), see js/vendor/THREE-LICENSE
 test/headless.mjs   runs a station without a browser and prints the economy, capability and faction moods (add `approve` as a fifth argument to say yes to every request)
 test/story.mjs      plays the story with no browser: supplies, requests, a raid, a save and the Broken Station
+test/ledger.mjs     the accounts add up to what the credits really do; every way to raise morale does what it says
 test/traffic.mjs    flies a crowded station in the real page: no ship, raider or craft may touch a hull or each other
 test/walks.mjs      walks every route through every kind of part: floor under every step, nothing in the way
 test/ui.mjs         plays it through the real page on a desktop and a phone held sideways

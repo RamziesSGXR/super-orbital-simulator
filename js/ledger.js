@@ -164,7 +164,7 @@ export function installLedger(Station) {
     _advise(dt) {
       // morale is kept, four readings a day for two weeks, so it can be seen where it has been
       if (this.t - (this.mlogT ?? -1e9) >= C.time.daySec / 4) { this.mlogT = this.t; (this.mlog ||= []).push(Math.round(this.morale)); if (this.mlog.length > 56) this.mlog.shift(); }
-      if (this.sandbox || this.t < 45) return;
+      if (this.sandbox || this.t < 45 || this._noAdvice) return;
       if ((this._adv = (this._adv || 0) + dt) < 4) return;
       this._adv = 0; this._said ||= {};
       const again = C.time.daySec * 4;
