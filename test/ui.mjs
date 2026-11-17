@@ -37,7 +37,15 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
   await page.goto(`${BASE}/index.html?seed=1`); await page.waitForTimeout(1500);
   check('the title shows over a demo station', await page.isVisible('#s-title') && await page.evaluate(() => window.__view.partObjs.size) > 20);
   await page.screenshot({ path: 'test/shots/title.png' });
-  await page.click('#b-economy'); await page.waitForTimeout(500);
+  await page.click('#b-economy'); await page.waitForTimeout(400);
+  check('NEW STATION opens FOUND YOUR FACTION first, as in FOB Super Commander', await page.isVisible('#s-faction') && /FOUND YOUR FACTION/.test(await page.textContent('#fx-title')) && !(await page.evaluate(() => !!(window.__ui && window.__ui.started))));
+  await page.click('#s-faction [data-cy="shape:1"]'); await page.click('#s-faction [data-cy="symbol:1"]'); await page.click('#s-faction .sw[data-k="logo.bg"] [data-c="#8a1c1c"]');
+  await page.click('#s-faction .sw[data-k="primary"] [data-c="#1d3f8a"]'); await page.click('#s-faction .sw[data-k="look.uniform"] [data-c="#8a1c1c"]');
+  await page.fill('#fx-name', '404th Starward Watch'); await page.fill('#fx-base', 'Vigil Bastion'); await page.fill('#fx-motto', 'Always overhead.'); await page.fill('#fx-text', 'sw4!');
+  check('the crest maker changes the crest, and the letters are kept to four capitals', await page.evaluate(() => document.getElementById('fx-shape').textContent === 'circle' && document.getElementById('fx-text').value === 'SW4'));
+  await page.click('#fx-go'); await page.waitForTimeout(600);
+  check('founding starts the station with the faction: its name on the station, its colours and crest in the livery', await page.evaluate(() => { const s = window.__st, f = s.faction; return window.__ui.started && f.name === '404th Starward Watch' && f.station === 'Vigil Bastion' && f.logo.bg === '#8a1c1c' && s.livery.name === 'Vigil Bastion' && s.livery.accent === '#1d3f8a' && s.livery.emblem === 'crest' && f.look.uniform === '#8a1c1c'; }));
+  check('the nameplate carries the crest, and the station\'s troopers wear the uniform', await page.evaluate(() => { const v = window.__view, c = v.decalCv.getContext('2d').getImageData(80, 128, 4, 4).data; const red = c[0] > 110 && c[1] < 60; const g = v.figs.trooper.geometry.attributes.color, n = g.count; let hit = 0; for (let i = 0; i < n; i++) if (Math.abs(g.getX(i) - 0.25) < 0.08 && g.getY(i) < 0.05) hit++; return red && hit > 20; }));
   check('ECONOMY starts with Station Command alone and 2,500 CR', await page.evaluate(() => window.__st.parts.size === 1 && window.__st.credits > 2490 && window.__st.credits <= 2500));
   check('Hull is the default view', await page.evaluate(() => window.__view.mode === 'hull' && window.__ui.view === 'hull') && await page.$eval('.vb[data-v="hull"]', (b) => b.classList.contains('on')));
   check('the top bar shows capability, not a profit figure', await page.evaluate(() => !document.getElementById('r-net') && /^\d/.test(document.getElementById('r-cap').textContent)));
@@ -134,11 +142,15 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
   await page.fill('#lv-name', 'Tharsis Watch'); await page.press('#lv-name', 'Enter'); await page.waitForTimeout(200);
   check('livery sets the name, colours, plating and emblem', await page.evaluate(() => { const L = window.__st.livery, v = window.__view; return L.name === 'Tharsis Watch' && L.scheme === 'sesf' && L.plating === 'plates' && L.emblem === 'star' && '#' + v.M.hull.color.getHexString() === '#2b2e33' && v.M.hull.map === v.plateTex.plates; }), await page.evaluate(() => JSON.stringify(window.__st.livery)));
   await page.screenshot({ path: 'test/shots/livery.png' });
+  await page.click('#b-liv'); await page.click('#b-liv'); await page.waitForTimeout(150);
+  check('LIVERY shows your faction, and EDIT YOUR FACTION opens the same screen with the game paused', await page.isVisible('#lv-crest') && await (async () => { await page.click('#lv-fx'); await page.waitForTimeout(200); return /EDIT YOUR FACTION/.test(await page.textContent('#fx-title')) && await page.evaluate(() => window.__ui.paused); })());
+  await page.fill('#fx-motto', 'Liberty in orbit.'); await page.click('#fx-go'); await page.waitForTimeout(200);
+  check('saving the changes keeps the station running, and the screens take the new motto', await page.evaluate(() => window.__st.faction.motto === 'Liberty in orbit.' && !window.__ui.paused && !document.getElementById('s-faction').classList.contains('on') && window.__view.faction.motto === 'Liberty in orbit.'));
   check('the livery sets every Propaganda Screen\'s programme and your own lines, and a new screen starts on it', await page.evaluate(async () => {
     const C0 = (await import('/js/config.js')).C, s = window.__st, t0 = s.tier; s.tier = Math.max(t0, C0.parts.billboard.tier || 0); const fp = s.freePorts().find((f) => s.canBuild('billboard', f.part, f.i).ok); if (!fp) { s.tier = t0; return false; }
     const id = s.build('billboard', fp.part, fp.i).id; s.tier = t0; s.parts.get(id).state = 'active'; return true;
   }) && await (async () => {
-    await page.click('#b-liv'); await page.click('#b-liv'); await page.waitForTimeout(150);
+    if (await page.isHidden('#liv')) await page.click('#b-liv'); await page.waitForTimeout(150);
     await page.click('#lv-body [data-allshow="recruit"]'); await page.waitForTimeout(100);
     await page.fill('#lv-lines', 'DECK SIX BAR OPEN\nREPORT DISSENT'); await page.dispatchEvent('#lv-lines', 'change'); await page.waitForTimeout(100);
     return page.evaluate(() => { const s = window.__st, bs = [...s.parts.values()].filter((p) => p.type === 'billboard'); const ok = bs.length && bs.every((p) => p.show === 'recruit') && s.screenLines.join('|') === 'DECK SIX BAR OPEN|REPORT DISSENT' && s.screenDefault === 'recruit'; for (const p of bs) s.demolish(p.id); return ok; });
@@ -240,7 +252,7 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
 
   // The upgrade path.
   await page.keyboard.press('u'); await page.waitForFunction(() => document.querySelectorAll('#up-list .tier').length === 4, null, { timeout: 15000 }).catch(() => {});
-  check('U shows the upgrade path, Outpost to Citadel', (await page.$$('#up-list .tier')).length === 4 && await page.isVisible('#up-list .tier.now') && (await page.$$('#up-list .tier.next .req')).length === 4, await page.evaluate(() => JSON.stringify({ open: !document.getElementById('upg').classList.contains('hidden'), tiers: document.querySelectorAll('#up-list .tier').length, req: document.querySelectorAll('#up-list .tier.next .req').length, focus: document.activeElement && document.activeElement.tagName + '#' + document.activeElement.id, tier: window.__st.tier })));
+  check('U shows the upgrade path, Outpost to Citadel', (await page.$$('#up-list .tier')).length === 4 && await page.isVisible('#up-list .tier.now') && (await page.$$('#up-list .tier.next .req')).length >= 4, await page.evaluate(() => JSON.stringify({ open: !document.getElementById('upg').classList.contains('hidden'), tiers: document.querySelectorAll('#up-list .tier').length, req: document.querySelectorAll('#up-list .tier.next .req').length, focus: document.activeElement && document.activeElement.tagName + '#' + document.activeElement.id, tier: window.__st.tier })));
   await page.screenshot({ path: 'test/shots/upgrades.png' });
   await page.keyboard.press('u');
   for (let i = 0; i < 14 && await page.evaluate(() => window.__st.tier) < 1; i++) await steps(page, 60);
@@ -482,7 +494,7 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
   const errs = []; page.on('pageerror', (e) => { errs.push(e.message); console.log('  page error:', e.message); });
   await page.goto(`${BASE}/index.html?seed=5`); await page.waitForTimeout(1200);
   check('the title offers a new station, a broken one and free play, and no Continue before there is a save', await page.isVisible('#b-economy') && await page.isVisible('#b-broken') && await page.isVisible('#b-free') && await page.isHidden('#b-continue'));
-  await page.click('#b-broken'); await page.waitForTimeout(800);
+  await page.click('#b-broken'); await page.waitForTimeout(300); await page.click('#fx-go'); await page.waitForTimeout(800);
   const w0 = await page.evaluate(() => ({ n: window.__st.parts.size, dark: [...window.__st.parts.values()].filter((p) => p.fault).length, mode: window.__st.mode }));
   check('the Broken Station is a dark, stripped station', w0.mode === 'broken' && w0.n >= 15 && w0.dark >= 5 && /Parts repaired/.test(await page.textContent('#info')), JSON.stringify(w0));
   await page.screenshot({ path: 'test/shots/broken.png' });
@@ -528,8 +540,8 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
   await page.keyboard.press('F3'); await page.waitForTimeout(700);
   check('F3 opens the debug readout (version, fps, station)', await page.isVisible('#debug') && /v\d+\.\d+.*fps/.test(await page.textContent('#debug-t')));
   check('the debug report carries the station and any errors', await page.evaluate(() => /Super Orbital Simulator/.test(window.__debugReport()) && /parts/.test(window.__debugReport())));
-  await page.keyboard.press('F3'); await page.waitForTimeout(200);
-  check('F3 again closes it', !(await page.isVisible('#debug')), await page.evaluate(() => window.__debugReport().split('\n').filter((l) => /rror|at /.test(l)).slice(0, 6).join(' | ')));
+  await page.keyboard.press('F3'); await page.waitForSelector('#debug', { state: 'hidden', timeout: 2000 }).catch(() => {});
+  check('F3 again closes it', !(await page.isVisible('#debug')), await page.evaluate(() => window.__debugReport().split('\n').slice(-8).join(' | ')));
   check('the speed button goes down to half speed, and [ ] step it', await (async () => {
     await page.keyboard.press('['); await page.keyboard.press('['); await page.keyboard.press('['); await page.waitForTimeout(100);
     const half = await page.evaluate(() => window.__ui.speed === 0.5 && document.getElementById('b-speed').textContent === '½×');

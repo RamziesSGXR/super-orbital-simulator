@@ -9,6 +9,7 @@ import { C } from './config.js';
 import { buildPart, buildShip, buildRoom, buildSuit, buildFigure, buildRaider, buildEagle, FIGURES, SLOTS, WALK, partPath, wayPoint, onWalk, slotSpot, doorSide, sillY, liftR, FL, LIFT_R } from './parts.js';
 import { paintWorld, WORLDS, WORLD_TYPES } from './planets.js';
 import { RNG } from './rng.js';
+import { drawLogo, ensureLogo } from './logo.js';
 
 const GREEN = 0x7fe9e0, YELLOW = 0xf5d547, BLUE = 0x7fe9e0;      // the drawing lines are cyan and selections amber, as in the interface
 const ROLE_COL = { resident: [0.85, 1, 0.9], hauler: [0.3, 0.72, 1], engineer: [1, 0.76, 0.25], officer: [1, 0.35, 0.29], medic: [0.6, 1, 0.75], aide: [0.96, 0.84, 0.28], scientist: [0.7, 0.55, 1], gunner: [1, 0.6, 0.23], carry: [1, 0.69, 0.13], eva: [1, 1, 1] };
@@ -267,7 +268,8 @@ export class View {
     c.fillStyle = L.trim; c.strokeStyle = L.trim; c.lineJoin = 'round';
     const name = (L.name || 'SUPER EARTH').toUpperCase().slice(0, 18), cx = 128, cy = 128;
     c.save(); c.translate(L.emblem === 'none' ? -400 : cx, cy);
-    if (L.emblem === 'wings') { for (const s of [1, -1]) { c.beginPath(); c.moveTo(s * 12, -6); c.lineTo(s * 92, -52); c.lineTo(s * 70, -16); c.lineTo(s * 86, -14); c.lineTo(s * 58, 14); c.lineTo(s * 70, 16); c.lineTo(s * 12, 44); c.closePath(); c.fill(); } c.beginPath(); c.moveTo(0, -64); c.lineTo(20, 0); c.lineTo(0, 70); c.lineTo(-20, 0); c.closePath(); c.fill(); }
+    if (L.emblem === 'crest') { if (this.faction) drawLogo(c, this.faction.logo, -104, -104, 208); }
+    else if (L.emblem === 'wings') { for (const s of [1, -1]) { c.beginPath(); c.moveTo(s * 12, -6); c.lineTo(s * 92, -52); c.lineTo(s * 70, -16); c.lineTo(s * 86, -14); c.lineTo(s * 58, 14); c.lineTo(s * 70, 16); c.lineTo(s * 12, 44); c.closePath(); c.fill(); } c.beginPath(); c.moveTo(0, -64); c.lineTo(20, 0); c.lineTo(0, 70); c.lineTo(-20, 0); c.closePath(); c.fill(); }
     else if (L.emblem === 'star') { c.beginPath(); for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? 34 : 82; c[i ? 'lineTo' : 'moveTo'](Math.cos(a) * rr, Math.sin(a) * rr); } c.closePath(); c.fill(); c.lineWidth = 6; c.beginPath(); c.arc(0, 0, 94, 0, 6.3); c.stroke(); }
     else if (L.emblem === 'shield') { c.beginPath(); c.moveTo(-70, -76); c.lineTo(70, -76); c.lineTo(70, 6); c.quadraticCurveTo(64, 62, 0, 88); c.quadraticCurveTo(-64, 62, -70, 6); c.closePath(); c.fill(); c.fillStyle = L.accent; c.fillRect(-12, -62, 24, 128); c.fillRect(-56, -22, 112, 22); }
     else if (L.emblem === 'laurel') { for (const s of [1, -1]) for (let i = 0; i < 7; i++) { const a = Math.PI / 2 + s * (0.35 + i * 0.33); c.save(); c.translate(Math.cos(a) * 70, Math.sin(a) * 70); c.rotate(a + s * 1.0); c.beginPath(); c.ellipse(0, 0, 22, 9, 0, 0, 6.3); c.fill(); c.restore(); } c.beginPath(); c.arc(0, 0, 26, 0, 6.3); c.fill(); }
@@ -279,6 +281,14 @@ export class View {
     while (fs > 22 && (lines.some((l) => c.measureText(l).width > maxW) || lines.length * fs * 1.1 > 190)) { fs -= 4; c.font = `bold ${fs}px "Chakra Petch", ui-monospace, Menlo, monospace`; }
     lines.forEach((l, i) => c.fillText(l, tx, H / 2 + (i - (lines.length - 1) / 2) * fs * 1.1));
     this.decalTex.needsUpdate = true;
+  }
+  // YOUR FACTION: its crest on the nameplates and screens, its motto on the screens, its uniform on the station's troopers.
+  setFaction(f) {
+    this.faction = f;
+    const redo = () => { if (this.livery) this._drawDecal(); for (const x of Object.values(this.shows || {})) x.k = -1; };
+    redo(); ensureLogo(f.logo).then(redo);      // an uploaded picture is decoded first; the crest is drawn until it is
+    const L = f.look || {};
+    if (this.figs) for (const [set, pose] of [[this.figs, 'stand'], [this.figsW, 'walk']]) { const im = set.trooper; im.geometry.dispose(); im.geometry = buildFigure('trooper', pose, L); }
   }
   setLivery(L) {
     const M = this.M, D = C.livery;
@@ -317,7 +327,7 @@ export class View {
       if (k === x.k && !(live && now - x.at > 2)) continue;
       x.k = k; x.at = now;
       const lines = prog === 'own' ? st.screenLines || S.own : prog === 'station' ? null : S[prog];
-      drawScreen(x.cv, prog, lines ? lines[k % lines.length] : null, st, this.livery, k);
+      drawScreen(x.cv, prog, lines ? lines[k % lines.length] : null, st, this.livery, k, this.faction);
       x.tex.needsUpdate = true;
     }
   }
@@ -1419,17 +1429,19 @@ function fitText(c, text, w, h, max, min, weight, family) {
   c.font = `${weight} ${min}px ${family}`; return [[String(text).slice(0, 40)], min];
 }
 // One programme's picture: a header bar with the channel and the station's name, the message fitted in the middle, a footer.
-function drawScreen(cv, prog, msg, st, liv, k) {
+function drawScreen(cv, prog, msg, st, liv, k, fac) {
   const c = cv.getContext('2d'), W = cv.width, H = cv.height, Y = '#ffe600', F = 'ui-sans-serif, "Helvetica Neue", Arial, sans-serif';
   const head = { slogans: 'MINISTRY OF TRUTH', news: 'WAR NEWS · LIVE', recruit: 'ENLIST · SEAF', station: 'STATION BULLETIN', own: 'COMMANDER’S NOTICE' }[prog];
   const bg = c.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, prog === 'recruit' ? '#2a0606' : '#06090c'); bg.addColorStop(1, prog === 'recruit' ? '#0d0202' : '#020305');
   c.fillStyle = bg; c.fillRect(0, 0, W, H);
-  c.fillStyle = Y; c.fillRect(0, 0, W, 54); c.fillStyle = '#111'; c.textBaseline = 'middle'; c.textAlign = 'left'; c.font = `700 26px ${F}`; c.fillText(head, 28, 28);
+  c.fillStyle = Y; c.fillRect(0, 0, W, 54); c.fillStyle = '#111'; c.textBaseline = 'middle'; c.textAlign = 'left'; c.font = `700 26px ${F}`; c.fillText(head, fac ? 70 : 28, 28);
+  if (fac) { c.save(); drawLogo(c, fac.logo, 20, 4, 46); c.restore(); }
   c.textAlign = 'right'; c.font = `600 22px ${F}`; c.fillText(String((liv && liv.name) || 'SUPER EARTH').toUpperCase().slice(0, 26), W - 28, 28);
   c.textAlign = 'center';
   if (prog === 'station') {
-    const nm = String((liv && liv.name) || 'Orbital Station').toUpperCase(), [l1, f1] = fitText(c, nm, W - 120, 150, 76, 30, 800, F);
-    c.fillStyle = Y; c.font = `800 ${f1}px ${F}`; l1.forEach((l, i) => c.fillText(l, W / 2, 150 + (i - (l1.length - 1) / 2) * f1 * 1.1));
+    const nm = String((liv && liv.name) || 'Orbital Station').toUpperCase(), [l1, f1] = fitText(c, nm, W - (fac ? 300 : 120), 150, 76, 30, 800, F), tx = fac ? W / 2 + 80 : W / 2;
+    if (fac) { c.save(); drawLogo(c, fac.logo, 60, 72, 170); c.restore(); c.textAlign = 'center'; }
+    c.fillStyle = Y; c.font = `800 ${f1}px ${F}`; l1.forEach((l, i) => c.fillText(l, tx, 150 + (i - (l1.length - 1) / 2) * f1 * 1.1));
     const rows = [['RESIDENTS', st.residents()], ['MORALE', Math.round(st.morale)], ['CRATES', st.stats.crates], ['SHIPS SERVED', st.stats.ships]];
     rows.forEach(([a, b], i) => { const x = W / 2 + (i - 1.5) * 175; c.fillStyle = '#9fb0a8'; c.font = `600 18px ${F}`; c.fillText(a, x, 300); c.fillStyle = '#fff'; c.font = `700 46px ${F}`; c.fillText(String(b), x, 346); });
   } else {
@@ -1438,7 +1450,7 @@ function drawScreen(cv, prog, msg, st, liv, k) {
     const mid = 54 + (H - 54 - 40) / 2; lines.forEach((l, i) => c.fillText(l, W / 2, mid + (i - (lines.length - 1) / 2) * fs * 1.12));
   }
   c.fillStyle = 'rgba(255,230,0,0.85)'; c.fillRect(28, H - 34, W - 56, 3);
-  c.fillStyle = '#9fb0a8'; c.font = `600 17px ${F}`; c.textAlign = 'left'; c.fillText(prog === 'news' ? 'REPORTED BY THE MINISTRY OF TRUTH' : prog === 'recruit' ? 'SEE A DEMOCRACY OFFICER' : 'FOR SUPER EARTH', 28, H - 15);
+  c.fillStyle = '#9fb0a8'; c.font = `600 17px ${F}`; c.textAlign = 'left'; c.fillText(prog === 'news' ? 'REPORTED BY THE MINISTRY OF TRUTH' : prog === 'recruit' ? 'SEE A DEMOCRACY OFFICER' : fac ? String(fac.motto || 'For Super Earth.').toUpperCase().slice(0, 48) : 'FOR SUPER EARTH', 28, H - 15);
   c.textAlign = 'right'; c.fillText(`WEEK ${st.week()} · DAY ${st.dow()}`, W - 28, H - 15);
   c.fillStyle = 'rgba(0,0,0,0.18)'; for (let y = 0; y < H; y += 3) c.fillRect(0, y, W, 1);
   void k;

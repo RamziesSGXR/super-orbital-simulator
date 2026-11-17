@@ -108,6 +108,48 @@
   <div id="cleanbar" class="showui hidden"><button id="b-photo" class="btn" type="button" title="Save this view as a picture">PHOTO</button><button id="b-showui" class="btn" type="button" title="Show the interface (H)">SHOW UI <small>H</small></button></div>
   <div id="bubbles"></div>
 
+  <!-- FOUND YOUR FACTION: the same as FOB Super Commander's. Before a new station, and from LIVERY at any time. -->
+  <section id="s-faction" class="screen overlay">
+    <div class="card wide">
+      <div class="eyebrow">Register a loyal faction</div>
+      <h2 id="fx-title">FOUND YOUR FACTION</h2>
+      <div class="fx">
+        <div class="fx-logo">
+          <canvas id="fx-prev" width="200" height="200"></canvas>
+          <div class="fx-row"><span>CREST</span><button class="btn icon" data-cy="shape:-1" type="button" aria-label="Previous crest">‹</button><b id="fx-shape"></b><button class="btn icon" data-cy="shape:1" type="button" aria-label="Next crest">›</button></div>
+          <div class="fx-row"><span>SYMBOL</span><button class="btn icon" data-cy="symbol:-1" type="button" aria-label="Previous symbol">‹</button><b id="fx-symbol"></b><button class="btn icon" data-cy="symbol:1" type="button" aria-label="Next symbol">›</button></div>
+          <div class="fx-row"><span>PATTERN</span><button class="btn icon" data-cy="pattern:-1" type="button" aria-label="Previous pattern">‹</button><b id="fx-pattern"></b><button class="btn icon" data-cy="pattern:1" type="button" aria-label="Next pattern">›</button></div>
+          <div class="fx-row"><span>LETTERS</span><input id="fx-text" maxlength="4" autocomplete="off" spellcheck="false"></div>
+          <div class="fx-sw"><span>FIELD</span><div class="sw" data-k="logo.bg"></div></div>
+          <div class="fx-sw"><span>SYMBOL</span><div class="sw" data-k="logo.fg"></div></div>
+          <div class="fx-sw"><span>RIM</span><div class="sw" data-k="logo.rim"></div></div>
+          <div class="fx-sw"><span>PATTERN</span><div class="sw" data-k="logo.pc"></div></div>
+          <div class="fx-row up"><button id="fx-up" class="btn" type="button">UPLOAD A LOGO</button><button id="fx-unup" class="btn hidden" type="button">USE THE CREST</button><input id="fx-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif" class="hidden"></div>
+          <p class="fine" id="fx-upmsg">Your own picture, up to 2 MB. It is shrunk to 128 px and stays on this device.</p>
+        </div>
+        <div class="fx-form">
+          <label>FACTION NAME<input id="fx-name" maxlength="40" autocomplete="off" spellcheck="false"></label>
+          <label>STATION NAME<input id="fx-base" maxlength="18" autocomplete="off" spellcheck="false"></label>
+          <label>MOTTO<input id="fx-motto" maxlength="48" autocomplete="off" spellcheck="false"></label>
+          <div class="fx-sw"><span>PRIMARY</span><div class="sw" data-k="primary"></div></div>
+          <div class="fx-sw"><span>ACCENT</span><div class="sw" data-k="secondary"></div></div>
+          <div class="fx-troop"><canvas id="fx-trooper" width="120" height="120"></canvas><div>
+            <div class="fx-sw"><span>UNIFORM</span><div class="sw" data-k="look.uniform" data-p="u"></div></div>
+            <div class="fx-sw"><span>HELMET</span><div class="sw" data-k="look.helmet" data-p="u"></div></div>
+            <div class="fx-sw"><span>ARMBAND</span><div class="sw" data-k="look.armband"></div></div>
+            <label class="chk"><input type="checkbox" id="fx-crest"> CREST ON THE SHOULDER</label>
+          </div></div>
+          <p class="fine left">Your crest goes on the station's nameplates and every Propaganda Screen, and your motto under them. Primary paints the nameplate and the dark bands of the hull; accent, the trim. The uniform is what the station's troopers wear. Hull colour, plating and the rest are in LIVERY.</p>
+        </div>
+      </div>
+      <div class="btns">
+        <button id="fx-back" class="btn" type="button">BACK</button>
+        <button id="fx-rand" class="btn" type="button">RANDOMISE</button>
+        <button id="fx-go" class="btn primary" type="button">FOUND THE STATION</button>
+      </div>
+    </div>
+  </section>
+
   <section id="s-title" class="screen on">
     <div class="card">
       <div class="eyebrow">Super Earth Ministry of Orbital Affairs</div>
@@ -131,7 +173,7 @@
       </div>
       <p class="fine"><b>New station:</b> Station Command, 2,500 CR and an Outpost permit. <b>Broken station:</b> take over a dark, stripped station and bring it back.
         <b>Free play:</b> every part and room, no costs, and controls to call in ships, colonists and raids.
-        Prototype 0.11. The station saves itself as you play.<br>
+        Prototype 0.11. You found your faction first: its name, crest and colours. The station saves itself as you play.<br>
         An unofficial fan project for the Super Earth Special Forces community, by Robert Troumbley. Not affiliated with or endorsed by Arrowhead Game Studios or Sony Interactive Entertainment.</p>
     </div>
   </section>

@@ -14,6 +14,7 @@ export const v = {
 
 export const q = {
   id: () => [0, 0, 0, 1],
+  conj: (a) => [-a[0], -a[1], -a[2], a[3]],
   axisAngle(ax, ang) { const s = Math.sin(ang / 2), n = v.norm(ax); return [n[0] * s, n[1] * s, n[2] * s, Math.cos(ang / 2)]; },
   // The rotation that turns unit vector a into unit vector b.
   fromTo(a, b) {

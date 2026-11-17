@@ -22,7 +22,7 @@ const fill = (n, room) => Array(n).fill(room);
 const deg = (xs) => xs.map((x) => x * Math.PI / 180);
 
 export const C = {
-  version: '0.11.6',
+  version: '0.11.7',
 
   groups: [
     { id: 'structure', name: 'STRUCTURE' }, { id: 'platform', name: 'FIRE SUPPORT' }, { id: 'habitation', name: 'HABITATION' }, { id: 'docking', name: 'DOCKING' },
@@ -275,9 +275,27 @@ export const C = {
     plating: { panels: 'Panelled', plates: 'Armour plate', smooth: 'Smooth', worn: 'Weathered', hazard: 'Hazard stripes' },
     interior: { ministry: { name: 'Ministry', wall: '#b9ab8e', floor: '#8a7a62', lane: '#ffe9a0' }, naval: { name: 'Naval', wall: '#8f9aa6', floor: '#5c6670', lane: '#9fe8ff' }, civic: { name: 'Civic', wall: '#e6e8e2', floor: '#9aa79a', lane: '#b8ffd0' }, brass: { name: 'Brass', wall: '#6a4a3a', floor: '#3c2e28', lane: '#ffc66a' } },
     lights: { warm: '#fff1b0', cool: '#cfeaff', amber: '#ffb648', green: '#b8ffca' },
-    emblems: { wings: 'Wings', star: 'Star', shield: 'Shield', laurel: 'Laurel', none: 'None' },
-    def: { name: '', scheme: 'ministry', hull: '#8c9690', trim: '#f5d547', accent: '#22262a', plating: 'panels', interior: 'ministry', lights: 'warm', emblem: 'wings' },
+    emblems: { crest: 'Your crest', wings: 'Wings', star: 'Star', shield: 'Shield', laurel: 'Laurel', none: 'None' },
+    def: { name: '', scheme: 'ministry', hull: '#8c9690', trim: '#f5d547', accent: '#22262a', plating: 'panels', interior: 'ministry', lights: 'warm', emblem: 'crest' },
   },
+
+  // YOUR FACTION, founded with the station as in FOB Super Commander: its name, the station's name, a motto, two colours, a crest
+  // and how its troopers dress. The primary colour paints the nameplate and the dark bands of the hull, the accent its trim.
+  // (C.faction is the factions aboard.)
+  founding: {
+    def: {
+      name: 'Super Earth Special Forces', station: 'Orbital Station', motto: 'Liberty, delivered.', primary: '#22262a', secondary: '#ffe600',
+      logo: { shape: 'shield', symbol: 'eagle', bg: '#1b2a1a', fg: '#ffe600', rim: '#ffe600', text: 'SESF', pattern: 'none', pc: '#ffe600' },
+      look: { uniform: '#5d6a4a', helmet: '#4c5a3c', armband: '#ffe600', crest: true },
+    },
+    stations: ['Liberty', 'Vigil', 'Resolve', 'Anvil', 'Dawn', 'Mercy', 'Ballot', 'Granite', 'Providence', 'Steadfast', 'Meridian', 'Equity'],
+    kinds: ['Station', 'Outpost', 'Platform', 'Bastion', 'Spire', 'Haven'],
+  },
+
+  // A new part may not run through another: more than `cells` of its solid cells inside another part's is a clash. Cells within
+  // joinR of the port it joins its host by do not count: parts are drawn to sit into each other there (a gun's pedestal, a dome
+  // against a curved end).
+  clash: { cells: 6, joinR: 2.5 },
 
   start: { credits: 2500, tax: 10 },
   sandbox: { credits: 999999 },

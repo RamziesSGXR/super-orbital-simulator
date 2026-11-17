@@ -822,6 +822,7 @@ const merge = (list) => {
 // A figure is modelled in metres as a 1.8 m person from rounded parts (tapered limbs, a head, hair, hands and shoes), coloured by
 // vertex, then shrunk to the 0.33 units the view scales from. Each has a standing pose and a mid-stride pose; the view mirrors the
 // stride left and right to make a walk. Residents come in four looks; every job has its own clothes and kit.
+const shade = (hex, k) => '#' + [1, 3, 5].map((i) => Math.round(parseInt(hex.substr(i, 2), 16) * k).toString(16).padStart(2, '0')).join('');
 export const FIGURES = ['resident', 'resident2', 'resident3', 'resident4', 'hauler', 'engineer', 'officer', 'medic', 'aide', 'scientist', 'gunner', 'trooper', 'pilot'];
 const LOOKS = {
   resident: { skin: '#e0b48c', hair: '#3a2a1c', top: '#d9dde0', legs: '#4a4f58' },
@@ -834,8 +835,10 @@ const LOOKS = {
   gunner: { skin: '#e0b48c', hair: '#3a2a1c', top: '#c7652a', legs: '#b0561f' }, trooper: { skin: '#c99670', hair: '#2a2019', top: '#5d6a4a', legs: '#3f4a34', shoes: '#22261e', style: 'hat' },
   pilot: { skin: '#e0b48c', hair: '#3a2a1c', top: '#6b737e', legs: '#5d646e', style: 'hat' },
 };
-export function buildFigure(key, pose = 'stand') {
-  const L = LOOKS[key] || LOOKS.resident, g = [], sw = pose === 'walk' ? 0.5 : 0, shoes = L.shoes || '#26262a';
+// look: a faction's uniform for its troopers ({ uniform, helmet, armband, crest }), from the FOUND YOUR FACTION screen.
+export function buildFigure(key, pose = 'stand', look = null) {
+  const L0 = LOOKS[key] || LOOKS.resident, U = key === 'trooper' && look && look.uniform ? look : null;
+  const L = U ? { ...L0, top: U.uniform, legs: shade(U.uniform, 0.78) } : L0, g = [], sw = pose === 'walk' ? 0.5 : 0, shoes = L.shoes || '#26262a';
   const done = (geo, hex) => { geo.computeVertexNormals(); g.push(tint(geo, hex)); };
   const bx = (w, h, d, x, y, z, hex) => done(new THREE.BoxGeometry(w, h, d).translate(x, y, z), hex);
   const cyl = (rt, rb, h, x, y, z, hex, sz = 1, seg = 8) => done(new THREE.CylinderGeometry(rt, rb, h, seg).scale(1, 1, sz).translate(x, y, z), hex);
@@ -868,7 +871,12 @@ export function buildFigure(key, pose = 'stand') {
     case 'aide': for (const s of [-1, 1]) bx(0.1, 0.03, 0.12, s * 0.21, 1.475, 0, '#f5d547'); ball(0.128, 0.015, 1.74, 0, '#3c4438', 1.05, 0.42, 1.05, 8, 4); bx(0.16, 0.22, 0.02, 0.16, 1.05, 0.14, '#e8e2c8'); break;
     case 'scientist': cyl(0.205, 0.215, 0.5, 0, 0.72, -0.01, '#eef0f4', 0.66, 10); bx(0.21, 0.045, 0.03, 0, 1.655, 0.1, '#7fe9e0'); bx(0.05, 0.08, 0.01, 0.1, 1.3, 0.124, '#9a6cff'); break;
     case 'gunner': for (const s of [-1, 1]) { const c = new THREE.CylinderGeometry(0.055, 0.055, 0.05, 8).rotateZ(Math.PI / 2).translate(s * 0.125, 1.63, 0); done(c, '#f5d547'); } bx(0.25, 0.02, 0.035, 0, 1.765, 0, '#22262a'); cyl(0.172, 0.17, 0.06, 0, 0.94, 0, '#22262a', 0.74); for (const s of [-1, 1]) bx(0.1, 0.1, 0.03, s * 0.1, 0.5, 0.075, '#22262a'); break;
-    case 'trooper': ball(0.142, 0, 1.65, -0.005, '#4c5a3c', 1, 1.06, 1.06, 10, 6, 2.1); bx(0.2, 0.05, 0.04, 0, 1.62, 0.115, '#f5d547'); cyl(0.215, 0.18, 0.36, 0, 1.24, 0, '#3f4a34', 0.72, 10); for (const s of [-1, 1]) { ball(0.1, s * 0.235, 1.43, 0, '#3f4a34', 1, 0.8, 1, 6, 4); bx(0.1, 0.11, 0.03, s * 0.1, 0.5, 0.075, '#3f4a34'); } bx(0.26, 0.36, 0.14, 0, 1.22, -0.19, '#3f4a34'); bx(0.05, 0.09, 0.72, 0.17, 1.05, 0.2, '#1c1e20'); bx(0.04, 0.14, 0.06, 0.17, 0.96, 0.22, '#1c1e20'); break;
+    case 'trooper': { const hel = U ? U.helmet : '#4c5a3c', kit = U ? shade(U.uniform, 0.7) : '#3f4a34', band = U ? U.armband : null;
+      ball(0.142, 0, 1.65, -0.005, hel, 1, 1.06, 1.06, 10, 6, 2.1); bx(0.2, 0.05, 0.04, 0, 1.62, 0.115, '#f5d547'); cyl(0.215, 0.18, 0.36, 0, 1.24, 0, kit, 0.72, 10); for (const s of [-1, 1]) { ball(0.1, s * 0.235, 1.43, 0, kit, 1, 0.8, 1, 6, 4); bx(0.1, 0.11, 0.03, s * 0.1, 0.5, 0.075, kit); } bx(0.26, 0.36, 0.14, 0, 1.22, -0.19, kit);
+      // the armband on both upper arms, and the crest patch on the left shoulder; both swing with the arm
+      const onArm = (geo, s, d, hex) => { const a = s < 0 ? -sw * 0.8 : sw * 0.8; geo.translate(0, -d, 0).rotateZ(s * 0.1).rotateX(a).translate(s * 0.235, 1.41, 0); done(geo, hex); };
+      if (band) for (const s of [-1, 1]) onArm(new THREE.CylinderGeometry(0.062, 0.062, 0.07, 8), s, 0.17, band);
+      if (U && U.crest) onArm(new THREE.BoxGeometry(0.012, 0.075, 0.075).translate(-0.06, 0, 0), -1, 0.07, band || '#f5d547'); } bx(0.05, 0.09, 0.72, 0.17, 1.05, 0.2, '#1c1e20'); bx(0.04, 0.14, 0.06, 0.17, 0.96, 0.22, '#1c1e20'); break;
     case 'pilot': ball(0.138, 0, 1.65, -0.005, '#e8eaec', 1, 1.06, 1.06, 10, 6, 2.2); bx(0.21, 0.07, 0.05, 0, 1.65, 0.105, '#f5a020'); cyl(0.205, 0.195, 0.12, 0, 1.37, 0, '#f5d547', 0.66, 10); for (const s of [-1, 1]) bx(0.04, 0.4, 0.02, s * 0.09, 1.15, 0.122, '#2a2e34'); bx(0.16, 0.1, 0.08, 0.2, 0.92, 0.04, '#2a2e34'); break;
   }
   return merge(g).scale(0.33 / 1.8, 0.33 / 1.8, 0.33 / 1.8);

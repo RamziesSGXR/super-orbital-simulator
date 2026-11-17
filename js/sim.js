@@ -10,6 +10,7 @@ import { installPlatform } from './platform.js';
 import { installStory } from './story.js';
 import { installLedger } from './ledger.js';
 import { installMarket } from './market.js';
+import { solidOf, inSolid } from './solid.js';
 
 const NAMES = ['Honest Work', 'Steady Progress', 'Fair Weather', 'Good Neighbors', 'Quiet Resolve', 'Open Skies', 'Sturdy Ballots',
   'Shared Prosperity', 'Cheerful Compliance', 'Sensible Shoes', 'Unanimous Consent', 'Bright Mornings', 'Fair Play', 'Civic Duty',
@@ -52,6 +53,21 @@ const PRAISE = {
   gunnery: 'Gunnery reports: every call answered. The squads below send their thanks, in their way.',
 };
 export const STRUCTURAL = new Set(['command', 'core', 'longcore', 'junction', 'truss', 'node', 'tube']);
+
+// How many of S's deep cells lie inside T's solid (each placed at pos/quat). Cells within C.clash.joinR of `join` do not count.
+function clashCells(S, sp, sq, T, tp, tq, join) {
+  const R = qmat(q.mul(q.conj(tq), sq)), t = q.rot(q.conj(tq), v.sub(sp, tp)), jl = join ? q.rot(q.conj(sq), v.sub(join, sp)) : null, jr2 = C.clash.joinR ** 2, d = S.deep, max = C.clash.cells;
+  let n = 0;
+  for (let i = 0; i < d.length && n <= max; i += 3) {
+    const x = d[i], y = d[i + 1], z = d[i + 2];
+    if (jl && (x - jl[0]) ** 2 + (y - jl[1]) ** 2 + (z - jl[2]) ** 2 < jr2) continue;
+    if (inSolid(T, R[0] * x + R[1] * y + R[2] * z + t[0], R[3] * x + R[4] * y + R[5] * z + t[1], R[6] * x + R[7] * y + R[8] * z + t[2])) n++;
+  }
+  return n;
+}
+function qmat([x, y, z, w]) {
+  return [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w), 2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w), 2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)];
+}
 
 export class Station {
   constructor(seed = 1, mode = 'run') {
@@ -174,9 +190,32 @@ export class Station {
     const pl = this.placement(type, host, pi, rot), c = v.add(pl.pos, q.rot(pl.quat, d.center));
     if (pl.flipped && d.rooms) return { ok: false, why: 'This part stands upright: use a port that faces up' };
     if (v.len(c) + d.r * 0.5 > this.radius) return { ok: false, why: 'Outside the permitted build zone' };
-    // No clash test on purpose: parts may overlap and nest (a ring inside a ring), so players can build any shape.
+    // Parts may nest (a ring inside a ring, a module in the open middle of a disc), but one hull may not run through another.
+    const hit = this.clashWith(type, host, pl);
+    if (hit) return { ok: false, why: `It would run into ${hit === host ? 'the part it joins' : this.name(hit)}` };
     if (this.credits < d.cost) return { ok: false, why: 'Not enough credits' };
     return { ok: true, why: '' };
+  }
+  // The part a new one would run into, or null. Its solid (solid.js) is tested against every part near it: more than a few cells of
+  // one inside the other is a clash. Against the part it joins, the cells right round the joining port do not count (that is where
+  // the two are meant to meet). Answers are kept until the station changes.
+  clashWith(type, host, pl) {
+    const ver = `${this.parts.size}|${this._ver || 0}`;
+    if (this._clashVer !== ver) { this._clashVer = ver; this._clashMemo = new Map(); }
+    const mk = `${type}|${host.id}|${pl.pos.map((x) => x.toFixed(3))}|${pl.quat.map((x) => x.toFixed(4))}`;
+    if (this._clashMemo.has(mk)) return this.parts.get(this._clashMemo.get(mk)) || null;
+    const A = solidOf(type), ca = v.add(pl.pos, q.rot(pl.quat, A.c)), join = pl.join || this.port(host, 0).pos;
+    let hit = null;
+    for (const p of this.parts.values()) {
+      if (p.state === 'demolish') continue;
+      const B = solidOf(p.type), cb = v.add(p.pos, q.rot(p.quat, B.c));
+      if (v.dist(ca, cb) > A.r + B.r) continue;
+      // each one's deep cells (a cell or more inside its hull) through the other's solid: touching is allowed, running through is not
+      const n = clashCells(A, pl.pos, pl.quat, B, p.pos, p.quat, p === host ? join : null) + clashCells(B, p.pos, p.quat, A, pl.pos, pl.quat, p === host ? join : null);
+      if (n > C.clash.cells) { hit = p; break; }
+    }
+    this._clashMemo.set(mk, hit ? hit.id : 0);
+    return hit;
   }
   build(type, hostId, pi, rot = 0) {
     const chk = this.canBuild(type, hostId, pi, rot);
@@ -251,6 +290,7 @@ export class Station {
   }
 
   _make(type, parent, pport, rot, pos, quat, base = 0, join = null) {
+    this._ver = (this._ver || 0) + 1;
     const n = [...this.parts.values()].filter((x) => x.type === type).length + 1;
     const p = { id: this.nextId++, type, parent, pport, rot, pos, quat, n, join, used: new Set(parent && base >= 0 ? [base] : []), kids: [],
       state: 'building', prog: 0, seed: this.rng.next(), rooms: [...(C.parts[type].rooms || [])], marks: [], fault: false, fixer: 0 };
@@ -258,6 +298,7 @@ export class Station {
     return p;
   }
   _remove(p) {
+    this._ver = (this._ver || 0) + 1;
     const host = this.parts.get(p.parent);
     if (host) { host.used.delete(p.pport); host.kids = host.kids.filter((k) => k !== p.id); }
     this.parts.delete(p.id);

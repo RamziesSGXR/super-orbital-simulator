@@ -5,6 +5,7 @@ import { getSlots, putSlot, clearSlot, toCode, fromCode } from './saves.js';
 import { View } from './view.js';
 import { partIcon, SLOTS } from './parts.js';
 import { Audio } from './audio.js';
+import { SHAPES, SYMBOLS, PATTERNS, UNIFORMS, PALETTE, drawLogo, drawTrooper, lookOf, ensureLogo, readUpload } from './logo.js';
 
 const $ = (id) => document.getElementById(id);
 const qs = new URLSearchParams(location.search);
@@ -17,7 +18,7 @@ const ROLE = { hauler: 'haulers', engineer: 'engineers', officer: 'officers', me
 const ROLE_ONE = { hauler: 'Hauler', engineer: 'Engineer', officer: 'Democracy Officer', medic: 'Medic', aide: 'Aide', scientist: 'Scientist', gunner: 'Gunner', resident: 'Resident' };
 const PLACES = { hauler: 'Cargo Stores, Cargo Racks and Station Command', engineer: 'Workshops', officer: 'Security Offices', medic: 'Medbays', aide: 'Brass Suites', scientist: 'Laboratories', gunner: 'Gun Crew Rooms, Barrack Rooms, pads and racks' };
 const esc = (x) => String(x).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-const SAVE_KEY = 'sos.save.06', LIVERY_KEY = 'sos.livery';
+const SAVE_KEY = 'sos.save.06', LIVERY_KEY = 'sos.livery', FACTION_KEY = 'sos.faction';
 // What people say, in a bubble over their head, when you are close enough to see them.
 const CHAT = {
   hauler: ['Mind your toes.', 'Another crate of liberty.', 'Who labelled this?', 'Coffee first. Then crates.', 'This one rattles.'],
@@ -73,16 +74,21 @@ view.newSky(st.seed);
 view.setMode('hull');
 view.controls.autoRotate = true; view.controls.autoRotateSpeed = 0.5;
 view.camera.position.set(34, 16, 40);
+view.setFaction(loadFaction());      // the title station wears the last faction founded here (or the default) until a station starts
 
 // ---------------------------------------------------------------- start
-function start(mode, saved) {
+function start(mode, saved, faction = null) {
   audio.unlock();
   st = saved || new Station(Number(qs.get('seed')) || (Date.now() % 100000), mode);
+  if (faction) st.faction = faction;
+  st.faction = { ...structuredClone(C.founding.def), ...(st.faction || loadFaction()) };
   st._noAdvice = !SET.advice;
   mode = st.mode;
   window.__st = st; window.__ui = ui; window.__edit = startEdit; window.__follow = setFollow;
   view.setStation(st);
-  st.livery = { ...loadLivery(), ...(st.livery || {}) }; view.setLivery(st.livery);
+  st.livery = { ...loadLivery(), ...(st.livery || {}) };
+  if (faction) Object.assign(st.livery, fromFaction(faction));
+  view.setFaction(st.faction); view.setLivery(st.livery);
   view.controls.autoRotate = false;
   view.frame();
   Object.assign(ui, { started: true, tool: null, sel: null, hot: null, edit: null, room: null, slot: null, group: 'structure', speed: 1, person: 0 });
@@ -101,13 +107,17 @@ function start(mode, saved) {
   if (!saved) radio('ministry', free ? 'Your divisions answer on the Commander\'s channel (O). Select a part and press EDIT INSIDE (I) to build out its rooms.' : 'Lay the station out, then let your people at it. They will change it to suit themselves, and only trouble will reach your desk.', { dim: true });
   buildGrid(); hud(); info();
 }
+// The faction last founded on this device: a new station starts from it, so a commander does not have to make it again.
+function loadFaction() { try { return JSON.parse(localStorage.getItem(FACTION_KEY)) || structuredClone(C.founding.def); } catch (e) { return structuredClone(C.founding.def); } }
+// What a faction sets in the livery: the station's name, the nameplate and band colour (primary), the trim (accent), the crest.
+const fromFaction = (f) => ({ name: f.station, accent: f.primary, trim: f.secondary, emblem: 'crest', scheme: 'own' });
 function loadLivery() { try { return { ...C.livery.def, ...(JSON.parse(localStorage.getItem(LIVERY_KEY)) || {}) }; } catch (e) { return { ...C.livery.def }; } }
 const readSave = () => { try { return Station.load(JSON.parse(localStorage.getItem(SAVE_KEY))); } catch (e) { return null; } };
 function writeSave() { if (!ui.started || st.sandbox) return; try { localStorage.setItem(SAVE_KEY, JSON.stringify(st.save())); if (st.slot) putSlot(st.slot, st); lastSave = performance.now(); } catch (e) { /* no storage here: the game plays on without saving */ } }
 function titleButtons() { $('b-continue').classList.toggle('hidden', !readSave()); $('b-economy').classList.toggle('primary', !readSave()); }
 titleButtons();
-$('b-economy').onclick = () => start('run');
-$('b-broken').onclick = () => start('broken');
+$('b-economy').onclick = () => openFaction(false, 'run');
+$('b-broken').onclick = () => openFaction(false, 'broken');
 $('b-free').onclick = () => start('sandbox');
 $('b-continue').onclick = () => { const s = readSave(); if (s) start(s.mode, s); else titleButtons(); };
 $('b-restart').onclick = () => {
@@ -368,8 +378,9 @@ function toast(text) { const t = $('toast'); t.textContent = text; t.classList.a
 
 // ---------------------------------------------------------------- keys
 addEventListener('keydown', (e) => {
-  if (e.key === 'F3') { e.preventDefault(); SET.debug = !SET.debug; applySet('debug'); audio.play('click'); if ($('s-menu').classList.contains('on') && ui.mpage === 'settings') buildSettings(); return; }      // the debug readout, as in Orbital Fury
-  if (!ui.started || e.target.tagName === 'INPUT') return;
+  if (e.key === 'F3') { e.preventDefault(); const shown = !$('debug').classList.contains('hidden'); debugBroke = false; SET.debug = !shown; applySet('debug'); audio.play('click'); if ($('s-menu').classList.contains('on') && ui.mpage === 'settings') buildSettings(); return; }      // the debug readout, as in Orbital Fury
+  if ($('s-faction').classList.contains('on')) { if (e.key === 'Escape') fxClose(); return; }      // the faction screen takes its own keys
+  if (!ui.started || e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
   const k = e.key.toLowerCase();
   if (FLY.has(k) && !e.ctrlKey && !e.metaKey && !e.altKey && !document.querySelector('.screen.on')) { held.add(k); if (k === ' ') e.preventDefault(); if (k !== 'shift') return; }
   if (ui.clean) { if (k === 'h' || k === 'escape') setClean(false); return; }
@@ -750,6 +761,70 @@ function drawUpg() {
   if (h !== upgHTML) { upgHTML = h; $('up-list').innerHTML = h; }
 }
 
+// ---------------------------------------------------------------- FOUND YOUR FACTION, as in FOB Super Commander
+// Before a new station: the faction's name, the station's name, a motto, two colours, a crest (or your own picture) and the
+// troopers' uniform. From LIVERY at any time to change it (EDIT YOUR FACTION).
+let draft = null, fxMode = null, fxWasPaused = false;
+function openFaction(edit, mode = 'run') {
+  audio.unlock(); audio.play('click');
+  fxMode = edit ? 'edit' : mode;
+  draft = structuredClone(edit ? st.faction : loadFaction());
+  draft.logo = { ...C.founding.def.logo, ...(draft.logo || {}) }; draft.look = { ...lookOf(draft), ...(draft.look || {}) };
+  if (!edit) draft.station = randomStation();      // a new station, a new name (the faction is kept from last time)
+  $('fx-crest').checked = !!draft.look.crest;
+  $('fx-title').textContent = edit ? 'EDIT YOUR FACTION' : 'FOUND YOUR FACTION';
+  $('fx-go').textContent = edit ? 'SAVE CHANGES' : 'FOUND THE STATION';
+  $('fx-name').value = draft.name; $('fx-base').value = draft.station; $('fx-motto').value = draft.motto; $('fx-text').value = draft.logo.text || '';
+  for (const sw of document.querySelectorAll('#s-faction .sw')) sw.innerHTML = (sw.dataset.p === 'u' ? UNIFORMS : PALETTE).map((c) => `<button type="button" style="background:${c}" data-c="${c}" title="${c}" aria-label="${c}"></button>`).join('');
+  if (edit && ui.started) { fxWasPaused = ui.paused; if (!ui.paused) pause(true); }
+  ensureLogo(draft.logo).then(fxDraw); fxDraw();
+  $('s-faction').classList.add('on');
+}
+const randomStation = () => { const r = (a) => a[Math.floor(Math.random() * a.length)]; return `${r(C.founding.stations)} ${r(C.founding.kinds)}`; };
+function fxUp() { $('fx-unup').classList.toggle('hidden', !draft.logo.img); for (const id of ['fx-shape', 'fx-symbol', 'fx-pattern']) $(id).closest('.fx-row').style.opacity = draft.logo.img ? 0.4 : 1; }
+function fxDraw() {
+  const g = $('fx-prev').getContext('2d'); g.clearRect(0, 0, 200, 200); drawLogo(g, draft.logo, 6, 6, 188);
+  $('fx-shape').textContent = draft.logo.shape; $('fx-symbol').textContent = draft.logo.symbol; $('fx-pattern').textContent = draft.logo.pattern || 'none'; fxUp();
+  const tg = $('fx-trooper').getContext('2d'); tg.clearRect(0, 0, 120, 120); drawTrooper(tg, draft, 10, 10, 100);
+  const get = (k) => k.split('.').reduce((o, p) => o[p], draft);
+  for (const sw of document.querySelectorAll('#s-faction .sw')) { const v = get(sw.dataset.k); for (const b of sw.children) b.classList.toggle('on', b.dataset.c === v); }
+}
+function fxSet(k, val) { const p = k.split('.'), o = p.slice(0, -1).reduce((o, q) => o[q], draft); o[p[p.length - 1]] = val; }
+document.querySelector('#s-faction .fx').addEventListener('click', (e) => {
+  const cy = e.target.closest('[data-cy]'), c = e.target.closest('[data-c]');
+  if (cy) { const [k, d] = cy.dataset.cy.split(':'), list = k === 'shape' ? SHAPES : k === 'pattern' ? PATTERNS : SYMBOLS; draft.logo[k] = list[(list.indexOf(draft.logo[k]) + +d + list.length) % list.length]; audio.play('click'); fxDraw(); }
+  if (c) { fxSet(c.closest('.sw').dataset.k, c.dataset.c); audio.play('click'); fxDraw(); }
+});
+$('fx-crest').onchange = (e) => { draft.look.crest = e.target.checked; fxDraw(); };
+$('fx-text').addEventListener('input', (e) => { draft.logo.text = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4); e.target.value = draft.logo.text; fxDraw(); });
+$('fx-up').onclick = () => $('fx-file').click();
+$('fx-unup').onclick = () => { delete draft.logo.img; $('fx-upmsg').textContent = 'Back to the crest.'; fxDraw(); };
+$('fx-file').onchange = async (e) => {
+  const f = e.target.files[0]; e.target.value = '';
+  try { draft.logo.img = await readUpload(f); $('fx-upmsg').textContent = 'Logo uploaded. It takes the crest\'s place everywhere on the station.'; fxDraw(); }
+  catch (err) { $('fx-upmsg').textContent = err.message || 'That picture could not be read.'; }
+};
+$('fx-rand').onclick = () => {
+  const p = (a) => a[Math.floor(Math.random() * a.length)];
+  const A = ['Iron', 'Liberty', 'Crimson', 'Steadfast', 'Golden', 'Righteous', 'Ashen', 'Vigilant', 'Free', 'Thunder', 'Orbital', 'Starward'], Bn = ['Lancers', 'Guard', 'Brigade', 'Legion', 'Wardens', 'Battalion', 'Rangers', 'Sentinels', 'Corps', 'Hammers', 'Watch', 'Fleet'];
+  draft.name = `${p(['1st', '3rd', '9th', '12th', '27th', '101st', '404th'])} ${p(A)} ${p(Bn)}`; draft.station = randomStation();
+  draft.motto = p(['Freedom never sleeps.', 'Democracy, delivered from above.', 'We hold the high ground.', 'Paperwork and gunfire.', 'Always overhead, never late.', 'Liberty in orbit.']);
+  draft.primary = p(PALETTE); draft.secondary = p(PALETTE.filter((c) => c !== draft.primary));
+  draft.logo = { shape: p(SHAPES), symbol: p(SYMBOLS.filter((x) => x !== 'none')), bg: draft.primary, fg: draft.secondary, rim: draft.secondary, text: '', pattern: p(PATTERNS), pc: p(PALETTE) };
+  draft.look = { uniform: p(UNIFORMS), helmet: p(UNIFORMS), armband: draft.secondary, crest: Math.random() < 0.5 }; $('fx-crest').checked = draft.look.crest;
+  $('fx-name').value = draft.name; $('fx-base').value = draft.station; $('fx-motto').value = draft.motto; $('fx-text').value = ''; audio.play('click'); fxDraw();
+};
+function fxClose() { $('s-faction').classList.remove('on'); if (fxMode === 'edit' && ui.started && !fxWasPaused) pause(false); }
+$('fx-back').onclick = () => { audio.play('click'); fxClose(); };
+$('fx-go').onclick = () => {
+  draft.name = $('fx-name').value.trim() || 'Unnamed Loyal Faction'; draft.station = $('fx-base').value.trim() || 'Orbital Station'; draft.motto = $('fx-motto').value.trim() || 'For Super Earth.';
+  try { localStorage.setItem(FACTION_KEY, JSON.stringify(draft)); } catch (e) { /* storage full or off: the faction still goes with the station */ }
+  const f = draft, mode = fxMode; fxClose();
+  if (mode === 'edit') { st.faction = f; view.setFaction(f); setLivery(fromFaction(f)); info(); radio('ministry', `Registration amended: ${f.name}, of ${f.station}. "${f.motto}"`); return; }
+  start(mode, null, f);
+  radio('ministry', `${f.name} is registered with the Ministry, Commander. ${f.station} is yours. "${f.motto}"`, { gold: true });
+};
+
 // ---------------------------------------------------------------- livery: the station's name, colours, plating, fit-out and emblem
 function livery(on = $('liv').classList.contains('hidden')) {
   audio.play('click');
@@ -766,7 +841,9 @@ function setLivery(patch) {
 function drawLivery() {
   const L = st.livery, D = C.livery, esc = (x) => String(x).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const pick = (key, opts, label) => `<div class="lv-row"><span class="ol">${label}</span><div class="obs">${Object.entries(opts).map(([k, v]) => `<button type="button" class="btn ob${L[key] === k ? ' on' : ''}" data-key="${key}" data-v="${k}">${typeof v === 'string' && v[0] !== '#' ? v : v.name || k.toUpperCase()}</button>`).join('')}</div></div>`;
-  $('lv-body').innerHTML = `<div class="lv-row"><span class="ol">STATION NAME</span><input id="lv-name" type="text" maxlength="18" placeholder="SUPER EARTH" value="${esc(L.name || '')}"></div>`
+  const F = st.faction || C.founding.def;
+  $('lv-body').innerHTML = `<div class="lv-row"><span class="ol">YOUR FACTION</span><div class="lv-fac"><canvas id="lv-crest" width="144" height="144"></canvas><div><b>${esc(F.name)}</b><i>"${esc(F.motto)}"</i><button id="lv-fx" type="button" class="btn ob">EDIT YOUR FACTION</button></div></div></div>`
+    + `<div class="lv-row"><span class="ol">STATION NAME</span><input id="lv-name" type="text" maxlength="18" placeholder="SUPER EARTH" value="${esc(L.name || '')}"></div>`
     + `<div class="lv-row"><span class="ol">COLOURS</span><div class="obs">${Object.entries(D.schemes).map(([k, v]) => `<button type="button" class="btn ob sw${L.scheme === k ? ' on' : ''}" data-scheme="${k}"><i style="background:${v.hull}"></i><i style="background:${v.trim}"></i><i style="background:${v.accent}"></i>${v.name}</button>`).join('')}</div></div>`
     + `<div class="lv-row"><span class="ol">YOUR OWN</span><div class="obs cols"><label>Hull<input type="color" data-col="hull" value="${L.hull}"></label><label>Trim<input type="color" data-col="trim" value="${L.trim}"></label><label>Accent<input type="color" data-col="accent" value="${L.accent}"></label></div></div>`
     + pick('plating', D.plating, 'HULL PLATING') + pick('interior', D.interior, 'INTERIOR') + pick('lights', Object.fromEntries(Object.keys(D.lights).map((k) => [k, k[0].toUpperCase() + k.slice(1)])), 'LIGHTS') + pick('emblem', D.emblems, 'EMBLEM')
@@ -779,7 +856,9 @@ function drawLivery() {
         + `<span class="ol">YOUR OWN LINES</span><textarea id="lv-lines" rows="4" spellcheck="false" aria-label="Your own lines for the screens, one per line">${esc((st.screenLines || C.screens.own).join('\n'))}</textarea>`
         + `<small class="hint">One message per line, up to ${C.screens.maxLines}, each up to ${C.screens.maxChars} characters. Screens set to YOUR OWN show them in turn; long lines are made smaller to fit.</small></div>`;
     })();
-  $('lv-name').onchange = (e) => setLivery({ name: e.target.value.trim() });
+  drawLogo($('lv-crest').getContext('2d'), F.logo, 4, 4, 136);
+  $('lv-fx').onclick = () => { livery(false); openFaction(true); };
+  $('lv-name').onchange = (e) => { const n = e.target.value.trim(); if (st.faction && n) st.faction.station = n; setLivery({ name: n }); };
   for (const b of $('lv-body').querySelectorAll('[data-scheme]')) b.onclick = () => { const S = D.schemes[b.dataset.scheme]; setLivery({ scheme: b.dataset.scheme, hull: S.hull, trim: S.trim, accent: S.accent }); };
   for (const b of $('lv-body').querySelectorAll('[data-key]')) b.onclick = () => setLivery({ [b.dataset.key]: b.dataset.v });
   for (const i of $('lv-body').querySelectorAll('[data-col]')) i.onchange = () => setLivery({ scheme: 'own', [i.dataset.col]: i.value });

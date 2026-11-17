@@ -569,3 +569,44 @@ h1 { text-shadow: none; letter-spacing: 0.1em; } .eyebrow, .panel .ph, .desk .ph
 @media (max-width: 560px) { .sv-slot { flex-direction: column; align-items: stretch; } .sv-acts { justify-content: flex-start; } }
 .lv-scr textarea { width: 100%; box-sizing: border-box; font: 11px/1.35 ui-monospace, Menlo, Consolas, monospace; text-transform: uppercase; color: var(--g); background: #0c100e; border: 1px solid var(--am-d); padding: 5px 7px; resize: vertical; margin-top: 3px; }
 .lv-scr .hint { display: block; font-size: 10px; color: var(--g-dim); margin: 3px 0 6px; } .lv-scr .ol + .obs { margin-bottom: 2px; }
+
+/* ---------- FOUND YOUR FACTION (as in FOB Super Commander) ---------- */
+/* ---------- the faction editor ---------- */
+.fx { display: flex; gap: 22px; text-align: left; flex-wrap: wrap; justify-content: center; }
+.fx-logo { display: flex; flex-direction: column; align-items: center; gap: 8px; min-width: 260px; }
+#fx-prev { width: 170px; height: 170px; filter: drop-shadow(0 0 16px rgba(255, 230, 0, 0.15)); }
+.fx-row, .fx-sw { display: flex; align-items: center; gap: 8px; width: 100%; }
+.fx-row span, .fx-sw span { width: 70px; font-size: 11px; color: var(--g-dim); letter-spacing: 0.15em; }
+.fx-row b { flex: 1; text-align: center; text-transform: uppercase; font-size: 12px; }
+.fx-row .btn { min-height: 30px; }
+.fx-form { flex: 1; min-width: 260px; display: flex; flex-direction: column; gap: 10px; }
+#fx-text { flex: 1; text-transform: uppercase; text-align: center; padding: 4px 8px; }
+.fx-troop { display: flex; gap: 10px; align-items: center; border-top: 1px solid rgba(157, 255, 184, 0.12); padding-top: 8px; }
+.fx-troop canvas { width: 84px; height: 84px; flex: none; }
+.fx-troop > div { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+.fx label.chk { flex-direction: row; align-items: center; gap: 8px; cursor: pointer; }
+.fx label.chk input { width: 18px; height: 18px; accent-color: var(--yellow); }
+.fx .sw { display: flex; flex-wrap: wrap; gap: 4px; flex: 1; }
+.fx .sw button { width: 22px; height: 22px; border-radius: 4px; border: 1px solid rgba(255, 255, 255, 0.25); cursor: pointer; padding: 0; }
+.fx .sw button.on { outline: 2px solid var(--yellow); outline-offset: 1px; }
+
+.fx label { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--g-dim, #8fa89a); letter-spacing: 0.15em; }
+.fx input:not([type]), .fx input[type="text"], .fx label input:not([type="checkbox"]) { font: inherit; font-size: 14px; color: #fff; background: rgba(0, 0, 0, 0.45); border: 1px solid var(--cy-d, #3a4a44); padding: 7px 9px; letter-spacing: 0.04em; }
+.fx input:focus { outline: none; border-color: var(--yellow); }
+.card.wide { max-width: 860px; width: calc(100vw - 32px); max-height: calc(100vh - 32px); overflow-y: auto; }
+#s-faction .fine.left { text-align: left; }
+#s-faction { background: rgba(5, 7, 6, 0.94); z-index: 40; }
+#s-faction .fx-logo { flex: 0 0 300px; min-width: 0; }
+#s-faction .card.wide { padding-top: 14px; padding-bottom: 14px; }
+#s-faction h2 { margin: 2px 0 10px; }
+#fx-prev { width: 140px; height: 140px; }
+@media (max-width: 720px) { #s-faction .fx-logo { flex: 1 1 100%; } }
+#s-faction .fine { font-size: 11px; opacity: 0.8; margin: 0; }
+.fx .sw button { border-radius: 0; }
+.lv-fac { display: flex; gap: 12px; align-items: center; }
+.lv-fac canvas { width: 72px; height: 72px; flex: none; }
+.lv-fac div { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+.lv-fac b { color: var(--yellow); letter-spacing: 0.08em; }
+.lv-fac i { font-style: italic; opacity: 0.8; font-size: 12px; }
+.lv-scr .hint, .lv-scr textarea { grid-column: 2; } .lv-scr { align-items: start; } .lv-scr .ol { padding-top: 6px; }
+@media (max-width: 560px) { .lv-scr .hint, .lv-scr textarea { grid-column: 1; } }

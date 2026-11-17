@@ -425,7 +425,7 @@ export function installStory(Station) {
 
     // ------------------------------------------------------------------------------------------------ saving
     save() {
-      const skip = new Set(['events', 'rng', 'target']);
+      const skip = new Set(['events', 'rng', 'target', '_clashMemo', '_clashVer']);
       const enc = (x) => x instanceof Map ? { __m: [...x].map(([k, y]) => [k, enc(y)]) } : x instanceof Set ? { __s: [...x] }
         : Array.isArray(x) ? x.map(enc) : x && typeof x === 'object' ? Object.fromEntries(Object.entries(x).filter(([k]) => k[0] !== '_').map(([k, y]) => [k, enc(y)])) : x === Infinity ? '__inf' : x;
       const out = { v: C.version, rng: this.rng.s };

@@ -2,7 +2,7 @@
 
 Run a space station and the people aboard it. A browser game for the **Super Earth Special Forces** community, in the same look as [Orbital Fury](https://orbitalfury.com/).
 
-> **Prototype 0.11.6: saves, debug and settings.** Three save slots and checked save codes, as in Orbital Fury. F3 shows a debug readout. Half speed. Rooms are only drawn in detail where you can see them. Sunlight, shadow depth and cast shadows are settings. The livery sets what every Propaganda Screen shows.
+> **Prototype 0.11.7: found your faction.** A new station starts as in FOB Super Commander: name your faction and station, pick a motto, colours and the troopers' uniform, and make a crest (or upload a logo). The crest goes on the nameplates and every Propaganda Screen. Parts can no longer be built running through each other.
 
 **Your station. Its people. What happens to them.** It is a space station simulator: think Deep Space Nine in the Helldivers universe, with you as the station's commander. You start with Station Command in empty space, snap parts onto it and set their rooms. Then the people move in, and the station becomes theirs as much as yours.
 
@@ -11,6 +11,20 @@ Run a space station and the people aboard it. A browser game for the **Super Ear
 It runs in your browser on a computer, or on a phone or tablet held sideways. There is nothing to install. Turn the sound on.
 
 **Quick start:** press **NEW STATION**. Open **FIRE** and put a Ship Gun on a side port. Open the **DOCK** group at the bottom left, press `Q` for a Docking Port, move the pointer near Station Command and click when the little dot lights up. Add a Cargo Module from **INDUS** and a Hab Module from **HAB** the same way. Ships and colonists arrive within a minute, and soon after that the first thing lands on your desk.
+
+## What's new in 0.11.7
+
+**Found your faction, as in FOB Super Commander.** NEW STATION (and BROKEN STATION) now opens FOUND YOUR FACTION, the same screen as FOB Super Commander's:
+- **The crest maker:** 11 crest shapes, 17 symbols, 9 patterns, up to four letters, and colours for the field, symbol, rim and pattern. Or UPLOAD A LOGO: your own picture, shrunk to 128 px, kept on this device.
+- **Faction name, station name and motto.** RANDOMISE makes a whole faction.
+- **Primary and accent colours.** Primary paints the nameplates and the dark bands of the hull; accent, the trim.
+- **The troopers' uniform:** uniform, helmet, armband, and the crest on the shoulder. The station's troopers wear it.
+
+The crest goes on every nameplate and every Propaganda Screen (in the header, and big on THIS STATION), and the motto along the bottom of the screens. LIVERY shows your faction at the top, with **EDIT YOUR FACTION** to change any of it later; the game pauses while you do. Hull colour, plating, interior and lights stay in LIVERY. The faction is kept for your next station; the station gets a new name.
+
+**Parts can't be built through each other.** Each kind of part's hull is filled into a grid of 2 m cells, and a new part is refused if it would run into another's: a ring through a ring, a drum through a tower, a module through a cargo bay. The card says what it would hit. Parts may still touch, and sit into the part they join where they are drawn to (a gun's pedestal into a roof). Stations you already built are left as they are. A check (`node test/clash.mjs`) makes sure every kind of part can still be built and normal joins are never refused.
+
+**Also:** F3 always closes the debug readout, even after an error opened it. The Propaganda Screens hint in LIVERY no longer squeezes into the label column.
 
 ## What's new in 0.11.4 to 0.11.6
 
@@ -263,7 +277,7 @@ Not done yet: elevator doors do not open and close, nobody takes the stairs, and
 
 **Rooms:** Quarters, Bunk Room, Mess Hall, Observation Lounge, Hydroponics, Workshop, Cargo Store, Ops Center, Market, Liberty Lounge, Medbay, Security Office, Truth Office, Brass Suite, Laboratory, Shuttle Bay and Fighter Bay.
 
-Any part can go on any free port. Parts may overlap and nest on purpose, so a ring can sit inside a ring.
+Any part can go on any free port, as long as its hull does not run through another part's. Parts may touch, and sit into the part they join (a gun's pedestal into a roof), but a ring through a ring or a module through a tower is refused: the card says what it would run into.
 
 ## How it's built
 
