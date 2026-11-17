@@ -123,7 +123,7 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
     if (!a) return false; const r = v._rest(a, s.parts.get(a.at)); return !!r.door && Array.isArray(r.via) && r.spot.length === 3;
   }));
   check('people come in a standing and a walking pose, and residents in four looks', await page.evaluate(() => { const v = window.__view; return ['resident', 'resident2', 'resident3', 'resident4', 'trooper', 'pilot'].every((k) => v.figs[k] && v.figsW[k]) && v.figs.resident.geometry.attributes.position.count > 600; }));
-  check('Station Command has a lift car, and it goes to whoever rides', await page.evaluate(() => {
+  check('Station Command has a lift, and its light goes to whoever rides', await page.evaluate(() => {
     const s = window.__st, v = window.__view; v._lifts(0.016);
     const c = v.lifts.get(1); if (!c) return false;
     v.liftRider.set(1, c.y + 0.5); v._lifts(1); const moved = Math.abs(c.obj.position.y - (c.y)) < 1e-6 && c.y > s.parts.get(1).pos[1] - 1; v.liftRider.clear();
@@ -186,7 +186,7 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
   await page.keyboard.press('Escape'); await page.waitForTimeout(100);
 
   // The upgrade path.
-  await page.keyboard.press('u'); await page.waitForTimeout(200);
+  await page.keyboard.press('u'); await page.waitForFunction(() => document.querySelectorAll('#up-list .tier').length === 4, null, { timeout: 15000 }).catch(() => {});
   check('U shows the upgrade path, Outpost to Citadel', (await page.$$('#up-list .tier')).length === 4 && await page.isVisible('#up-list .tier.now') && (await page.$$('#up-list .tier.next .req')).length === 4);
   await page.screenshot({ path: 'test/shots/upgrades.png' });
   await page.keyboard.press('u');
@@ -226,7 +226,10 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
   await page.evaluate(() => document.querySelector('.vb[data-v="cut"]').click()); await page.waitForTimeout(300);
   check('4 cuts the station away', await page.evaluate(() => window.__view.cutaway && !!window.__view.M.hull.clippingPlanes));
   await page.waitForFunction(() => window.__view.figOn && (window.__view.figs.hauler.count + window.__view.figsW.hauler.count) > 0, null, { timeout: 20000 }).catch(() => {});
-  check('with the hull cut away, people are figures by job', await page.evaluate(() => { const v = window.__view; return v.figOn && [...Object.values(v.figs), ...Object.values(v.figsW)].reduce((n, f) => n + f.count, 0) === window.__st.agents.filter((x) => !x.eva).length && (v.figs.hauler.count + v.figsW.hauler.count) > 0; }), await page.evaluate(() => { const v = window.__view; return JSON.stringify({ fig: v.figOn, counts: Object.fromEntries(Object.entries(v.figs).map(([k, f]) => [k, f.count])), agents: window.__st.agents.filter((x) => !x.eva).length }); }));
+  // everybody aboard is a figure, except whoever is inside a lift at this moment (a lift is a closed tube: there is nobody to draw)
+  await page.evaluate(() => { window.__ui.paused = true; }); await page.waitForTimeout(700);
+  check('with the hull cut away, people are figures by job', await page.evaluate(() => { const v = window.__view, s = window.__st, now = performance.now() / 1000; v._agents(now); const inside = s.agents.filter((x) => !x.eva && s.parts.has(x.at)), riding = inside.filter((x) => v.agentPos(x, now)[5]).length; return v.figOn && [...Object.values(v.figs), ...Object.values(v.figsW)].reduce((n, f) => n + f.count, 0) === inside.length - riding && (v.figs.hauler.count + v.figsW.hauler.count) > 0; }), await page.evaluate(() => { const v = window.__view; return JSON.stringify({ fig: v.figOn, counts: Object.fromEntries(Object.entries(v.figs).map(([k, f]) => [k, f.count])), agents: window.__st.agents.filter((x) => !x.eva).length }); }));
+  await page.evaluate(() => { window.__ui.paused = false; });
   await page.screenshot({ path: 'test/shots/cutaway.png' });
   // The cut follows the camera; INSIDE takes the hull away; the camera flies on W A S D, Space and Shift.
   check('the cutaway is one plane facing the camera, just in front of what you look at', await page.evaluate(() => {
@@ -252,7 +255,35 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
     return ['hab', 'ring', 'disc', 'drum', 'command', 'tube'].every((t) => roles(t).has('hall')) && ['hab', 'ring'].every((t) => { const r = roles(t); return r.has('wall') && r.has('locker') && r.has('lane'); });
   }));
   check('rooms have a runner along their aisles', await page.evaluate(async () => { const R = await import('/js/rooms.js'); return R.roomPlan('quarters', 9, 7.2, 0, 0).items.some((i) => i[1] === 'hall'); }));
-  check('every part with a lift shaft has an elevator, and an empty one travels between decks by itself', await page.evaluate(async () => {
+  check('a lift is a closed tube, and nobody inside one is drawn', await page.evaluate(async () => {
+    const P = await import('/js/parts.js'), s = window.__st, v = window.__view, now = performance.now() / 1000;
+    // the tube is there to be seen, and the old open tower and its stair are gone (those were drawn as 'inner' rails and treads)
+    const roles = {}; P.buildPart('core').traverse((o) => { if (o.isMesh) roles[o.userData.role] = o.geometry.attributes.position.count; });
+    if (!roles.locker || !roles.steel) return false;
+    // send everybody somewhere else, and watch: whoever is inside a lift is left out of the figures
+    let rode = 0, wrong = 0;
+    for (let k = 0; k < 900 && rode < 3; k++) {
+      s.step(1 / 30); if (k % 3) continue;
+      const hid = s.agents.filter((a) => !a.eva).map((a) => v.agentPos(a, now)).filter((P5) => P5 && P5[5]).length; if (!hid) continue;
+      v._agents(now);
+      const drawn = [...Object.values(v.figs), ...Object.values(v.figsW)].reduce((n, im) => n + im.count, 0), inside = s.agents.filter((a) => !a.eva && s.parts.has(a.at)).length;
+      rode++; if (drawn !== inside - hid) wrong++;
+    }
+    return rode > 0 && wrong === 0;
+  }));
+  check('an airlock with nothing to walk into beyond it is shut, and one that joins two parts is open', await page.evaluate(async () => {
+    const P = await import('/js/parts.js'), s = window.__st, v = window.__view;
+    const want = () => { let n = 0; for (const p of s.parts.values()) { if (p.state !== 'active' || !P.WALK[p.type]) continue; s.def(p).ports.forEach((q, i) => { if (Math.abs(q[4]) > 0.7) return; const nb = p.used.has(i) ? p.kids.map((k) => s.parts.get(k)).find((k) => k && k.pport === i) || s.parts.get(p.parent) : null; if (!(nb && nb.state === 'active' && P.WALK[nb.type])) n++; }); } return n; };
+    v._airlocks(); const n0 = v.alDoor.count, w0 = want();
+    const free = s.freePorts().find((f) => { const p = s.parts.get(f.part); return p.state === 'active' && P.WALK[p.type] && Math.abs(f.dir[1]) < 0.7; });
+    if (!free) return n0 === w0 && n0 > 0;
+    const r = s.build('tube', free.part, free.i); if (!r.ok) return n0 === w0 && n0 > 0;
+    s.parts.get(r.id).state = 'active'; v._airlocks();
+    const n1 = v.alDoor.count, ok = n0 === w0 && n0 > 0 && n1 === n0 && n1 === want();      // one opens (the port used), one more is shut (the tube's far end)
+    s.demolish(r.id); s.parts.get(r.id) && s._remove(s.parts.get(r.id)); v._airlocks();
+    return ok && v.alDoor.count === n0;
+  }));
+  check('every part with a lift has its light, and with nobody aboard it calls at every deck by itself', await page.evaluate(async () => {
     const P = await import('/js/parts.js'), s = window.__st, v = window.__view; v.liftRider.clear(); v._lifts(0.016);
     const shafts = [...s.parts.values()].filter((p) => p.state === 'active' && P.WALK[p.type] && P.WALK[p.type].k === 'shaft' && (P.SLOTS[p.type] || []).length);
     if (!shafts.length || !shafts.every((p) => v.lifts.has(p.id))) return false;
@@ -285,7 +316,13 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
   await page.screenshot({ path: 'test/shots/life-signs.png' });
   check('in the x-ray people are life signs, not figures', await page.evaluate(() => window.__view.peopleOn && !window.__view.figOn));
   await page.evaluate(() => { window.__ui.paused = true; });      // hold still, so the person is where we aimed
-  const dot = await page.evaluate(() => { const v = window.__view, a = window.__st.agents.find((x) => !x.eva && v.agentPos(x, performance.now() / 1000)); v.camera.updateMatrixWorld(); const P = v.agentPos(a, performance.now() / 1000), q = v.camera.position.clone().set(...P).project(v.camera), r = v.canvas.getBoundingClientRect(); return { id: a.id, name: a.name, xy: [(q.x + 1) / 2 * r.width + r.left, (1 - q.y) / 2 * r.height + r.top] }; });
+  const dot = await page.evaluate(() => {      // somebody whose life sign is in the open middle of the picture, clear of the panels
+    const v = window.__view, r = v.canvas.getBoundingClientRect(), now = performance.now() / 1000; v.camera.updateMatrixWorld();
+    const at = (a) => { const P = v.agentPos(a, now); if (!P) return null; const q = v.camera.position.clone().set(P[0], P[1], P[2]).project(v.camera); return [(q.x + 1) / 2 * r.width + r.left, (1 - q.y) / 2 * r.height + r.top, q.z]; };
+    const ok = (a) => { const p = !a.eva && at(a); return p && p[2] < 1 && p[0] > 240 && p[0] < r.width - 240 && p[1] > 90 && p[1] < r.height - 260; };
+    const a = window.__st.agents.find(ok) || window.__st.agents.find((x) => !x.eva && at(x)), xy = at(a);
+    return { id: a.id, name: a.name, xy: [xy[0], xy[1]] };
+  });
   await page.mouse.move(...dot.xy); await page.waitForTimeout(250);
   check('hovering a life sign names the person', (await page.textContent('#tip')).length > 3 && !(await page.isHidden('#tip')));
   await page.mouse.click(...dot.xy); await page.waitForTimeout(300);

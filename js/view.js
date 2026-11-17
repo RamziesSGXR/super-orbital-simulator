@@ -6,7 +6,7 @@
 // The sky is a skybox: it moves with the camera, so stars, sun and moons never slide about when you pan or zoom.
 import * as THREE from './vendor/three.js';
 import { C } from './config.js';
-import { buildPart, buildShip, buildRoom, buildSuit, buildFigure, buildRaider, buildEagle, FIGURES, SLOTS, WALK, walkPath, onWalk, slotSpot, doorSide, floorY } from './parts.js';
+import { buildPart, buildShip, buildRoom, buildSuit, buildFigure, buildRaider, buildEagle, FIGURES, SLOTS, WALK, partPath, wayPoint, onWalk, slotSpot, doorSide, sillY, liftR, FL, LIFT_R } from './parts.js';
 import { paintWorld, WORLDS, WORLD_TYPES } from './planets.js';
 import { RNG } from './rng.js';
 
@@ -454,6 +454,7 @@ export class View {
     this._raid(now, dt);
     this._shots(dt);
     this._lifts(dt);
+    this._airlocks();
     if (this.edit) { const p = st.parts.get(this.edit); if (p && p.rooms.join(',') !== this.editSig) this._editLabels(); }
     // The cut faces the camera and sits a little in front of what you are looking at, so it works from any side and any distance.
     if (this.cutaway && !this.edit) {
@@ -568,67 +569,65 @@ export class View {
     a._rk = key; a._rs = out;
     return out;
   }
-  // The middle of a part's walk, for someone only passing through.
-  _hub(p) { const d = C.parts[p.type], w = onWalk(p.type, d.center); return { spot: w || d.center, door: null }; }
-  // A leg inside one part, between two spots, as world points with running lengths.
+  // Where someone passing through a part is taken to be when the view has not seen which way they came in.
+  _hubPt(p) { const d = C.parts[p.type]; return onWalk(p.type, d.center) || d.center; }
+  // A leg inside one part, between two ends (parts.js, partPath), as world points with running lengths. `hide` lists the lifts on
+  // the way, as circles on the ground: inside one, the walker is in a closed lift and is not drawn.
   _leg(p, from, to) {
-    const A = from.door || from.spot, B = to.door || to.spot, pts = [];
-    if (from.door) { pts.push(from.spot); for (const x of from.via || []) pts.push(x); }
-    for (const x of WALK[p.type] ? walkPath(p.type, A, B) : [A, B]) pts.push(x);
-    if (to.door) { for (const x of [...(to.via || [])].reverse()) pts.push(x); pts.push(to.spot); }
-    // the stretches straight up or down the middle of a part with a lift are the ride
-    const ride = WALK[p.type] && WALK[p.type].k === 'shaft' ? pts.map((l, i) => i > 0 && Math.hypot(l[0], l[2]) < 0.02 && Math.hypot(pts[i - 1][0], pts[i - 1][2]) < 0.02 && Math.abs(l[1] - pts[i - 1][1]) > 0.05) : null;
-    const out = pts.map((l) => addRot(p.pos, p.quat, [l[0], l[1] + 0.04, l[2]])), len = [0];
+    const P = partPath(p, from, to), out = P.pts.map((l) => addRot(p.pos, p.quat, [l[0], l[1] + FL, l[2]])), len = [0];
     for (let i = 1; i < out.length; i++) len.push(len[i - 1] + Math.hypot(out[i][0] - out[i - 1][0], out[i][1] - out[i - 1][1], out[i][2] - out[i - 1][2]));
-    return { pts: out, len, ride, pid: p.id };
+    const hide = P.hide.map(([x, z, r]) => { const w = addRot(p.pos, p.quat, [x, 0, z]); return [w[0], w[2], r]; });
+    return { pts: out, len, hide, pid: p.id };
   }
   _along(L, f) {
     const total = L.len[L.len.length - 1], want = Math.max(0, Math.min(1, f)) * total;
     let i = 1; while (i < L.len.length - 1 && L.len[i] < want) i++;
-    const a = L.pts[i - 1], b = L.pts[i], seg = L.len[i] - L.len[i - 1], t = seg > 1e-6 ? (want - L.len[i - 1]) / seg : 0;
-    const dx = b[0] - a[0], dz = b[2] - a[2];
-    return [a[0] + dx * t, a[1] + (b[1] - a[1]) * t, a[2] + dz * t, Math.hypot(dx, dz) > 1e-4 ? Math.atan2(dx, dz) : null, null, L.ride && L.ride[i] ? L.pid : 0];
+    const a = L.pts[i - 1], b = L.pts[i] || a, seg = L.len[i] - L.len[i - 1], t = seg > 1e-6 ? (want - L.len[i - 1]) / seg : 0;
+    const dx = b[0] - a[0], dz = b[2] - a[2], x = a[0] + dx * t, z = a[2] + dz * t;
+    let hid = 0; for (const h of L.hide) if (Math.hypot(x - h[0], z - h[1]) < h[2]) { hid = L.pid; break; }
+    return [x, a[1] + (b[1] - a[1]) * t, z, Math.hypot(dx, dz) > 1e-4 ? Math.atan2(dx, dz) : null, null, hid];
   }
-  // Where a person is, as [x, y, z, heading]. Heading is null when they are standing.
+  // Where a person is, as [x, y, z, heading, facing, lift]. Heading is null when they are standing. `lift` is the id of the part
+  // whose lift they are inside (so they are not drawn), or 0.
   agentPos(a, now) {
     const st = this.st, p = st.parts.get(a.at);
     if (!p) return null;
+    if (a._at !== a.at) { a._prev = a._at; a._at = a.at; }
     if (a.path.length) {
       const to = st.parts.get(a.path[0]);
       if (to) {
         const key = `${a.at}|${to.id}|${a.leg || 0}|${a.path.length}|${this.roomVer || 0}`;
         if (a._wk !== key) {
           const e = st.edge(p, to), jA = this._toLocal(p, e.conn), jB = this._toLocal(to, e.conn);
-          jA[1] = floorY(p.type, jA[1]); jB[1] = floorY(to.type, jB[1]);
+          // They set out from their own place; or, passing through, from where the way they came in by met this part's walk.
+          let from;
+          if ((a.leg || 0) === 0) from = this._rest(a, p);
+          else { const prev = st.parts.get(a._prev), near = prev && prev.id !== to.id && (prev.parent === p.id || p.parent === prev.id); from = { walk: near ? wayPoint(p, this._toLocal(p, st.edge(prev, p).conn)) : this._hubPt(p) }; }
           a._wk = key; a._we = e;
-          a._wa = this._leg(p, (a.leg || 0) === 0 ? this._rest(a, p) : this._hub(p), { spot: jA, door: null });
-          a._wb = this._leg(to, { spot: jB, door: null }, a.path.length === 1 ? this._rest(a, to) : this._hub(to));
+          a._wa = this._leg(p, from, { join: jA });
+          a._wb = this._leg(to, { join: jB }, a.path.length === 1 ? this._rest(a, to) : { walk: wayPoint(to, jB) });
         }
         const e = a._we;
         return a.s < e.da ? this._along(a._wa, a.s / Math.max(0.01, e.da)) : this._along(a._wb, (a.s - e.da) / Math.max(0.01, e.db));
       }
     }
     const rs = this._rest(a, p), r = rs.spot;
-    const w = addRot(p.pos, p.quat, [r[0], r[1] + 0.04, r[2]]);
-    return [w[0], w[1], w[2], null, rs.face ?? null];
+    const w = addRot(p.pos, p.quat, [r[0], r[1] + FL, r[2]]);
+    return [w[0], w[1], w[2], null, rs.face ?? null, 0];
   }
-  // An elevator in every part with a lift shaft: a cab with waist-high sides, glass above, a yellow band and a lit ceiling, open
-  // front and back. It goes to whoever is riding. With nobody aboard it works its way up and down the decks on its own.
+  // THE LIFTS. A lift is a closed tube (parts.js draws it), so there is no car to see. What shows where the car is, is a band of
+  // light round the tube at the car's roof: it goes to whoever is riding, and with nobody aboard it calls at each deck in turn.
   _lifts(dt) {
     const st = this.st, show = this.figOn;
     for (const [id, c] of this.lifts) if (!st.parts.has(id)) { this.scene.remove(c.obj); this.lifts.delete(id); }
     for (const p of st.parts.values()) {
       const lay = SLOTS[p.type];
-      if (!WALK[p.type] || WALK[p.type].k !== 'shaft' || !lay || !lay.length || p.state !== 'active') continue;
+      if (liftR(p.type) !== LIFT_R || !lay || !lay.length || p.state !== 'active') continue;
       let c = this.lifts.get(p.id);
       if (!c) {
-        const g = new THREE.Group(), M = this.M, add = (w, h, d, m, x, y, z) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y, z); g.add(o); };
-        add(0.24, 0.014, 0.24, M.locker, 0, -0.007, 0); add(0.24, 0.016, 0.24, M.locker, 0, 0.278, 0); add(0.18, 0.006, 0.18, M.lane, 0, 0.268, 0);
-        for (const [x, z] of [[0.112, 0.112], [-0.112, 0.112], [0.112, -0.112], [-0.112, -0.112]]) add(0.016, 0.27, 0.016, M.steel, x, 0.135, z);
-        for (const sx of [-1, 1]) { add(0.012, 0.12, 0.21, M.steel, sx * 0.114, 0.06, 0); add(0.014, 0.018, 0.212, M.craftTrim, sx * 0.114, 0.128, 0); add(0.006, 0.13, 0.21, M.thGlass, sx * 0.114, 0.202, 0); add(0.008, 0.008, 0.2, M.steel, sx * 0.1, 0.1, 0); }
-        for (const sz of [-1, 1]) { add(0.24, 0.02, 0.012, M.craftTrim, 0, 0.26, sz * 0.114); add(0.1, 0.01, 0.014, M.lane, 0, 0.245, sz * 0.114); }
-        this.scene.add(g);
-        const ys = [...new Set(lay.map((sl) => sl.p[1]))].sort((u, v) => u - v).map((y) => p.pos[1] + y + 0.04);
+        const g = new THREE.Group(), band = new THREE.Mesh(new THREE.TorusGeometry(LIFT_R * 1.07, 0.011, 6, 24).rotateX(Math.PI / 2), this.M.lane);
+        band.position.y = 0.335; g.add(band); this.scene.add(g);
+        const ys = [...new Set(lay.map((sl) => sl.p[1]))].sort((u, v) => u - v).map((y) => p.pos[1] + y + FL);
         c = { obj: g, y: ys[0], ys, at: 0, dir: 1, wait: 2 + (p.id % 5), quiet: 0 }; this.lifts.set(p.id, c);
       }
       const want = this.liftRider.get(p.id);
@@ -640,6 +639,34 @@ export class View {
       }
       c.obj.position.set(p.pos[0], c.y, p.pos[2]); c.obj.visible = show;
     }
+  }
+  // AIRLOCK DOORS. A side port with nowhere to walk to beyond it keeps its airlock shut. Every shut door on the station is one
+  // batch: a steel door with a red bar across it, standing in the airlock frame that parts.js drew at the port.
+  _airlocks() {
+    const st = this.st, MAX = 800;
+    if (!this.alDoor) {
+      this.alDoor = new THREE.InstancedMesh(new THREE.BoxGeometry(0.02, 0.27, 0.24), this.M.steel, MAX); this.alBar = new THREE.InstancedMesh(new THREE.BoxGeometry(0.026, 0.03, 0.2), this.M.alarm, MAX);
+      for (const im of [this.alDoor, this.alBar]) { im.count = 0; im.frustumCulled = false; this.scene.add(im); }
+    }
+    this.alDoor.visible = this.alBar.visible = this.mode === 'hull';
+    let sig = ''; for (const p of st.parts.values()) sig += `${p.id}${p.state[0]}${p.kids.join('.')};`;
+    if (sig === this._alSig) return;
+    this._alSig = sig;
+    const m4 = new THREE.Matrix4(), pq = new THREE.Quaternion(), qy = new THREE.Quaternion(), v3 = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1);
+    let n = 0;
+    for (const p of st.parts.values()) {
+      if (p.state !== 'active' || !WALK[p.type]) continue;
+      C.parts[p.type].ports.forEach((q, i) => {
+        if (Math.abs(q[4]) > 0.7 || n >= MAX) return;
+        const nb = p.used.has(i) ? p.kids.map((k) => st.parts.get(k)).find((k) => k && k.pport === i) || st.parts.get(p.parent) : null;
+        if (nb && nb.state === 'active' && WALK[nb.type]) return;      // open: there is somewhere to walk to
+        const y = sillY(p.type, q[1]) + FL;
+        pq.set(...p.quat); qy.setFromAxisAngle(UP, -Math.atan2(q[5], q[3])); pq.multiply(qy);
+        for (const [im, ly] of [[this.alDoor, 0.14], [this.alBar, 0.15]]) { v3.set(...addRot(p.pos, p.quat, [q[0] - q[3] * 0.11, y + ly, q[2] - q[5] * 0.11])); m4.compose(v3, pq, one); im.setMatrixAt(n, m4); }
+        n++;
+      });
+    }
+    for (const im of [this.alDoor, this.alBar]) { im.count = n; im.instanceMatrix.needsUpdate = true; }
   }
   // Keep the camera on one person: what it looks at glides to them, and the camera goes with it, so the angle and distance are yours.
   follow(a, dt) {
@@ -666,11 +693,11 @@ export class View {
       const P = this.agentPos(a, now);
       if (!P) continue;
       if (!fig) { put(P, a.carry ? ROLE_COL.carry : ROLE_COL[a.role] || ROLE_COL.resident); continue; }
+      if (P[5]) { this.liftRider.set(P[5], P[1]); continue; }      // inside a lift: the tube is closed, so there is nobody to draw
       // A figure stands on the deck of the part it is in, turned the way it walks (or a way of its own when it is standing).
       // A gunner is drawn by where they live: a trooper from a barrack room, a pilot from a pad, a gun crew otherwise.
       let fk = a.role;
       if (fk === 'resident') fk = RESIDENTS[Math.floor(a.seed * 4) % 4];
-      if (P[5]) this.liftRider.set(P[5], P[1]);
       if (fk === 'gunner') { const hp = this.st.parts.get(a.home), ht = hp ? hp.type : ''; fk = ht === 'barracks' ? 'trooper' : ht === 'eaglehangar' || ht === 'pelicanbay' ? (a.seed < 0.5 ? 'pilot' : 'gunner') : 'gunner'; }
       const walking = a.path.length > 0 && !P[5], ck = walking ? `w${fk}` : fk;
       const im = (walking ? this.figsW : this.figs)[fk] || this.figs.resident, i = count[ck] = (count[ck] || 0), part = this.st.parts.get(a.at);

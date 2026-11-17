@@ -2,7 +2,7 @@
 
 Run a space station and the people aboard it. A browser game for the **Super Earth Special Forces** community, in the same look as [Orbital Fury](https://orbitalfury.com/).
 
-> **Prototype 0.10: hallways, elevators and following a person.** Corridors are now proper hallways with a carpet runner, a wall, a handrail and lights. Every lift shaft has an elevator cab that travels between the decks. Click a person twice, or press `F`, and the camera stays with them wherever they go.
+> **Prototype 0.11: hallways that join up, airlocks, and closed lifts.** Every side port now opens onto a deck at the same height, so floors meet level wherever two parts join, with an airlock between them. Every part has floor all the way from each port to its hallway. Lifts are closed tubes: people walk in and are out of sight until they walk out, so nothing passes through anything. The open lift frames and the spiral stairs are gone.
 
 **Your station. Its people. What happens to them.** It is a space station simulator: think Deep Space Nine in the Helldivers universe, with you as the station's commander. You start with Station Command in empty space, snap parts onto it and set their rooms. Then the people move in, and the station becomes theirs as much as yours.
 
@@ -11,6 +11,21 @@ Run a space station and the people aboard it. A browser game for the **Super Ear
 It runs in your browser on a computer, or on a phone or tablet held sideways. There is nothing to install. Turn the sound on.
 
 **Quick start:** press **NEW STATION**. Open **FIRE** and put a Ship Gun on a side port. Open the **DOCK** group at the bottom left, press `Q` for a Docking Port, move the pointer near Station Command and click when the little dot lights up. Add a Cargo Module from **INDUS** and a Hab Module from **HAB** the same way. Ships and colonists arrive within a minute, and soon after that the first thing lands on your desk.
+
+## What's new in 0.11
+
+Asked for: fix the hallways (some were missing), add airlock doors for the gaps, and stop things passing through each other, above all at the lifts and stairs.
+
+- **One sill for every port.** Every side port on every part now opens onto a deck exactly 3.6 m below the port's centre. Two parts joined at a port have their floors at the same height, so nobody steps up or down at a join. Most parts had their decks or their ports moved to make this true.
+- **Floor everywhere people walk.** Spine parts (Command, Core, Long Spine, Junction, Tower) have a round deck out to the hull on every level, with a gallery round it. Hallway parts have a full deck under their rooms and a short entry from each end port across to the hallway. Ring spokes and the Drum's arms are hallways with their own floor. The Disc and the rings have a deck at the hub.
+- **Airlocks.** Every side port has a heavy striped door frame just inside the hull. Where two parts join you walk through two frames. A port with nothing to walk into beyond it has its door shut, with a red bar across it.
+- **Lifts are closed tubes.** The open lift frame, the car and the spiral stair are gone. A lift is a dark tube with a door at every stop on every side people come from. People walk to the door and are not drawn while inside, then walk out at their deck. A band of light round the tube shows where the car is.
+- **Roof ports get a lift tube.** A part standing on another part's roof port used to be reached through thin air. Now a one-person tube runs from the hallway up through the roof, and the part above has a hatch in its hallway floor.
+- **Spine parts join port to port.** A core, ring or tower built on a side port now turns one of its own side ports to face it, so the two airlocks meet. `R` picks which of its ports.
+- **Nobody cuts through a room.** Side ports were moved to line up with the gaps between rooms. Hangar and Eagle pads open onto the passage beside them, not across each other. Promenade Disc rooms were made narrower so its eight hallways fit between them. The Reactor's room moved off the line of its ports.
+- **A check that walks every route.** `node test/walks.mjs` walks 15,910 routes through 29 kinds of part, a step every 27 cm. It fails if any step in sight has no floor under it, passes through a wall, a fitting or a parked craft, or changes height outside a lift.
+
+Not done yet: lift doors are drawn shut and do not slide. People inside a lift vanish at the door rather than stepping in. Racks and fuel tanks still have no walkway. Saves from 0.10 do not load, because parts changed shape.
 
 ## What's new in 0.10
 
@@ -187,6 +202,7 @@ js/main.js          the loop, input, HUD, comms, the Commander's channel, the up
 js/vendor/three.js  three.js (MIT), see js/vendor/THREE-LICENSE
 test/headless.mjs   runs a station without a browser and prints the economy, capability and faction moods (add `approve` as a fifth argument to say yes to every request)
 test/story.mjs      plays the story with no browser: supplies, requests, a raid, a save and the Broken Station
+test/walks.mjs      walks every route through every kind of part: floor under every step, nothing in the way
 test/ui.mjs         plays it through the real page on a desktop and a phone held sideways
 test/fit.mjs        opens the interface at seven screen sizes and reports anything cut off, spilling out of its box or overlapping
 tools/vendor.mjs    rebuilds js/vendor/three.js

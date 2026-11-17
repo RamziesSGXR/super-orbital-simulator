@@ -135,12 +135,18 @@ export class Station {
       const b = d.ports[bi];
       return { pos: v.sub(tp.pos, q.rot(quat, [b[0], b[1], b[2]])), quat, base: bi, join };
     }
-    if (bv) {      // a spine part on a side port: it stands beside the host, level with the port
-      const quat = yaw(step), rad = d.rad ?? Math.max(1.2, ...d.ports.filter((x) => Math.abs(x[4]) < 0.7).map((x) => Math.hypot(x[0], x[2])));
+    if (bv) {      // a spine part on a side port: it stands beside the host, one of its own side ports mated to the host's, airlock to airlock
+      const side = d.ports.map((x, i) => [x, i]).filter(([x]) => Math.abs(x[4]) < 0.7);
+      if (side.length) {      // R picks which of its side ports faces the host
+        const [k, ki] = side[((rot % side.length) + side.length) % side.length], quat = yaw(Math.atan2(k[5], k[3]) - Math.atan2(-tp.dir[2], -tp.dir[0]));
+        return { pos: v.sub(tp.pos, q.rot(quat, [k[0], k[1], k[2]])), quat, base: ki, join };
+      }
+      const quat = yaw(step), rad = d.rad ?? 1.2;      // no side port of its own (a dome, a spire): it stands clear of the port
       return { pos: [tp.pos[0] + tp.dir[0] * rad, tp.pos[1], tp.pos[2] + tp.dir[2] * rad], quat, base: -1, join };
     }
-    // an arm part on a port that faces up or down: it sits on top, or hangs beneath, centred on the port
-    const quat = yaw(step), hh = d.hh ?? 1, c = q.rot(quat, [d.center[0], 0, d.center[2]]);
+    // an arm part on a port that faces up or down: it sits on top, or hangs beneath, with the middle of its hallway over the port,
+    // so the lift tube in the port comes up through a hatch in the hallway floor
+    const way = C.ways[type], quat = yaw(step), hh = d.hh ?? 1, c = q.rot(quat, [d.center[0], 0, way && way.k === 'hall' ? way.z : d.center[2]]);
     return { pos: [tp.pos[0] - c[0], tp.pos[1] + Math.sign(tp.dir[1]) * hh, tp.pos[2] - c[2]], quat, base: -1, join };
   }
   freePorts() {

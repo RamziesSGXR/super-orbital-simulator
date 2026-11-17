@@ -286,6 +286,7 @@ export function roomPlan(room, W, D, door, variant = 0) {
   for (const a of aisles) for (let x = x0 + 0.9; x <= x1 - 0.9 + 1e-6; x += 2.3) if (!(lift && Math.abs(x) < 3.0 && Math.abs(a) < 3.0)) spots.push({ x, z: a, face: null, via: [[0, a]], idle: true });
   if (pad && room !== 'empty') for (const s of [-1, 1]) spots.push({ x: s * hw * 0.92, z: -hd * 0.86, face: null, via: [[s * hw * 0.92, hd * 0.86], [0, hd * 0.86]], idle: true });
   if (!spots.length) spots.push({ x: 0, z: aisles[0] || 0, face: null, via: [], idle: true });
+  out.aisles = aisles;      // where the lanes run (z, in metres): the ways in from the edge of an open deck
   cache.set(key, out);
   return out;
 }

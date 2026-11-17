@@ -11,14 +11,18 @@
 // ('L' base) stick out along their local +X. Any part can go on any free port: the kit is meant to be free.
 // Parts sit in GROUPS (like a corvette builder's categories) and unlock by TIER on the upgrade path.
 // Many parts have SLOTS inside: rooms you build out in the cutaway. A part's job comes from its rooms, not from the part.
+// THE STANDARD SILL. Every side port opens onto a deck exactly 0.4 below the port's centre (3.6 m), on both sides of the join, so
+// floors meet level wherever two parts are joined and an airlock is all that stands between them. A port in a roof or a floor
+// is reached by a lift tube instead. WALK (below, C.ways) says how people move through each part.
 const ring4 = (r, y = 0, a0 = 0) => [0, 1, 2, 3].map((i) => { const a = a0 + i * Math.PI / 2; return [Math.cos(a) * r, y, Math.sin(a) * r, Math.cos(a), 0, Math.sin(a), 'L']; });
 const ring6 = (r, y = 0) => [0, 1, 2, 3, 4, 5].map((i) => { const a = i * Math.PI / 3; return [Math.cos(a) * r, y, Math.sin(a) * r, Math.cos(a), 0, Math.sin(a), 'L']; });
 const spine = (h) => [[0, -h / 2, 0, 0, -1, 0, 'S'], [0, h / 2, 0, 0, 1, 0, 'S']];
 const arm = (len) => [[0, 0, 0, -1, 0, 0, 'L'], [len, 0, 0, 1, 0, 0, 'L']];
 const fill = (n, room) => Array(n).fill(room);
+const deg = (xs) => xs.map((x) => x * Math.PI / 180);
 
 export const C = {
-  version: '0.10.0',
+  version: '0.11.0',
 
   groups: [
     { id: 'structure', name: 'STRUCTURE' }, { id: 'platform', name: 'FIRE SUPPORT' }, { id: 'habitation', name: 'HABITATION' }, { id: 'docking', name: 'DOCKING' },
@@ -28,12 +32,12 @@ export const C = {
   parts: {
     command:  { name: 'Station Command', group: 'structure', cost: 0, up: 0, pw: -6, build: 0, fixed: true, homes: { hauler: 3 }, center: [0, 0, 0], r: 2,
       about: 'The heart of the station. Everything connects back to it.', rooms: ['ops', 'quarters', 'workshop'],
-      ports: [[0, -1.7, 0, 0, -1, 0, 'S'], [0, 1.7, 0, 0, 1, 0, 'S'], ...ring4(1.2, -0.5)] },
+      ports: [[0, -1.7, 0, 0, -1, 0, 'S'], [0, 1.7, 0, 0, 1, 0, 'S'], ...ring4(1.2, -0.58)] },
     // ---- structure
     core:     { name: 'Core Segment', group: 'structure', tier: 0, cost: 60, up: 1, pw: 1, build: 3, center: [0, 0, 0], r: 1.6, rooms: fill(2, 'empty'),
-      about: 'A section of spine with four side ports and two decks inside.', ports: [...spine(3), ...ring4(1.2)] },
+      about: 'A section of spine with four side ports and two decks inside.', ports: [...spine(3), ...ring4(1.2, -0.33)] },
     longcore: { name: 'Long Spine', group: 'structure', tier: 1, cost: 110, up: 2, pw: 1, build: 5, center: [0, 0, 0], r: 3.2, rooms: fill(4, 'empty'),
-      about: 'A tall spine with eight side ports and four decks.', ports: [...spine(6), ...ring4(1.2, -1.5), ...ring4(1.2, 1.5, Math.PI / 4)] },
+      about: 'A tall spine with eight side ports and four decks.', ports: [...spine(6), ...ring4(1.2, -1.83), ...ring4(1.2, 1.17, Math.PI / 4)] },
     junction: { name: 'Hub Junction', group: 'structure', tier: 0, cost: 70, up: 1, pw: 1, build: 3, center: [0, 0, 0], r: 1.8, rooms: fill(1, 'empty'),
       about: 'A short, wide spine piece with six side ports, for stars of arms.', ports: [...spine(1.6), ...ring6(1.6)] },
     truss:    { name: 'Truss', group: 'structure', tier: 0, cost: 25, up: 0, pw: 0, build: 2, center: [2.5, 0, 0], r: 2.6,
@@ -46,35 +50,35 @@ export const C = {
     // ---- the fire support platform: the decks that face the planet. Each belongs to one SYSTEM of the Orbital Fury armory.
     // keel: its guns point down at the planet, so it cannot go on a port that faces up.
     gunmount: { name: 'Ship Gun', group: 'platform', tier: 0, cost: 220, up: 3, pw: 3, build: 6, sys: 'gun', keel: true, center: [1.7, 0, 0], r: 2.4, rooms: ['guncrew', 'magazine'],
-      about: 'The ship gun on its mount, with its crew room and ammo bay. Answers calls for gun fire.', ports: [[0, 0, 0, -1, 0, 0, 'L'], [1.7, 0.8, 0, 0, 1, 0, 'L']] },
+      about: 'The ship gun on its mount, with its crew room and ammo bay. Answers calls for gun fire.', ports: [[0, 0, 0, -1, 0, 0, 'L'], [1.7, 0.8, 0.35, 0, 1, 0, 'L']] },
     battery:  { name: 'Orbital Battery', group: 'platform', tier: 0, cost: 280, up: 4, pw: 4, build: 8, sys: 'orbital', keel: true, center: [2.3, 0, 0], r: 3, rooms: ['guncrew', 'magazine', 'magazine'],
-      about: 'One orbital cannon and its magazines. Each battery is one strike slot, up to five.', ports: [[0, 0, 0, -1, 0, 0, 'L'], [1.5, 0.8, 0, 0, 1, 0, 'L'], [1.5, 0, 1, 0, 0, 1, 'L'], [1.5, 0, -1, 0, 0, -1, 'L']] },
+      about: 'One orbital cannon and its magazines. Each battery is one strike slot, up to five.', ports: [[0, 0, 0, -1, 0, 0, 'L'], [1.5, 0.8, 0.35, 0, 1, 0, 'L'], [1.725, 0, 1, 0, 0, 1, 'L'], [1.725, 0, -1, 0, 0, -1, 'L']] },
     dronebay: { name: 'Drone Bay', group: 'platform', tier: 1, cost: 200, up: 2, pw: 2, build: 5, sys: 'uav', keel: true, center: [1.5, 0, 0], r: 2, rooms: ['dronerack', 'ops'],
-      about: 'Launches the UAV that scans the ground for the gunner.', ports: [[0, 0, 0, -1, 0, 0, 'L'], [1.5, 0.8, 0, 0, 1, 0, 'L']] },
+      about: 'Launches the UAV that scans the ground for the gunner.', ports: [[0, 0, 0, -1, 0, 0, 'L'], [1.5, 0.8, 0.35, 0, 1, 0, 'L']] },
     relay:    { name: 'Target Relay', group: 'platform', tier: 1, cost: 150, up: 2, pw: 2, build: 4, sys: 'uav', keel: true, center: [1, -0.6, 0], r: 1.8,
       about: 'A dish aimed at the ground. Widens the strike zone: the UAV system counts as better equipped.', ports: [[0, 0, 0, -1, 0, 0, 'L']] },
     barracks: { name: 'SEAF Barracks', group: 'platform', tier: 1, cost: 320, up: 4, pw: 2, build: 7, sys: 'seaf', center: [2.6, 0, 0], r: 2.8, rooms: ['barrack', 'barrack', 'armoury'],
-      about: 'Bunks and an armoury for the SEAF troopers who drop to the surface.', ports: [...arm(5.2), [2.6, 0, 1.1, 0, 0, 1, 'L'], [2.6, 0, -1.1, 0, 0, -1, 'L']] },
+      about: 'Bunks and an armoury for the SEAF troopers who drop to the surface.', ports: [...arm(5.2), [1.85, 0, 1.1, 0, 0, 1, 'L'], [1.85, 0, -1.1, 0, 0, -1, 'L']] },
     eaglehangar: { name: 'Eagle Hangar', group: 'platform', tier: 2, cost: 440, up: 6, pw: 3, build: 9, sys: 'eagle', bay: true, center: [3.5, 0, 0], r: 4.2, rooms: ['eaglepad', 'eaglepad', 'ordnance'],
-      about: 'Two rearming pads for Eagles, and the ordnance store that feeds them.', ports: [[0, 0, 0, -1, 0, 0, 'L'], [3.5, 1.5, 0, 0, 1, 0, 'L'], [3.5, 0, 2.4, 0, 0, 1, 'L'], [3.5, 0, -2.4, 0, 0, -1, 'L']] },
+      about: 'Two rearming pads for Eagles, and the ordnance store that feeds them.', ports: [[0, -0.98, 0, -1, 0, 0, 'L'], [3.5, 1.5, 1.73, 0, 1, 0, 'L'], [2.65, -0.98, 2.4, 0, 0, 1, 'L'], [2.65, -0.98, -2.4, 0, 0, -1, 'L']] },
     pelicanbay: { name: 'Pelican Bay', group: 'platform', tier: 2, cost: 400, up: 5, pw: 3, build: 9, sys: 'seaf', bay: true, center: [4, 0, 0], r: 4.6, rooms: ['pelicanpad', 'armoury', 'barrack'],
-      about: 'A launch bay for the Pelicans that carry SEAF down and bring them home.', ports: [[0, 0, 0, -1, 0, 0, 'L'], [4, 1.7, 0, 0, 1, 0, 'L'], [4, 0, 2.7, 0, 0, 1, 'L'], [4, 0, -2.7, 0, 0, -1, 'L']] },
+      about: 'A launch bay for the Pelicans that carry SEAF down and bring them home.', ports: [[0, -1.18, 0, -1, 0, 0, 'L'], [4, 1.7, 1.88, 0, 1, 0, 'L'], [2.85, -1.18, 2.7, 0, 0, 1, 'L'], [2.85, -1.18, -2.7, 0, 0, -1, 'L']] },
     fabshop:  { name: 'Fabrication Shop', group: 'platform', tier: 2, cost: 300, up: 4, pw: 4, build: 7, sys: 'fab', center: [2.2, 0, 0], r: 2.6, rooms: ['fab', 'cargostore'],
-      about: 'Packs the crates of wire, bastions and turrets that drop to the troops.', ports: [...arm(4.4), [2.2, 0.9, 0, 0, 1, 0, 'L']] },
+      about: 'Packs the crates of wire, bastions and turrets that drop to the troops.', ports: [...arm(4.4), [2.2, 0.9, 0.45, 0, 1, 0, 'L']] },
     lance:    { name: 'Democracy Lance', group: 'platform', tier: 3, cost: 1500, up: 12, pw: 12, build: 16, sys: 'classified', keel: true, center: [3, -1.5, 0], r: 5, rooms: ['guncrew', 'magazine', 'magazine'],
-      about: 'CLASSIFIED. One great weapon, by permission of the Ministry.', ports: [[0, 0, 0, -1, 0, 0, 'L'], [2, 0.9, 0, 0, 1, 0, 'L']] },
+      about: 'CLASSIFIED. One great weapon, by permission of the Ministry.', ports: [[0, 0, 0, -1, 0, 0, 'L'], [2, 0.9, 0.53, 0, 1, 0, 'L']] },
     // ---- habitation
     hab:      { name: 'Hab Module', group: 'habitation', tier: 0, cost: 90, up: 2, pw: 1, build: 4, center: [2.4, 0, 0], r: 2.6, rooms: fill(3, 'quarters'),
-      about: 'A pressurised module with three rooms, quarters to start.', ports: [...arm(4.8), [2.4, 0, 1, 0, 0, 1, 'L'], [2.4, 0, -1, 0, 0, -1, 'L']] },
+      about: 'A pressurised module with three rooms, quarters to start.', ports: [...arm(4.8), [1.8, 0, 1, 0, 0, 1, 'L'], [1.8, 0, -1, 0, 0, -1, 'L']] },
     ring:     { name: 'Habitat Ring', group: 'habitation', tier: 1, cost: 420, up: 8, pw: 4, build: 10, center: [0, 0, 0], r: 8, rooms: fill(12, 'quarters'),
-      about: 'A torus on four spokes with twelve rooms round it. Its rim takes more parts.', ports: [...spine(1.4), ...ring4(7.95, 0, Math.PI / 4)] },
+      about: 'A torus on four spokes with twelve rooms round it. Its rim takes more parts.', ports: [...spine(1.4), ...ring4(7.95)] },
     drum:     { name: 'Habitat Drum', group: 'habitation', tier: 1, cost: 340, up: 6, pw: 3, build: 8, center: [0, 0, 0], r: 4.8, rooms: fill(8, 'quarters'),
-      about: 'A deep drum round the spine: two decks of four rooms.', ports: [...spine(2.6), ...ring4(4.7)] },
+      about: 'A deep drum round the spine: two decks of four rooms.', ports: [...spine(2.6), ...ring4(4.7, -0.33)] },
     disc:     { name: 'Promenade Disc', group: 'habitation', tier: 1, cost: 300, up: 6, pw: 3, build: 8, center: [0, 0, 0], r: 5.6,
       rooms: ['market', 'mess', 'market', 'bar', 'market', 'mess', 'market', 'bar'],
       about: 'Shops, mess halls and a lounge round the spine: eight rooms.', ports: [...spine(1.6), ...ring6(5.6)] },
     tower:    { name: 'Hab Tower', group: 'habitation', tier: 1, cost: 300, up: 5, pw: 3, build: 8, center: [0, 0, 0], r: 3.6, rooms: fill(6, 'quarters'),
-      about: 'A hexagonal tower of six decks, with a port on every face.', ports: [...spine(7), ...ring6(1.56)] },
+      about: 'A hexagonal tower of six decks, with a port on every face.', ports: [...spine(7), ...ring6(1.56, -0.18)] },
     dome:     { name: 'Arboretum Dome', group: 'habitation', tier: 0, cost: 120, up: 2, pw: 1, build: 5, center: [0, 0.8, 0], r: 2.3, rooms: ['hydro'],
       about: 'Trees under glass. Caps a spine or an arm.', ports: [[0, -0.2, 0, 0, -1, 0, 'S']] },
     blister:  { name: 'Observation Blister', group: 'habitation', tier: 0, cost: 80, up: 1, pw: 1, build: 3, center: [1.4, 0, 0], r: 1.5, rooms: ['lounge'],
@@ -88,19 +92,19 @@ export const C = {
       about: 'A wide outer ring on six spokes: quarters and cargo stores, and six rim ports for docks.', ports: [...spine(1.2), ...ring6(12.7)] },
     hangar:   { name: 'Hangar', group: 'docking', tier: 2, cost: 360, up: 6, pw: 3, build: 9, bay: true, center: [4, 0, 0], r: 4.6, rooms: ['shuttlebay', 'workshop', 'cargostore'],
       berth: [8.2, 0, 0, 1, 0, 0], ships: ['shuttle'], berthRoom: 'shuttlebay',
-      about: 'A big bay with a door at the end. Build a Shuttle Bay inside and shuttles land in it.', ports: [[0, 0, 0, -1, 0, 0, 'L'], [4, 1.7, 0, 0, 1, 0, 'L'], [4, 0, 2.7, 0, 0, 1, 'L'], [4, 0, -2.7, 0, 0, -1, 'L']] },
+      about: 'A big bay with a door at the end. Build a Shuttle Bay inside and shuttles land in it.', ports: [[0, -1.18, 0, -1, 0, 0, 'L'], [4, 1.7, 1.88, 0, 1, 0, 'L'], [2.85, -1.18, 2.7, 0, 0, 1, 'L'], [2.85, -1.18, -2.7, 0, 0, -1, 'L']] },
     drydock:  { name: 'Drydock', group: 'docking', tier: 2, cost: 420, up: 6, pw: 4, build: 10, bay: true, center: [1, 0, 0], r: 8, rooms: ['workshop', 'workshop'],
       berth: [6, 0, 0, 1, 0, 0], ships: ['warship'], berthRoom: 'workshop',
       about: 'An open frame where damaged warships come in for repairs, by engineers on EVA. Needs a Workshop inside.', ports: [[0, 0, 0, -1, 0, 0, 'L']] },
     // ---- industry
     cargo:    { name: 'Cargo Module', group: 'industry', tier: 0, cost: 90, up: 2, pw: 1, build: 4, center: [2.4, 0, 0], r: 2.6, rooms: fill(3, 'cargostore'),
-      about: 'A module of cargo stores: haulers bring crates here.', ports: [...arm(4.8), [2.4, 0, 1, 0, 0, 1, 'L'], [2.4, 0, -1, 0, 0, -1, 'L']] },
+      about: 'A module of cargo stores: haulers bring crates here.', ports: [...arm(4.8), [1.8, 0, 1, 0, 0, 1, 'L'], [1.8, 0, -1, 0, 0, -1, 'L']] },
     rack:     { loose: true, name: 'Cargo Rack', group: 'industry', tier: 0, cost: 60, up: 1, pw: 0, build: 3, cargo: true, homes: { hauler: 1 }, center: [2, 0, 0], r: 2.2,
       about: 'An open frame of containers. Takes crates, and houses one hauler.', ports: [...arm(4), [2, 1.1, 0, 0, 1, 0, 'L'], [2, -1.1, 0, 0, -1, 0, 'L']] },
     tanks:    { loose: true, name: 'Fuel Tanks', group: 'industry', tier: 1, cost: 140, up: 2, pw: 0, build: 5, fuel: 5, center: [2, 0, 0], r: 2.2,
       about: 'Three tanks of fuel. Every ship that docks buys some: +5 CR a ship (up to 3).', ports: arm(4.2) },
     refinery: { name: 'Refinery', group: 'industry', tier: 2, cost: 300, up: 5, pw: 4, build: 8, refine: 4, center: [2, 0, 0], r: 2.6, rooms: ['workshop', 'cargostore'],
-      about: 'Processes cargo: +4 CR on every crate delivered (up to 2 refineries).', ports: [...arm(4), [2, 1.2, 0, 0, 1, 0, 'L']] },
+      about: 'Processes cargo: +4 CR on every crate delivered (up to 2 refineries).', ports: [...arm(4), [2, 1.2, 0.35, 0, 1, 0, 'L']] },
     // ---- power
     reactor:  { name: 'Reactor Core', group: 'power', tier: 0, cost: 160, up: 6, pw: -16, build: 6, center: [0, 0, 0], r: 2.4, rooms: ['workshop'],
       about: 'Supplies 16 power. Goes in the spine.', ports: [[0, -1.75, 0, 0, -1, 0, 'S'], [0, 1.75, 0, 0, 1, 0, 'S'], ...ring4(2.2)] },
@@ -120,6 +124,24 @@ export const C = {
       about: 'A long-range dish. Ships come 15% more often (up to 2).', ports: [[0, 0, 0, -1, 0, 0, 'L']] },
     billboard:{ loose: true, name: 'Propaganda Screen', group: 'comms', tier: 1, cost: 90, up: 1, pw: 1, build: 3, leisure: 3, center: [0.8, 0, 0], r: 2.4,
       about: 'A giant screen of Super Earth slogans, for passing ships and residents. Morale +3.', ports: [[0, 0, 0, -1, 0, 0, 'L']] },
+  },
+
+  // WAYS: how people move through each part (parts.js calls this table WALK).
+  //   shaft: a lift up the middle, one stop on every deck, and a gallery round each deck at radius g, just inside the hull.
+  //   hall:  a hallway along the part at floor height y, to one side at z. fx: how far in from an end port its entry lies.
+  //   ring:  a hallway round the part at radius R; spokes are the angles of the hallways in to the lift at the hub.
+  // hw: half the hallway's width, where it is not the standard 0.19 (1.7 m either side of the centre line).
+  ways: {
+    command: { k: 'shaft', g: 1.06 }, core: { k: 'shaft', g: 1.06 }, longcore: { k: 'shaft', g: 1.06 }, junction: { k: 'shaft', g: 1.42 }, tower: { k: 'shaft', g: 1.4 }, dome: { k: 'shaft' },
+    reactor: { k: 'ring', R: 0.86, y: -0.4, spokes: deg([225]), hub: 0.56, hw: 0.12 },
+    hab: { k: 'hall', y: -0.4, z: 0.6, fx: 0.5 }, cargo: { k: 'hall', y: -0.4, z: 0.6, fx: 0.5 },
+    ring: { k: 'ring', R: 6.45, y: -0.4, spokes: deg([0, 90, 180, 270]) }, bigring: { k: 'ring', R: 11.72, y: -0.4, spokes: deg([30, 90, 150, 210, 270, 330]), hw: 0.15 },
+    drum: { k: 'ring', R: 3.38, spokes: deg([0, 90, 180, 270]) }, disc: { k: 'ring', R: 4.55, y: -0.4, spokes: deg([0, 45, 90, 135, 180, 225, 270, 315]) },
+    blister: { k: 'hall', y: -0.4, z: 0 }, dockport: { k: 'hall', y: -0.4, z: 0 }, tube: { k: 'hall', y: -0.4, z: 0 }, truss: { k: 'hall', y: -0.4, z: 0 }, node: { k: 'hall', y: -0.4, z: 0, tz: -0.3 },
+    hangar: { k: 'hall', y: -1.58, z: 2.15, fx: 0.22 }, pelicanbay: { k: 'hall', y: -1.58, z: 2.15, fx: 0.22 }, eaglehangar: { k: 'hall', y: -1.38, z: 2.0, fx: 0.22 },
+    drydock: { k: 'hall', y: -0.4, z: 0.75, fx: 0.12, hw: 0.15 }, refinery: { k: 'hall', y: -0.4, z: 0.62, fx: 0.33 },
+    gunmount: { k: 'hall', y: -0.4, z: 0.62, fx: 0.34 }, battery: { k: 'hall', y: -0.4, z: 0.62, fx: 0.34 }, dronebay: { k: 'hall', y: -0.4, z: 0.62, fx: 0.34 },
+    barracks: { k: 'hall', y: -0.4, z: 0.72, fx: 0.28 }, fabshop: { k: 'hall', y: -0.4, z: 0.72, fx: 0.27 }, lance: { k: 'hall', y: -0.4, z: 0.8, fx: 0.36 },
   },
 
   // Rooms: what a slot inside a part does. bay: only in a Hangar or Drydock. tier: when it unlocks.
