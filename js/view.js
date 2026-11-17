@@ -12,7 +12,19 @@ import { RNG } from './rng.js';
 
 const GREEN = 0x7fe9e0, YELLOW = 0xf5d547, BLUE = 0x7fe9e0;      // the drawing lines are cyan and selections amber, as in the interface
 const ROLE_COL = { resident: [0.85, 1, 0.9], hauler: [0.3, 0.72, 1], engineer: [1, 0.76, 0.25], officer: [1, 0.35, 0.29], medic: [0.6, 1, 0.75], aide: [0.96, 0.84, 0.28], scientist: [0.7, 0.55, 1], gunner: [1, 0.6, 0.23], carry: [1, 0.69, 0.13], eva: [1, 1, 1] };
-const UP = new THREE.Vector3(0, 1, 0);
+const UP = new THREE.Vector3(0, 1, 0), XAXIS = new THREE.Vector3(1, 0, 0);
+// Traffic: the room a ship needs on its way in (SHIP_LANE: three lines this far apart, each with this much room round it), the room it needs from another ship (SHIP_R), each part's
+// own box (BOXES, by type), and the order the eight holding places fill in, so two ships waiting are never side by side.
+const SHIP_LANE = { shuttle: [0.75, 0.9], freighter: [0.75, 0.9], warship: [1.0, 1.7] }, SHIP_R = { shuttle: 1.9, freighter: 2.6, warship: 5 }, BOXES = new Map(), HOLD_ORDER = [0, 4, 2, 6, 1, 5, 3, 7];
+const SHIP_BOX = { shuttle: [1.9, 0.75, 1.4], freighter: [3.1, 0.8, 1.4], warship: [7.1, 1.6, 2.1] };      // half a docked ship: along it, up, across
+// A heading as a rotation that keeps the ship level: nose along `look`, deck up (no roll), whichever way it is going.
+const _lx = new THREE.Vector3(), _ly = new THREE.Vector3(), _lz = new THREE.Vector3(), _lm = new THREE.Matrix4();
+function level(look, q) {
+  _lx.copy(look).normalize(); _lz.crossVectors(_lx, UP);
+  if (_lz.lengthSq() < 1e-4) _lz.set(0, 0, 1);      // going straight up or down: any side will do, so always the same one
+  _lz.normalize(); _ly.crossVectors(_lz, _lx);
+  return q.setFromRotationMatrix(_lm.makeBasis(_lx, _ly, _lz));
+}
 const OPEN_HIDE = new Set(['hull', 'trim', 'glass', 'glow', 'decal', 'dark', 'blue', 'pod']);
 const CUT_IN = ['hall', 'inner', 'innerLine', 'lane', 'tileLine', 'wood', 'white', 'steel', 'sofa', 'fdark', 'fblue', 'fscreen', 'bed', 'locker', 'shell', 'carpet', 'wall', 'craft', 'craftTrim', 'crate', 'plant', 'awning', 'cross', 'alarm', 'spark'];
 const RESIDENTS = ['resident', 'resident2', 'resident3', 'resident4'];
@@ -443,12 +455,7 @@ export class View {
       this._rooms(p);
     }
     this.zone.scale.setScalar(st.radius);
-    for (const [id, o] of this.shipObjs) if (!st.ships.some((s) => s.id === id)) { this.scene.remove(o); this.shipObjs.delete(id); }
-    for (const s of st.ships) {
-      let o = this.shipObjs.get(s.id);
-      if (!o) { o = buildShip(s.kind); o.scale.setScalar(C.shipScale[s.kind] || 1); this._dress(o, 'active', !!this.edit, false, true); this.scene.add(o); this.shipObjs.set(s.id, o); }
-      this._placeShip(s, o, now);
-    }
+    this._ships(now, dt);
     this._eva(now);
     this._agents(now);
     this._raid(now, dt);
@@ -498,36 +505,223 @@ export class View {
     this._dressRoom(g, this._dim(p.id), this.edit === p.id);
   }
 
-  _placeShip(s, o, now) {
-    const st = this.st, S = C.ships, a = s.seed * Math.PI * 2;
-    const hold = new THREE.Vector3(Math.cos(a) * 44, Math.sin(s.seed * 17) * 10, Math.sin(a) * 44);
-    const far = hold.clone().multiplyScalar(5);
-    const dp = st.parts.get(s.dock || s.lastDock), b = dp ? st.berth(dp) : null;
-    const inside = dp && (dp.type === 'hangar' || dp.type === 'drydock');
-    const off = C.shipOff[s.kind] ?? 3;
-    const out = b ? new THREE.Vector3(...b.dir) : new THREE.Vector3(0, 1, 0);
-    if (b && dp.type === 'hangar') b.pos[1] -= 1.25;      // a shuttle sets down on the hangar floor
-    const berth = b ? new THREE.Vector3(...b.pos).add(out.clone().multiplyScalar(dp.type === 'hangar' ? -3 : off)) : hold;
-    const nose = inside ? out.clone() : out.clone().negate();      // into a hangar or drydock they back in, nose out
-    let pos, look;
-    const ease = (x) => { const t = Math.min(1, Math.max(0, x)); return t * t * (3 - 2 * t); };
-    if (s.state === 'hold') {
-      const k = ease(s.t / 5); pos = far.clone().lerp(hold, k); pos.y += Math.sin(now * 0.4 + s.seed * 9) * 0.3;
-      look = k >= 1 ? new THREE.Vector3(-Math.sin(a), 0, Math.cos(a)) : hold.clone().sub(far);
-    } else if (s.state === 'approach') {
-      const k = ease(s.t / S.approachSec), mid = berth.clone().add(out.clone().multiplyScalar(inside ? 14 : 12));
-      pos = k < 0.65 ? hold.clone().lerp(mid, k / 0.65) : mid.clone().lerp(berth, (k - 0.65) / 0.35);
-      look = k < 0.65 ? mid.clone().sub(hold) : nose.clone();
-    } else if (s.state === 'docked') { pos = berth.clone(); look = nose.clone(); }
-    else {
-      const k = ease(s.t / S.departSec), exit = berth.clone().add(out.clone().multiplyScalar(16));
-      pos = k < 0.4 ? berth.clone().lerp(exit, k / 0.4) : exit.clone().lerp(exit.clone().add(out.clone().multiplyScalar(160)), (k - 0.4) / 0.6);
-      look = out.clone();
+  // ---------------------------------------------------------------- TRAFFIC: ships keep clear of the station and of each other
+  // The station as flying things see it: one box round every part (in the part's own frame, so a solar wing is a thin slab and a
+  // ring is a flat disc), and one sphere round the lot, the ENVELOPE. Everything that flies stays outside the envelope except
+  // on its way in to a berth or out of one, and that way is checked against the boxes.
+  _obstacles() {
+    const st = this.st; let sig = ''; for (const p of st.parts.values()) sig += p.id + ',';
+    if (sig === this._obSig) return;
+    this._obSig = sig; this.obs = [];
+    const lo = new THREE.Vector3(Infinity, Infinity, Infinity), hi = new THREE.Vector3(-Infinity, -Infinity, -Infinity);
+    for (const p of st.parts.values()) {
+      let b = BOXES.get(p.type);
+      if (!b) { const g = buildPart(p.type); b = new THREE.Box3().setFromObject(g); g.traverse((x) => { if (x.geometry) x.geometry.dispose(); }); BOXES.set(p.type, b); }
+      const q = new THREE.Quaternion(...p.quat), pos = new THREE.Vector3(...p.pos), c = b.getCenter(new THREE.Vector3()).applyQuaternion(q).add(pos), r = b.getSize(new THREE.Vector3()).length() / 2;
+      this.obs.push({ id: p.id, pos, q, qi: q.clone().invert(), min: b.min, max: b.max, c, r });
+      lo.min(c.clone().subScalar(r)); hi.max(c.clone().addScalar(r));
     }
-    o.position.copy(pos);
-    if (look.lengthSq() > 1e-6) { const want = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(1, 0, 0), look.normalize()); o.quaternion.slerp(want, s.state === 'docked' ? 1 : 0.06); }
-    o.visible = !(s.state === 'depart' && s.t > S.departSec * 0.96);
-    if (s.kind === 'freighter') { let i = 0; const n = s.state === 'docked' ? s.crates : s.state === 'depart' ? 0 : 8; o.traverse((x) => { if (x.userData.role === 'pod') x.visible = i++ < n; }); }
+    // The room a docked ship takes up at every open-air berth counts as hull too (for every ship but the one whose berth it is).
+    const docks = [...st.parts.values()].filter((p) => st.def(p).berth).sort((a, b) => a.id - b.id), vols = new Map();
+    for (const p of docks) {
+      const kind = st.def(p).ships[0], B = this._berthAt(p, kind);
+      if (B.inside) continue;
+      const h = SHIP_BOX[kind], o = { id: -p.id, of: p.id, ship: true, off: true, pos: B.pos, q: level(B.nose, new THREE.Quaternion()), min: new THREE.Vector3(-h[0], -h[1], -h[2]), max: new THREE.Vector3(h[0], h[1], h[2]), c: B.pos, r: Math.hypot(...h) };
+      o.qi = o.q.clone().invert(); this.obs.push(o); vols.set(p.id, o);
+      lo.min(o.c.clone().subScalar(o.r)); hi.max(o.c.clone().addScalar(o.r));
+    }
+    this.envC = this.obs.length ? lo.clone().add(hi).multiplyScalar(0.5) : new THREE.Vector3();
+    this.envR = this.obs.reduce((m, o) => Math.max(m, o.c.distanceTo(this.envC) + o.r), 4);
+    // WHICH BERTHS ARE OPEN. A berth is open if a ship can come straight in to it and reach it from outside the station without
+    // touching a hull. Oldest first: where two berths are in each other's way, the older one stays open. Ships do not use a
+    // shut berth, so nothing ever has to fly through the station to dock.
+    const shut = new Map();      // berth -> what is in its way
+    for (const p of docks) {
+      const kind = st.def(p).ships[0], w = this._wayOut(this._berthAt(p, kind), kind, this.envR + 7);
+      if (w.clear) { const o = vols.get(p.id); if (o) o.off = false; continue; }
+      const by = w.by && st.parts.get(w.by.ship ? w.by.of : w.by.id);
+      shut.set(p.id, by ? (w.by.ship ? `the berth at ${st.name(by)}` : st.name(by)) : 'the station');
+    }
+    this.shut = shut;
+    if (st.setShut) st.setShut(shut);
+  }
+  // Would building this close a berth? The names of the berths (its own included) that would have no clear way in.
+  berthWarn(type, pl) {
+    const st = this.st, d = C.parts[type]; this._obstacles();
+    let b = BOXES.get(type); if (!b) { const g = buildPart(type); b = new THREE.Box3().setFromObject(g); g.traverse((x) => { if (x.geometry) x.geometry.dispose(); }); BOXES.set(type, b); }
+    const q = new THREE.Quaternion(...pl.quat), pos = new THREE.Vector3(...pl.pos), ghost = { id: 1e9, pos, q, qi: q.clone().invert(), min: b.min, max: b.max, c: b.getCenter(new THREE.Vector3()).applyQuaternion(q).add(pos), r: b.getSize(new THREE.Vector3()).length() / 2 };
+    const out = [];
+    this.obs.push(ghost);
+    for (const p of st.parts.values()) { const pd = st.def(p); if (!pd.berth || this.shut.has(p.id)) continue; if (ghost.c.distanceTo(new THREE.Vector3(...st.center(p))) > ghost.r + 30) continue; const kind = pd.ships[0]; if (!this._wayOut(this._berthAt(p, kind), kind, this.envR + 7).clear) out.push(st.name(p)); }
+    if (d.berth) { const kind = d.ships[0], fake = { id: 1e9, type, pos: pl.pos, quat: pl.quat }; if (!this._wayOut(this._berthAt(fake, kind), kind, Math.max(this.envR, ghost.c.distanceTo(this.envC) + ghost.r) + 7).clear) out.push('its own berth'); }
+    this.obs.pop();
+    return out;
+  }
+  // How far a point is from the nearest hull (below 0: inside one), and the way out of it. `skip`: a part that does not count
+  // (a ship's own berth). `ships`: other ships count too, as spheres.
+  _gap(P, skip = 0, ships = null, out = null) {
+    let best = Infinity; const l = this._v3, n = out;
+    for (const o of this.obs) {
+      if (o.id === skip || o.of === skip || o.off) continue;
+      const far = P.distanceTo(o.c) - o.r; if (far > best) continue;
+      l.copy(P).sub(o.pos).applyQuaternion(o.qi);
+      const cx = Math.max(o.min.x, Math.min(o.max.x, l.x)), cy = Math.max(o.min.y, Math.min(o.max.y, l.y)), cz = Math.max(o.min.z, Math.min(o.max.z, l.z));
+      let dx = l.x - cx, dy = l.y - cy, dz = l.z - cz, d = Math.hypot(dx, dy, dz);
+      if (d < 1e-6) {      // inside the box: the shortest way out is through the nearest face
+        const f = [[l.x - o.min.x, -1, 0, 0], [o.max.x - l.x, 1, 0, 0], [l.y - o.min.y, 0, -1, 0], [o.max.y - l.y, 0, 1, 0], [l.z - o.min.z, 0, 0, -1], [o.max.z - l.z, 0, 0, 1]].reduce((a, b) => (b[0] < a[0] ? b : a));
+        d = -f[0]; dx = f[1]; dy = f[2]; dz = f[3];
+      } else { dx /= d; dy /= d; dz /= d; }
+      if (d < best) { best = d; this._near = o; if (n) n.set(dx, dy, dz).applyQuaternion(o.q); }
+    }
+    if (ships) for (const [x, r] of ships) { const d = P.distanceTo(x) - r; if (d < best) { best = d; if (n) { n.copy(P).sub(x); if (n.lengthSq() < 1e-8) n.set(0, 1, 0); n.normalize(); } } }
+    return best;
+  }
+  // Can a ship of this kind fly the straight line from a to b without touching a hull? A ship flies level, and is wider than it is
+  // tall, so the room it needs is a flat slab: three lines side by side, each with room round it. `more` is extra room all round.
+  _clearLine(a, b, kind, skip, more = 0) {
+    const [off, rad] = SHIP_LANE[kind], n = Math.max(1, Math.ceil(a.distanceTo(b) / 0.8)), P = new THREE.Vector3();
+    const side = new THREE.Vector3().subVectors(b, a).cross(UP); if (side.lengthSq() < 1e-6) side.set(0, 0, 1); side.normalize();
+    for (let i = 0; i <= n; i++) for (const k of [0, -off, off]) if (this._gap(P.copy(a).lerp(b, i / n).addScaledVector(side, k), skip) < rad + more) { this._block = this._near; return false; }
+    return true;
+  }
+  // A holding place of its own for every ship that is waiting or on its way in: eight of them round the station, well outside it.
+  _holdSlot(s) {
+    this.holdSlots ||= new Map();
+    for (const id of [...this.holdSlots.keys()]) if (!this.st.ships.some((x) => x.id === id && x.state !== 'depart' && x.state !== 'docked')) this.holdSlots.delete(id);
+    if (!this.holdSlots.has(s.id)) { const used = new Set(this.holdSlots.values()); let k = 0; while (used.has(k) && k < 15) k++; this.holdSlots.set(s.id, k); }
+    return this.holdSlots.get(s.id);
+  }
+  _holdPos(k) {
+    const a = HOLD_ORDER[k % 8] * Math.PI / 4 + 0.4 + Math.floor(k / 8) * 0.39, R = this.envR + 22 + (k % 3) * 3;
+    return new THREE.Vector3(Math.cos(a) * R, (k % 2 ? 3 : -3), Math.sin(a) * R).add(this.envC);
+  }
+  // Where a ship sits when docked, the way out of its berth, and which way its nose points there.
+  _berthOf(s) { const dp = this.st.parts.get(s.dock || s.lastDock); return dp && this.st.def(dp).berth ? this._berthAt(dp, s.kind) : null; }
+  _berthAt(dp, kind) {
+    const b = this.st.berth(dp), inside = dp.type === 'hangar' || dp.type === 'drydock', out = new THREE.Vector3(...b.dir), off = C.shipOff[kind] ?? 3;
+    if (dp.type === 'hangar') b.pos[1] -= 1.25;      // a shuttle sets down on the hangar floor
+    const pos = new THREE.Vector3(...b.pos).add(out.clone().multiplyScalar(dp.type === 'hangar' ? -3 : off));
+    // mouth: where the room a docked ship takes up begins (at an open-air berth, the berth itself; in a bay, where the ship sits)
+    return { pos, out, inside, mouth: inside ? pos : new THREE.Vector3(...b.pos).addScaledVector(out, 0.3), nose: inside ? out.clone() : out.clone().negate(), id: dp.id };      // into a hangar or drydock they back in, nose out
+  }
+  // THE GATE for a ship at M inside the envelope: the point on its own lane, outside the envelope, that it can reach by a straight
+  // line clear of every hull. `first` is the line it would like best (straight out of its berth). Null if M is already outside.
+  _gate(M, lane, kind, skip, first) {
+    const E = this.envC;
+    if (M.distanceTo(E) >= lane) return null;
+    const radial = M.clone().sub(E); if (radial.lengthSq() < 1e-6) radial.copy(first || UP); radial.normalize();
+    const f = first || radial, mix = (a, b, k) => a.clone().addScaledVector(b, k).normalize(), side = new THREE.Vector3().crossVectors(UP, radial); if (side.lengthSq() < 1e-6) side.set(1, 0, 0); side.normalize();
+    const tries = [f, mix(f, radial, 1), radial, mix(radial, UP, 0.8), mix(radial, UP, -0.8), mix(f, UP, 0.8), mix(f, UP, -0.8), mix(radial, side, 0.8), mix(radial, side, -0.8), UP, UP.clone().negate(), mix(f, side, 1), mix(f, side, -1)];
+    const at = (d) => { const m = M.clone().sub(E), bq = m.dot(d), t = -bq + Math.sqrt(Math.max(0, bq * bq - m.lengthSq() + lane * lane)); return M.clone().addScaledVector(d, t); };
+    let by = null;
+    for (const d of tries) { const g = at(d); if (this._clearLine(M, g, kind, skip, 0.3)) return g; by ||= this._block; }
+    const g = at(radial); g.blocked = by; return g;
+  }
+  // THE WAY between a berth and open space, as points from the berth outward: straight out of the berth as far as is clear, then
+  // on to the gate.
+  _wayOut(B, kind, lane) {
+    const pts = [B.pos.clone()];
+    let L = 0; for (const t of [12, 9, 6]) if (this._clearLine(B.mouth, B.pos.clone().addScaledVector(B.out, t), kind, B.id)) { L = t; break; }
+    pts.clear = L > 0; if (!L) { pts.by = this._block; L = 4; }
+    const M = B.pos.clone().addScaledVector(B.out, L), G = this._gate(M, lane, kind, B.id, B.out);
+    pts.push(B.pos.clone().addScaledVector(B.out, L * 0.5), M);
+    if (G) { pts.push(M.clone().lerp(G, 0.35), G); if (G.blocked) { pts.clear = false; pts.by ||= G.blocked; } }      // a point part of the way along keeps the curve close to the line that was checked
+    pts.gate = pts[pts.length - 1];
+    return pts;
+  }
+  // Round the outside of the station from one point to another, never nearer its middle than either end is.
+  _round(a, b) {
+    const E = this.envC, ua = a.clone().sub(E), ub = b.clone().sub(E), ra = ua.length(), rb = ub.length(), qa = new THREE.Quaternion(), out = [];
+    ua.normalize(); ub.normalize(); qa.setFromUnitVectors(ua, ub);
+    const ang = ua.angleTo(ub), n = Math.max(1, Math.ceil(ang / 0.22)), q = new THREE.Quaternion(), id = new THREE.Quaternion();
+    for (let i = 1; i < n; i++) { const t = i / n; q.copy(id).slerp(qa, t); out.push(ua.clone().applyQuaternion(q).multiplyScalar(ra + (rb - ra) * t).add(E)); }
+    return out;
+  }
+  // A ship's route for the state it is in, drawn once and kept until its state, its berth or the station changes.
+  _routeFor(s, o) {
+    const u = o.userData, key = `${s.state}|${s.dock}|${s.lastDock}`, dur = s.state === 'approach' ? C.ships.approachSec : C.ships.departSec;
+    if (u.route && u.route.key === key && u.route.sig === this._obSig) return u.route;
+    const from = o.position.clone(), B = this._berthOf(s), k = this.holdSlots ? this.holdSlots.get(s.id) ?? 0 : 0, lane = this.envR + 7 + (k % 8) * 2.5, E = this.envC;
+    const again = u.route && u.route.key === key;      // the station changed under it: go on from where it is now
+    let pts, gate = null;
+    if (s.state === 'approach' && B) {
+      const way = this._wayOut(B, s.kind, lane); gate = way.gate; way.reverse();      // gate ... berth
+      pts = [from, ...this._round(from, way[0]), ...way];
+    } else {      // leaving: out of the berth by the same way, or straight out from wherever it is, and away
+      let way;
+      if (B && u.was === 'docked' && !again) { way = this._wayOut(B, s.kind, lane); gate = way.gate; }
+      else { const G = this._gate(from, lane, s.kind, B ? B.id : 0, null); way = G ? [from, G] : [from]; }
+      const last = way[way.length - 1], dir = last.clone().sub(E); if (dir.lengthSq() < 1e-6) dir.set(0, 1, 0); dir.normalize();
+      pts = [...way, last.clone().addScaledVector(dir, 40), last.clone().addScaledVector(dir, 170)];
+    }
+    const clean = [pts[0]]; for (const x of pts) if (x.distanceTo(clean[clean.length - 1]) > 0.05) clean.push(x);
+    if (clean.length < 2) clean.push(clean[0].clone().add(UP));
+    u.route = { key, sig: this._obSig, curve: new THREE.CatmullRomCurve3(clean, false, 'centripetal'), u0: again ? Math.min(0.95, s.t / dur) : 0, tail: B ? B.pos.clone() : null };
+    // how far along the curve the gate is (0 to 1): inside it the ship keeps the heading its berth wants; outside it, it may turn
+    const R = u.route; R.gateAt = s.state === 'approach' ? 1 : 0;
+    if (gate) { let bd = Infinity; const P = new THREE.Vector3(); for (let i = 0; i <= 80; i++) { const d = R.curve.getPointAt(i / 80, P).distanceTo(gate); if (d < bd) { bd = d; R.gateAt = i / 80; } } }
+    return R;
+  }
+  _ships(now, dt) {
+    const st = this.st, S = C.ships;
+    this._obstacles();
+    for (const [id, o] of this.shipObjs) if (!st.ships.some((s) => s.id === id)) { this.scene.remove(o); this.shipObjs.delete(id); }
+    const ease = (x) => { const t = Math.min(1, Math.max(0, x)); return t * t * (3 - 2 * t); }, fly = [];
+    for (const s of st.ships) {
+      let o = this.shipObjs.get(s.id), fresh = false;
+      if (!o) { o = buildShip(s.kind); o.scale.setScalar(C.shipScale[s.kind] || 1); this._dress(o, 'active', !!this.edit, false, true); this.scene.add(o); this.shipObjs.set(s.id, o); o.userData.push = new THREE.Vector3(); o.userData.nom = new THREE.Vector3(); fresh = true; }
+      const u = o.userData, pos = u.nom, look = u.look ||= new THREE.Vector3();
+      let free = 1;      // how free it is to step aside for another ship: not at all on the last of the way in to a berth
+      if (s.state === 'hold') {
+        const hold = this._holdPos(this._holdSlot(s)), dir = hold.clone().sub(this.envC).normalize(), k = ease(s.t / 5);
+        pos.copy(hold).addScaledVector(dir, (1 - k) * 180); pos.y += Math.sin(now * 0.4 + s.seed * 9) * 0.3;
+        if (k >= 1) look.crossVectors(UP, dir); else look.copy(dir).negate();
+      } else if (s.state === 'docked') {
+        const B = this._berthOf(s); if (B) { pos.copy(B.pos); look.copy(B.nose); } else pos.copy(o.position);
+        free = 0;
+      } else {
+        if (fresh) {      // first seen already on its way: in from deep space beyond its holding place, or out from its berth
+          if (s.state === 'approach') { const h = this._holdPos(this._holdSlot(s)); o.position.copy(h).addScaledVector(h.clone().sub(this.envC).normalize(), 70); }
+          else o.position.copy((this._berthOf(s) || { pos: this.envC }).pos);
+          u.was = s.state === 'depart' ? 'docked' : 'hold';
+        }
+        const R = this._routeFor(s, o), dur = s.state === 'approach' ? S.approachSec : S.departSec, raw = Math.min(1, Math.max(0, (s.t / dur - R.u0) / (1 - R.u0)));
+        const t = s.state === 'approach' ? ease(raw) : Math.pow(raw, 2.2);
+        R.curve.getPointAt(t, pos); R.curve.getTangentAt(Math.min(0.999, t), look);
+        if (R.tail) {
+          // Between the gate and the berth there is no room to turn round, so a ship holds the heading its berth wants: one that
+          // docks nose in backs out as far as the gate before it turns; one that docks nose out turns before the gate and backs in.
+          const B = this._berthOf(s), noseIn = !B || !B.inside, inGate = s.state === 'approach' ? t > R.gateAt - 0.06 : t < R.gateAt + 0.02;
+          if (inGate && (s.state === 'approach') !== noseIn) look.negate();
+          free = Math.min(1, Math.max(0, (pos.distanceTo(R.tail) - 5) / 8));      // and no stepping aside on the last of the way in
+        }
+      }
+      u.free = free; u.dock = s.dock || s.lastDock;
+      fly.push([s, o]);
+    }
+    this.shipSph = fly.filter(([, o]) => o.visible).map(([s, o]) => [o.position, SHIP_R[s.kind]]);
+    // KEEPING APART. Two ships closer than their hulls allow: the one free to move steps aside (the later arrival, if both are),
+    // and eases back when the way is clear. A ship at a berth, or on the last of its way in, holds its line.
+    for (const [s, o] of fly) {
+      const u = o.userData, want = this._sc.set(0, 0, 0), d3 = this._col3 ||= new THREE.Vector3();
+      if (u.free > 0) for (const [s2, o2] of fly) {
+        if (o2 === o) continue;
+        const u2 = o2.userData; if (u2.free >= u.free && s2.id > s.id) continue;      // that one gives way to this one
+        const need = SHIP_R[s.kind] + SHIP_R[s2.kind] + 1.5, d = d3.copy(u.nom).sub(u2.nom).length();
+        if (d >= need) continue;
+        if (d < 1e-3) d3.set(0, 1, 0); else d3.multiplyScalar(1 / d);
+        d3.y += d3.y >= 0 ? 0.6 : -0.6; d3.normalize();      // mostly over or under, so it does not swing wide round the station
+        want.addScaledVector(d3, need - d);
+      }
+      u.push.lerp(want, 1 - Math.exp(-(dt || 0.016) * 3));
+      o.position.copy(u.nom).addScaledVector(u.push, u.free);
+      // stepping aside must not put it into a hull: if it would, step half as far, or not at all
+      if (u.push.lengthSq() * u.free > 1e-4) for (const k of [0.5, 0]) { if (this._gap(o.position, u.dock) >= SHIP_LANE[s.kind][0] + SHIP_LANE[s.kind][1]) break; o.position.copy(u.nom).addScaledVector(u.push, u.free * k); }
+      if (u.look.lengthSq() > 1e-6) o.quaternion.slerp(level(u.look, this._qb), s.state === 'docked' ? 1 : 1 - Math.exp(-(dt || 0.016) * 2.6));
+      o.visible = !(s.state === 'depart' && s.t > S.departSec * 0.96);
+      if (u.was !== s.state && s.state !== 'depart') u.was = s.state;
+      if (s.kind === 'freighter') { let i = 0; const n = s.state === 'docked' ? s.crates : s.state === 'depart' ? 0 : 8; o.traverse((x) => { if (x.userData.role === 'pod') x.visible = i++ < n; }); }
+    }
   }
 
   // ---------------------------------------------------------------- people: life signs inside, suits outside
@@ -743,11 +937,23 @@ export class View {
     this.raiders.visible = on; this.tracers.visible = this.bolts.visible = !!r && r.state === 'fight';
     if (!on) { if (this.raiders.children.length) this.raiders.clear(); return; }
     while (this.raiders.children.length < r.n) { const o = buildRaider(); o.traverse((x) => { if (x.userData.role) x.material = this.M[x.userData.role]; }); this.raiders.add(o); }
-    const R = Math.min(60, 14 + this.st.radius * 0.45), fight = r.state === 'fight', inn = fight ? 1 : Math.max(0, 1 - (C.raid.warnSec - r.t) / 8);
+    // Raiders circle OUTSIDE the station, never through it: six tilted rings at six distances just beyond the envelope, the darts
+    // on each ring evenly spaced and all going the same way, so no two cross. One that meets a ship lifts over it.
+    this._obstacles();
+    const E = this.envC, R0 = this.envR + 4, fight = r.state === 'fight', inn = fight ? 1 : Math.max(0, 1 - (C.raid.warnSec - r.t) / 8), BANDS = 6;
+    const u = new THREE.Vector3(), w = new THREE.Vector3(), nrm = new THREE.Vector3(), tan = new THREE.Vector3();
     this.raiders.children.forEach((o, i) => {
-      const ph = r.seed * 6.283 + i * 2.1, w = 0.5 + (i % 3) * 0.12, a = now * w + ph, rr = R * (0.55 + 0.35 * Math.sin(now * 0.37 + i)) + (1 - inn) * 240;
-      const x = Math.cos(a) * rr, z = Math.sin(a) * rr, y = Math.sin(now * 0.6 + i * 1.7) * R * 0.35;
-      o.lookAt(o.position.set(x, y, z).clone().add(new THREE.Vector3(-Math.sin(a), 0, Math.cos(a)))); o.rotateY(-Math.PI / 2);
+      const band = i % BANDS, lap = Math.floor(i / BANDS), inBand = Math.ceil((r.n - band) / BANDS), sgn = band % 2 ? -1 : 1;
+      const rr = R0 + band * 2.4, tilt = (0.3 + band * 0.16) * sgn, az = r.seed * 6.283 + band * 1.1;
+      nrm.set(Math.sin(tilt) * Math.cos(az), Math.cos(tilt), Math.sin(tilt) * Math.sin(az));      // the ring's own axis
+      u.crossVectors(nrm, UP); if (u.lengthSq() < 1e-6) u.set(1, 0, 0); u.normalize(); w.crossVectors(nrm, u);
+      const a = sgn * now * 9 / rr + r.seed * 6.283 + band * 1.3 + lap * 6.283 / Math.max(1, inBand);
+      let lift = 0; for (const so of this.shipObjs.values()) { if (!so.visible) continue; const d = so.position.distanceTo(o.position); if (d < 11) lift = Math.max(lift, (11 - d) * 1.3); }
+      o.userData.lift = (o.userData.lift || 0) + (lift - (o.userData.lift || 0)) * Math.min(1, dt * 6);
+      const dist = rr + o.userData.lift + (1 - inn) * 240;
+      o.position.copy(E).addScaledVector(u, Math.cos(a) * dist).addScaledVector(w, Math.sin(a) * dist);
+      tan.copy(u).multiplyScalar(-Math.sin(a) * sgn).addScaledVector(w, Math.cos(a) * sgn);
+      o.lookAt(tan.add(o.position)); o.rotateY(-Math.PI / 2);
     });
     if (!fight) return;
     const guns = [...this.st.parts.values()].filter((p) => p.state === 'active' && !p.fault && (p.type === 'turret' || p.type === 'shield')), all = [...this.st.parts.values()];
@@ -777,7 +983,7 @@ export class View {
       obj.traverse((x) => { if (x.userData.role) x.material = { hull: this.M.craft, trim: this.M.craftTrim, glass: this.M.thGlass, glow: this.M.glow, line: this.M.hullLine }[x.userData.role] || this.M[x.userData.role] || this.M.craft; });
       const out = new THREE.Vector3(1, 0, 0).applyQuaternion(o.quaternion);
       obj.position.copy(from); obj.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), out.clone().add(new THREE.Vector3(0, -0.5, 0)).normalize());
-      this.shotGrp.add(obj); this.shotList.push({ o: obj, t: 0, life, dir: out, craft: true });
+      this.shotGrp.add(obj); this.shotList.push({ o: obj, t: 0, life, dir: out, craft: true, skip: p.id });
     };
     if (e.sys === 'gun') { for (let i = 0; i < 6; i++) beam(0.05, 6, 0xffd98a, 0.5, i * 0.12, 260); flash(0.35, 0xffd98a); }
     else if (e.sys === 'orbital') { beam(0.16, 14, 0xfff0c0, 0.9, 0, 200); flash(0.9, 0xffe0a0); }
@@ -794,7 +1000,11 @@ export class View {
       if (s.t < 0) continue;
       s.o.visible = true;
       const k = s.t / s.life;
-      if (s.craft) { const sp = 3 + s.t * s.t * 4; s.o.position.addScaledVector(s.dir, sp * dt * (k < 0.3 ? 1 : 0.6)); s.o.position.y -= sp * dt * Math.min(1.4, k * 2.5); }
+      if (s.craft) {
+        const sp = 3 + s.t * s.t * 4; s.o.position.addScaledVector(s.dir, sp * dt * (k < 0.3 ? 1 : 0.6)); s.o.position.y -= sp * dt * Math.min(1.4, k * 2.5);
+        // a craft leaving for the ground steers round any hull or ship in its way (its own bay does not count)
+        if (this.obs) { const n = this._sc, d = this._gap(s.o.position, s.skip, this.shipSph, n); if (d < 1.7) s.o.position.addScaledVector(n, Math.min(1.7 - d, dt * 9)); }
+      }
       else { s.o.position.y += s.vy * dt; if (s.grow) s.o.scale.setScalar(1 + k * s.grow); if (s.fade) s.o.material.opacity = Math.max(0, 0.95 * (1 - k)); }
       if (k >= 1) { this.shotGrp.remove(s.o); if (!s.craft) { s.o.geometry.dispose(); s.o.material.dispose(); } this.shotList.splice(this.shotList.indexOf(s), 1); }
     }

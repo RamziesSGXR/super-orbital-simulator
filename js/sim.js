@@ -335,7 +335,13 @@ export class Station {
   beds() { return this.capBeds; }
   residents() { let n = 0; for (const a of this.agents) if (a.role === 'resident') n++; return n; }
   berths(kind) {
-    return this.list((d, p) => d.berth && (!d.berthRoom || this.has(p, d.berthRoom)) && (!kind || d.ships.includes(kind)));
+    return this.list((d, p) => d.berth && (!d.berthRoom || this.has(p, d.berthRoom)) && (!kind || d.ships.includes(kind)) && !(this._shut && this._shut.has(p.id)));
+  }
+  // Berths with no clear way in for a ship, and what is in the way (the view works this out from the shape of the station).
+  // Ships do not use them. It is said once, when a berth is first found shut: news, not nagging.
+  setShut(map) {
+    const was = this._shut || new Map(); this._shut = map;
+    for (const [id, by] of map) if (!was.has(id)) { const p = this.parts.get(id); if (p && p.state !== 'demolish') this.say('traffic', `${this.name(p)} has no clear way in: ${by} is across its approach. Ships will not use it until the way is clear.`, { warn: true }); }
   }
   roomCount(room) { let n = 0; for (const p of this.parts.values()) if (this.works(p)) for (const r of p.rooms) if (r === room) n++; return n; }
   upkeep() {

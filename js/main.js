@@ -343,7 +343,14 @@ function hover(x, y) {
 }
 function portTip(p, x, y, ok) {
   const chk = st.canBuild(ui.tool, p.part, p.i, ui.rot);
-  $('tip').innerHTML = `<b>${C.parts[ui.tool].name}</b> on ${st.name(st.parts.get(p.part))}<br>${chk.ok ? ok : `<span class="down">${chk.why}</span>`}`;
+  // Building across a berth's approach is allowed (any shape is), but it shuts the berth, so it is said before the click.
+  let shut = '';
+  if (chk.ok) {
+    const key = `${ui.tool}|${p.part}|${p.i}|${ui.rot}|${st.parts.size}`;
+    if (!ui.bw || ui.bw.key !== key) { let names = []; try { names = view.berthWarn(ui.tool, st.placement(ui.tool, st.parts.get(p.part), p.i, ui.rot)); } catch (e) { names = []; } ui.bw = { key, names }; }
+    if (ui.bw.names.length) shut = `<br><span class="down">No clear way in for ships: this would shut ${ui.bw.names.join(', ')}</span>`;
+  }
+  $('tip').innerHTML = `<b>${C.parts[ui.tool].name}</b> on ${st.name(st.parts.get(p.part))}<br>${chk.ok ? ok + shut : `<span class="down">${chk.why}</span>`}`;
   showTip(x, y);
 }
 function showTip(x, y) {
@@ -782,7 +789,7 @@ function info(peek) {
     const s = roomSums(p.rooms), housed = st.agents.filter((a) => a.home === p.id);
     if (s.beds) extra += stat('RESIDENTS', `${housed.filter((a) => a.role === 'resident').length}/${s.beds}`);
     const staff = housed.filter((a) => a.role !== 'resident').length; if (staff) extra += stat('STAFF', staff);
-    if (d.berth) { const sh = st.ships.find((x) => x.dock === p.id); extra += stat('BERTH', d.berthRoom && !st.has(p, d.berthRoom) ? `needs a ${C.rooms[d.berthRoom].name}` : sh ? `${sh.name}${sh.state === 'docked' && sh.kind === 'freighter' ? `, ${sh.crates} crates` : sh.state === 'approach' ? ', approaching' : ''}` : 'empty'); }
+    if (d.berth) { const sh = st.ships.find((x) => x.dock === p.id); extra += stat('BERTH', st._shut && st._shut.has(p.id) ? `<span class="down">shut: ${st._shut.get(p.id)} is in the way</span>` : d.berthRoom && !st.has(p, d.berthRoom) ? `needs a ${C.rooms[d.berthRoom].name}` : sh ? `${sh.name}${sh.state === 'docked' && sh.kind === 'freighter' ? `, ${sh.crates} crates` : sh.state === 'approach' ? ', approaching' : ''}` : 'empty'); }
     const counts = {}; for (const r of p.rooms) counts[r] = (counts[r] || 0) + 1;
     const chips = Object.entries(counts).map(([r, n]) => `<span class="chip" style="--c:${C.rooms[r].col}">${C.rooms[r].short || 'EMPTY'}${n > 1 ? ` ×${n}` : ''}</span>`).join('');
     const cd = st.canDemolish(p.id), ed = SLOTS[p.type];

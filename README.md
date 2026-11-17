@@ -12,6 +12,21 @@ It runs in your browser on a computer, or on a phone or tablet held sideways. Th
 
 **Quick start:** press **NEW STATION**. Open **FIRE** and put a Ship Gun on a side port. Open the **DOCK** group at the bottom left, press `Q` for a Docking Port, move the pointer near Station Command and click when the little dot lights up. Add a Cargo Module from **INDUS** and a Hab Module from **HAB** the same way. Ships and colonists arrive within a minute, and soon after that the first thing lands on your desk.
 
+## What's new in 0.11.1
+
+Asked for: ships flying through each other and through the station were distracting.
+
+- **Ships go round the station, not through it.** Ships used to fly a straight line from where they waited to their berth, and a straight line out. Now each one flies round the outside of the station to a point opposite its berth, comes straight in, and leaves the same way. The way in is checked against the hull of every part.
+- **They wait further out, each in its own place.** Waiting ships used to sit 44 units from the middle, which is inside a large station. They now wait outside the station however big it is, in eight separate places.
+- **They step aside for each other.** Two ships that would pass too close: the later arrival moves over or under and eases back. A ship at a berth, or on its last stretch in, holds its line.
+- **They back out.** A ship that docks nose-in used to spin round on the spot as it left, swinging through whatever was beside it. It now backs out until it is clear of the station, then turns. Ships fly level.
+- **A berth with no clear way in is shut.** You can still build any shape. If something is built across a berth's approach, ships stop using that berth, Traffic says so once and names what is in the way, and the berth's card shows it. The build tip warns before you click.
+- **Raiders circle outside.** They used to weave through the station. They now fly rings just outside it, never crossing each other, and lift over any ship they meet.
+- **Eagles, Pelicans and drones** leaving for the ground steer round hulls and ships.
+- **A check that flies it.** `node test/traffic.mjs <url>` builds a crowded station and flies it for a set time. Over two 15 minute runs (227 arrivals, 217 departures, 8 raids, 300 sorties, 5 berths pulled out from under a ship on its way in) nothing touched a hull or another ship.
+
+Not done yet: the hull check treats each part as a box, so a ring counts as a solid disc and nothing flies through its middle. A berth can be shut by a part that only just reaches its approach. Ships do not avoid raiders; raiders avoid ships.
+
 ## What's new in 0.11
 
 Asked for: fix the hallways (some were missing), add airlock doors for the gaps, and stop things passing through each other, above all at the lifts and stairs.
@@ -202,6 +217,7 @@ js/main.js          the loop, input, HUD, comms, the Commander's channel, the up
 js/vendor/three.js  three.js (MIT), see js/vendor/THREE-LICENSE
 test/headless.mjs   runs a station without a browser and prints the economy, capability and faction moods (add `approve` as a fifth argument to say yes to every request)
 test/story.mjs      plays the story with no browser: supplies, requests, a raid, a save and the Broken Station
+test/traffic.mjs    flies a crowded station in the real page: no ship, raider or craft may touch a hull or each other
 test/walks.mjs      walks every route through every kind of part: floor under every step, nothing in the way
 test/ui.mjs         plays it through the real page on a desktop and a phone held sideways
 test/fit.mjs        opens the interface at seven screen sizes and reports anything cut off, spilling out of its box or overlapping
