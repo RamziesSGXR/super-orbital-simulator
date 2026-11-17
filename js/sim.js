@@ -184,6 +184,7 @@ export class Station {
     const host = this.parts.get(hostId), pl = this.placement(type, host, pi, rot);
     this._money(-C.parts[type].cost, 'build');
     const p = this._make(type, host.id, pi, rot, pl.pos, pl.quat, pl.base, pl.join);
+    if (type === 'billboard' && this.screenDefault) p.show = this.screenDefault;      // a new screen shows what the others were set to in the livery
     host.used.add(pi); host.kids.push(p.id);
     this.events.push({ type: 'build', part: p });
     return { ok: true, why: '', id: p.id };

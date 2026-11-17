@@ -552,3 +552,20 @@ h1 { text-shadow: none; letter-spacing: 0.1em; } .eyebrow, .panel .ph, .desk .ph
 .info .show .btn { min-height: 24px; padding: 0 8px; font-size: 10px; letter-spacing: 0.06em; } .info .show .btn.on { background: var(--yellow); color: #000; border-color: var(--yellow); }
 .info .show textarea { width: 100%; box-sizing: border-box; font: 11px/1.3 ui-monospace, Menlo, Consolas, monospace; text-transform: uppercase; color: var(--g); background: #0c100e; border: 1px solid var(--am-d); padding: 4px 6px; resize: vertical; }
 .info .show .hint { width: 100%; font-size: 10px; color: var(--g-dim); }
+
+/* ---- the debug readout (F3), as in Orbital Fury */
+#debug { position: fixed; left: 10px; top: 48px; z-index: 60; max-width: min(520px, 92vw); background: rgba(6, 9, 8, 0.88); border: 1px solid rgba(127, 233, 224, 0.4); padding: 6px 8px; pointer-events: auto; }
+#debug pre { margin: 0; font: 11px/1.35 ui-monospace, Menlo, Consolas, monospace; color: #9dffb8; white-space: pre-wrap; max-height: 40vh; overflow: auto; }
+#debug.sel pre { user-select: text; } #debug .btn { margin-top: 5px; min-height: 24px; padding: 0 8px; font-size: 10px; }
+#debug-warn { color: #ffb4a0; font-size: 11px; margin-bottom: 4px; }
+/* ---- save slots, as in Orbital Fury */
+.sv-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.sv-slot { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 7px 9px; border: 1px solid rgba(127, 233, 224, 0.3); background: rgba(12, 16, 14, 0.7); }
+.sv-slot.cur { border-color: var(--yellow); } .sv-slot.empty { opacity: 0.7; }
+.sv-k { font-family: var(--hd); font-size: 10px; letter-spacing: 0.18em; color: var(--g-dim); } .sv-k i { font-style: normal; color: var(--yellow); margin-left: 6px; }
+.sv-t { color: #fff; font-size: 13px; } .sv-t.sv-e { color: var(--g-dim); } .sv-l, .sv-at { font-size: 10.5px; color: var(--g-dim); }
+.sv-acts { display: flex; flex-wrap: wrap; gap: 4px; justify-content: flex-end; } .sv-acts .btn { min-height: 28px; padding: 0 9px; font-size: 10.5px; }
+.btn.danger { background: #5a1d14; border-color: #ff6a4d; color: #fff; }
+@media (max-width: 560px) { .sv-slot { flex-direction: column; align-items: stretch; } .sv-acts { justify-content: flex-start; } }
+.lv-scr textarea { width: 100%; box-sizing: border-box; font: 11px/1.35 ui-monospace, Menlo, Consolas, monospace; text-transform: uppercase; color: var(--g); background: #0c100e; border: 1px solid var(--am-d); padding: 5px 7px; resize: vertical; margin-top: 3px; }
+.lv-scr .hint { display: block; font-size: 10px; color: var(--g-dim); margin: 3px 0 6px; } .lv-scr .ol + .obs { margin-bottom: 2px; }

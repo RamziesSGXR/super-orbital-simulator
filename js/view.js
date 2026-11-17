@@ -52,6 +52,8 @@ function level(look, q) {
   _lz.normalize(); _ly.crossVectors(_lz, _lx);
   return q.setFromRotationMatrix(_lm.makeBasis(_lx, _ly, _lz));
 }
+const NO_SHADE = new Set(['glass', 'glow', 'line', 'innerLine', 'wire', 'lane', 'decal', 'tileLine', 'mark', 'screen', 'blue', 'spark', 'alarm']);
+const LOD_KEEP = new Set(['tile', 'tileLine', 'hall', 'wall', 'mark', 'lane', 'carpet']);      // what a far room keeps: its floor, walls and faction mark
 const OPEN_HIDE = new Set(['hull', 'trim', 'glass', 'glow', 'decal', 'dark', 'blue', 'pod']);
 const CUT_IN = ['hall', 'inner', 'innerLine', 'lane', 'tileLine', 'wood', 'white', 'steel', 'sofa', 'fdark', 'fblue', 'fscreen', 'bed', 'locker', 'shell', 'carpet', 'wall', 'craft', 'craftTrim', 'crate', 'plant', 'awning', 'cross', 'alarm', 'spark'];
 const RESIDENTS = ['resident', 'resident2', 'resident3', 'resident4'];
@@ -366,8 +368,10 @@ export class View {
   // ---------------------------------------------------------------- the space around the station
   _world() {
     const s = this.scene;
-    s.add(new THREE.AmbientLight(0x9fb3a8, 0.5));
+    this.amb = new THREE.AmbientLight(0x9fb3a8, 0.5); s.add(this.amb);
     this.sun = new THREE.DirectionalLight(0xfff4e0, 2.4); s.add(this.sun); s.add(this.sun.target);
+    // Cast shadows (a setting, off to start): the sun's shadow map covers the build zone, so one part shades another.
+    this.sun.shadow.mapSize.set(2048, 2048); this.sun.shadow.bias = -0.0004; this.sun.shadow.normalBias = 0.03;
     this.rim = new THREE.DirectionalLight(0x6fd0ff, 0.7); this.rim.position.set(-50, -20, -40); s.add(this.rim);
     this.bpLight = new THREE.AmbientLight(0xffffff, 0.0); s.add(this.bpLight);
 
@@ -464,6 +468,46 @@ export class View {
   // Fly the camera and what it looks at together. fwd and right run along the deck (never up or down); up is straight up; turn
   // swings the camera round what it is looking at. Speed grows with distance, so it is fine close in and quick far out.
   // Drawing quality: how many pixels are drawn for each one on the screen.
+  // LIGHT: how strong the sun is (k, 0.4 to 1.6) and how dark the side away from it goes (shade, 0 to 1: at 1 almost black, as in
+  // hard vacuum; at 0 evenly lit). shadows: whether parts cast real shadows on each other.
+  setLight(k = 1, shade = 0.5, shadows = false) {
+    this.sun.intensity = 2.4 * k; this.rim.intensity = 0.7 * Math.min(1.3, k) * (1.3 - shade * 0.6);
+    this.amb.intensity = 0.06 + 0.88 * (1 - shade);
+    const R = this.renderer;
+    if (R.shadowMap.enabled !== !!shadows) { R.shadowMap.enabled = !!shadows; R.shadowMap.type = THREE.PCFSoftShadowMap; this.sun.castShadow = !!shadows; this.scene.traverse((o) => { if (o.material) o.material.needsUpdate = true; }); }
+    this.shadows = !!shadows;
+  }
+  // Which meshes cast and take shadows: solid hull and fittings do; glass, glows, lines and markers do not.
+  _shade(o) { o.traverse((x) => { if (!x.isMesh || x.isInstancedMesh) return; const r = x.userData.role; const solid = !NO_SHADE.has(r); x.castShadow = solid; x.receiveShadow = solid; }); }
+  // The shadow camera follows the station: an orthographic box round the sun's view of the build zone.
+  _sunBox() {
+    if (!this.shadows) return;
+    const R = Math.max(8, this.st.radius || 8) + 4, c = this.sun.shadow.camera;
+    this.sun.target.position.set(0, 0, 0); this.sun.position.copy(this.sunDir).multiplyScalar(R + 20);
+    if (c.right !== R) { c.left = -R; c.right = R; c.top = R; c.bottom = -R; c.near = 1; c.far = 2 * R + 40; c.updateProjectionMatrix(); }
+  }
+  // LEVEL OF DETAIL inside: a room's fittings are only drawn where they can be seen, and at a size where they tell. With the hull
+  // closed a room shows only when the camera is close enough to see in at a window; with the inside showing (cutaway, open, edit,
+  // the plans) a room far away keeps its floor and walls and leaves out its fittings, and one too small to see, or wholly on the
+  // camera's side of the cut, is not drawn. lodK: the Inside detail setting (0.5 low, 1 normal, 2 high).
+  _lod() {
+    const cam = this.camera, tanH = Math.tan(cam.fov * Math.PI / 360), q = this.lodK || 1;
+    const seen = this.mode !== 'hull' || this.cutaway || this.open || !!this.edit, cut = this.cutaway && !this.edit ? this.clip[0] : null;
+    let n = 0;
+    for (const [id, r] of this.roomObjs) {
+      if (!r.rad) { const b = new THREE.Box3().setFromObject(r.group), sp = b.getBoundingSphere(new THREE.Sphere()); r.mid = sp.center; r.rad = sp.radius; r.det = []; r.group.traverse((x) => { if ((x.isMesh || x.isLineSegments) && !LOD_KEEP.has(x.userData.role)) r.det.push(x); }); }
+      const d = Math.max(0.01, cam.position.distanceTo(r.mid)), f = r.rad / (d * tanH);
+      let lv;
+      if (this.edit === id || d < r.rad) lv = 2;
+      else if (this.mode === 'life') lv = 0;
+      else if (!seen) lv = f > 0.45 / q ? 2 : 0;
+      else if (cut && cut.distanceToPoint(r.mid) < -r.rad) lv = 0;
+      else lv = f > 0.09 / q ? 2 : f > 0.018 / q ? 1 : 0;
+      if (lv !== r.lv) { r.lv = lv; r.group.visible = lv > 0; for (const x of r.det) x.visible = lv === 2; }
+      n += lv === 2 ? 1 : 0;
+    }
+    this.lodFull = n;
+  }
   setQuality(q) { const d = devicePixelRatio || 1; this.renderer.setPixelRatio(q === 'low' ? Math.min(d, 1) * 0.75 : q === 'high' ? Math.min(d, 3) : Math.min(d, 2)); }
   fly(fwd, right, up, turn, dt) {
     const cam = this.camera.position, tg = this.controls.target, off = this._fo || (this._fo = new THREE.Vector3()), f = this._ff || (this._ff = new THREE.Vector3()), r = this._fr || (this._fr = new THREE.Vector3());
@@ -486,7 +530,7 @@ export class View {
     for (const o of this.shipObjs.values()) this._dress(o, 'active', !!this.edit, false, true);
     // The cut takes the hull and everything inside it that is nearer than the plane: decks, rooms, fittings and people.
     const planes = this.cutaway && !this.edit ? this.clip : null;
-    for (const m of [...this.clipped.map((k) => this.M[k]), ...Object.values(this.shows || {}).map((x) => x.mat), ...CUT_IN.map((k) => this.M[k]), ...Object.values(this.tileMats), this.figMat, this.crateIM && this.crateIM.material]) if (m) { m.clippingPlanes = planes; m.needsUpdate = true; }
+    for (const m of [...this.clipped.map((k) => this.M[k]), ...Object.values(this.shows || {}).map((x) => x.mat), ...CUT_IN.map((k) => this.M[k]), ...Object.values(this.tileMats), this.figMat, this.crateIM && this.crateIM.material]) if (m) { m.clippingPlanes = planes; m.clipShadows = true; m.needsUpdate = true; }
     const life = this.mode === 'life';
     this.agentMat.size = life ? 0.9 : 0.55;
     this.agentMat.depthTest = !life && !this.cutaway && !this.open && !this.edit;
@@ -508,7 +552,7 @@ export class View {
       if (!o) {
         o = buildPart(p.type); o.position.set(...p.pos); o.quaternion.set(...p.quat);
         o.traverse((x) => { x.userData.part = p.id; });
-        this.scene.add(o); this.partObjs.set(p.id, o); o.userData.state = '';
+        this._shade(o); this.scene.add(o); this.partObjs.set(p.id, o); o.userData.state = '';
       }
       if (o.userData.state !== p.state) { o.userData.state = p.state; this._dress(o, p.state, this._dim(p.id), this.edit === p.id); this._showOn(o, p); }
       if (p.type === 'billboard' && o.userData.show !== (p.show || 'slogans')) this._showOn(o, p);
@@ -561,7 +605,7 @@ export class View {
       g.add(rg);
     });
     g.position.set(...p.pos); g.quaternion.set(...p.quat);
-    this.scene.add(g);
+    this._shade(g); this.scene.add(g);
     this.roomObjs.set(p.id, { group: g, sig }); this.roomVer = (this.roomVer || 0) + 1;
     this._dressRoom(g, this._dim(p.id), this.edit === p.id);
   }
@@ -732,7 +776,7 @@ export class View {
     const ease = (x) => { const t = Math.min(1, Math.max(0, x)); return t * t * (3 - 2 * t); }, fly = [];
     for (const s of st.ships) {
       let o = this.shipObjs.get(s.id), fresh = false;
-      if (!o) { o = buildShip(s.kind); o.scale.setScalar(C.shipScale[s.kind] || 1); this._dress(o, 'active', !!this.edit, false, true); this.scene.add(o); this.shipObjs.set(s.id, o); o.userData.push = new THREE.Vector3(); o.userData.nom = new THREE.Vector3(); fresh = true; }
+      if (!o) { o = buildShip(s.kind); o.scale.setScalar(C.shipScale[s.kind] || 1); this._dress(o, 'active', !!this.edit, false, true); this._shade(o); this.scene.add(o); this.shipObjs.set(s.id, o); o.userData.push = new THREE.Vector3(); o.userData.nom = new THREE.Vector3(); fresh = true; }
       const u = o.userData, pos = u.nom, look = u.look ||= new THREE.Vector3();
       let free = 1;      // how free it is to step aside for another ship: not at all on the last of the way in to a berth
       if (s.state === 'hold') {
@@ -1355,6 +1399,7 @@ export class View {
   }
   render() {
     this.controls.update();
+    this._lod(); this._sunBox();
     this.sky.position.copy(this.camera.position);
     this.zone.visible = this.overlay && (this.mode === 'blueprint' || this.markers.children.length > 0);
     this.renderer.render(this.scene, this.camera);

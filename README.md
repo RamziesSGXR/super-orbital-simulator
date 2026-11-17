@@ -2,7 +2,7 @@
 
 Run a space station and the people aboard it. A browser game for the **Super Earth Special Forces** community, in the same look as [Orbital Fury](https://orbitalfury.com/).
 
-> **Prototype 0.11.3: supply and demand.** Freighters come for the trade, not for the berths: how many depends on the station's standing, its reputation and what it is short of. The price of a crate rises and falls with supply against demand. Every berth shows a light: green free, amber in use, red when it cannot take ships.
+> **Prototype 0.11.6: saves, debug and settings.** Three save slots and checked save codes, as in Orbital Fury. F3 shows a debug readout. Half speed. Rooms are only drawn in detail where you can see them. Sunlight, shadow depth and cast shadows are settings. The livery sets what every Propaganda Screen shows.
 
 **Your station. Its people. What happens to them.** It is a space station simulator: think Deep Space Nine in the Helldivers universe, with you as the station's commander. You start with Station Command in empty space, snap parts onto it and set their rooms. Then the people move in, and the station becomes theirs as much as yours.
 
@@ -11,6 +11,22 @@ Run a space station and the people aboard it. A browser game for the **Super Ear
 It runs in your browser on a computer, or on a phone or tablet held sideways. There is nothing to install. Turn the sound on.
 
 **Quick start:** press **NEW STATION**. Open **FIRE** and put a Ship Gun on a side port. Open the **DOCK** group at the bottom left, press `Q` for a Docking Port, move the pointer near Station Command and click when the little dot lights up. Add a Cargo Module from **INDUS** and a Hab Module from **HAB** the same way. Ships and colonists arrive within a minute, and soon after that the first thing lands on your desk.
+
+## What's new in 0.11.4 to 0.11.6
+
+**Saves, as in Orbital Fury.** SAVE in the menu has three slots: SAVE HERE, LOAD, CODE and DELETE on each, and anything that cannot be undone asks twice. A station saved to a slot keeps saving there. **LOAD GAME** on the title opens the same page. Save codes now read `SOS1-…-ABCD`: packed small, with four check characters at the end, so a code cut short or with one character changed is refused and says why. Codes from 0.11.2 still load.
+
+**F3: the debug readout.** Version, frames a second, draw calls and triangles, the station's numbers, and the last error. Errors are kept in a log (also kept between visits) that COPY puts on the clipboard to send. It opens by itself if the game hits an error. Also in SETTINGS as Debug info, and with `?debug` on the address.
+
+**Speed.** The speed button now goes down to **½×**. Click for faster, right-click for slower, or press `[` and `]`.
+
+**Level of detail inside.** A room's furniture and fittings are only drawn where they can be seen: with the hull closed, only when the camera is close enough to see in at a window; in the cutaway, far rooms keep their floors and walls and leave out the fittings, and rooms on the camera's side of the cut are not drawn at all. On a 31-part station with the hull closed this took the draw calls from 1,916 to 286, with no change in the picture. SETTINGS → Inside detail: Low, Normal or High.
+
+**Light and shadow.** SETTINGS → **Sunlight** (40% to 160%), **Shadow depth** (from evenly lit to near black, as in hard vacuum) and **Cast shadows** (parts throw real shadows on each other; off to start, as it costs some speed on a phone).
+
+**Propaganda Screens in the livery.** LIVERY has a PROPAGANDA SCREENS section: one press sets what every screen shows, new screens start on it, and YOUR OWN LINES are edited there. Long lines wrap to fit the screen; the back of a screen is a proper frame with ribs, braces and service lamps.
+
+**Also:** the floating berth markers and coloured lamps are gone; a berth's state is on its card. The insides no longer poke through the hull (most visible on the docking ring); a check (`node test/inside.mjs`) now looks for it on every part. The Pelican's tail fins are joined to the hull. Unrest is capped and can be brought down: a Customs Scanner room, the contraband desk, and an AMNESTY.
 
 ## What's new in 0.11.3
 
@@ -22,7 +38,7 @@ Asked for: some docking spaces don't work; the more berths you have, the more sh
 - **Reputation.** Each freighter served on time raises it a little. One kept waiting, turned away or left half unloaded lowers it more. It runs demand from ×0.6 to ×1.4. Too few berths for the trade means lost ships, a falling reputation and less trade: a busy station with one berth fell to 0.24 and lost 5 ships; with four it kept 1.00 and lost none.
 - **Price.** A crate's fee is multiplied by the market price, ×0.55 to ×1.6, which answers crates taken in against the demand. Opening the lanes (high traffic) brought 54% more crates but only 26% more money, because each was worth less. Thinning it brought fewer crates worth ×1.43 each.
 - **Every berth is used.** A ship goes to the free berth that has stood idle longest.
-- **Berth lights.** Green: free. Amber: a ship is at it or coming in. Red, blinking: it cannot take ships. A shut berth also shows a red line along its approach to where it is blocked. The berth's card says why: shut (and by what), broken down, or needs a Shuttle Bay or Workshop fitted inside.
+- **Berth state** (0.11.3 drew lights for it; since 0.11.4 it is on the card only). The berth's card says why it cannot take ships: shut (and by what), broken down, or needs a Shuttle Bay or Workshop fitted inside.
 - **The accounts** have a TRADE section: why freighters come, line by line; crates taken in and the market price; berths, how many are busy on average, and how many are more than the trade needs (each still costs upkeep). Hovering SHIPS on the top bar shows it.
 - **Asks:** spare berths the trade does not need; freighters waiting and reputation falling; a hangar or drydock with no room fitted.
 - New check: `node test/market.mjs [minutes] [seed]`.

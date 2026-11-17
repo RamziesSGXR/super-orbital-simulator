@@ -1,6 +1,7 @@
 // Boot, the main loop, input and the HUD. The simulation (sim.js) never touches the page; the view (view.js) draws it.
 import { C } from './config.js';
 import { Station } from './sim.js';
+import { getSlots, putSlot, clearSlot, toCode, fromCode } from './saves.js';
 import { View } from './view.js';
 import { partIcon, SLOTS } from './parts.js';
 import { Audio } from './audio.js';
@@ -15,6 +16,7 @@ const GROUP_SHORT = { platform: 'FIRE', structure: 'STRUCT', habitation: 'HAB', 
 const ROLE = { hauler: 'haulers', engineer: 'engineers', officer: 'officers', medic: 'medics', aide: 'aides', scientist: 'scientists', gunner: 'gunners' };
 const ROLE_ONE = { hauler: 'Hauler', engineer: 'Engineer', officer: 'Democracy Officer', medic: 'Medic', aide: 'Aide', scientist: 'Scientist', gunner: 'Gunner', resident: 'Resident' };
 const PLACES = { hauler: 'Cargo Stores, Cargo Racks and Station Command', engineer: 'Workshops', officer: 'Security Offices', medic: 'Medbays', aide: 'Brass Suites', scientist: 'Laboratories', gunner: 'Gun Crew Rooms, Barrack Rooms, pads and racks' };
+const esc = (x) => String(x).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const SAVE_KEY = 'sos.save.06', LIVERY_KEY = 'sos.livery';
 // What people say, in a bubble over their head, when you are close enough to see them.
 const CHAT = {
@@ -86,7 +88,7 @@ function start(mode, saved) {
   Object.assign(ui, { started: true, tool: null, sel: null, hot: null, edit: null, room: null, slot: null, group: 'structure', speed: 1, person: 0 });
   setView('hull'); setCut(false); setOpen(false); setClean(false);
   $('s-title').classList.remove('on'); $('hud').classList.remove('hidden');
-  $('b-speed').textContent = '1×';
+  setSpeed(1);
   const free = mode === 'sandbox';
   $('b-sim').classList.toggle('hidden', !free);
   closeFloats(null);
@@ -101,7 +103,7 @@ function start(mode, saved) {
 }
 function loadLivery() { try { return { ...C.livery.def, ...(JSON.parse(localStorage.getItem(LIVERY_KEY)) || {}) }; } catch (e) { return { ...C.livery.def }; } }
 const readSave = () => { try { return Station.load(JSON.parse(localStorage.getItem(SAVE_KEY))); } catch (e) { return null; } };
-function writeSave() { if (!ui.started || st.sandbox) return; try { localStorage.setItem(SAVE_KEY, JSON.stringify(st.save())); lastSave = performance.now(); } catch (e) { /* no storage here: the game plays on without saving */ } }
+function writeSave() { if (!ui.started || st.sandbox) return; try { localStorage.setItem(SAVE_KEY, JSON.stringify(st.save())); if (st.slot) putSlot(st.slot, st); lastSave = performance.now(); } catch (e) { /* no storage here: the game plays on without saving */ } }
 function titleButtons() { $('b-continue').classList.toggle('hidden', !readSave()); $('b-economy').classList.toggle('primary', !readSave()); }
 titleButtons();
 $('b-economy').onclick = () => start('run');
@@ -366,6 +368,7 @@ function toast(text) { const t = $('toast'); t.textContent = text; t.classList.a
 
 // ---------------------------------------------------------------- keys
 addEventListener('keydown', (e) => {
+  if (e.key === 'F3') { e.preventDefault(); SET.debug = !SET.debug; applySet('debug'); audio.play('click'); if ($('s-menu').classList.contains('on') && ui.mpage === 'settings') buildSettings(); return; }      // the debug readout, as in Orbital Fury
   if (!ui.started || e.target.tagName === 'INPUT') return;
   const k = e.key.toLowerCase();
   if (FLY.has(k) && !e.ctrlKey && !e.metaKey && !e.altKey && !document.querySelector('.screen.on')) { held.add(k); if (k === ' ') e.preventDefault(); if (k !== 'shift') return; }
@@ -386,6 +389,7 @@ addEventListener('keydown', (e) => {
     else { setTool(null); select(null); }
   }
   else if (k === 'p') pause();
+  else if (k === '[' || k === ']') { const steps = st.sandbox ? [0.5, 1, 2, 4, 8, 16] : [0.5, 1, 2, 4, 8], i = steps.indexOf(ui.speed); setSpeed(steps[Math.max(0, Math.min(steps.length - 1, (i < 0 ? 1 : i) + (k === ']' ? 1 : -1)))]); audio.play('click'); }
   else if (k === 'v') { audio.play('click'); setView(VIEWS[(VIEWS.indexOf(ui.view) + 1) % VIEWS.length]); }
   else if (k === 'g') { audio.play('click'); setCut(!ui.cut); }
   else if (k === 't') { audio.play('click'); setOpen(!ui.open); }
@@ -410,8 +414,14 @@ function demolishSel() {
 function pause(on = !ui.paused) { ui.paused = on; $('b-pause').textContent = on ? '▶' : 'II'; $('b-pause').classList.toggle('on', on); audio.play('click'); }
 $('b-pause').onclick = () => pause();
 $('b-speed').onclick = () => {
-  const steps = st.sandbox ? [1, 2, 4, 8, 16] : [1, 2, 4, 8];
-  ui.speed = steps[(steps.indexOf(ui.speed) + 1) % steps.length] || 1; $('b-speed').textContent = `${ui.speed}×`; audio.play('click');
+  const steps = st.sandbox ? [0.5, 1, 2, 4, 8, 16] : [0.5, 1, 2, 4, 8];
+  setSpeed(steps[(steps.indexOf(ui.speed) + 1) % steps.length] || 1); audio.play('click');
+};
+// Half speed, to watch people and ships at work; and up to 8x (16x in sandbox) to get on.
+function setSpeed(x) { ui.speed = x; $('b-speed').textContent = x === 0.5 ? '½×' : `${x}×`; }
+$('b-speed').oncontextmenu = (e) => {      // right-click steps down
+  e.preventDefault(); const steps = st.sandbox ? [0.5, 1, 2, 4, 8, 16] : [0.5, 1, 2, 4, 8];
+  setSpeed(steps[Math.max(0, steps.indexOf(ui.speed) - 1)] || 1); audio.play('click');
 };
 
 // ---------------------------------------------------------------- station comms: every channel, typed out as it comes in
@@ -759,11 +769,22 @@ function drawLivery() {
   $('lv-body').innerHTML = `<div class="lv-row"><span class="ol">STATION NAME</span><input id="lv-name" type="text" maxlength="18" placeholder="SUPER EARTH" value="${esc(L.name || '')}"></div>`
     + `<div class="lv-row"><span class="ol">COLOURS</span><div class="obs">${Object.entries(D.schemes).map(([k, v]) => `<button type="button" class="btn ob sw${L.scheme === k ? ' on' : ''}" data-scheme="${k}"><i style="background:${v.hull}"></i><i style="background:${v.trim}"></i><i style="background:${v.accent}"></i>${v.name}</button>`).join('')}</div></div>`
     + `<div class="lv-row"><span class="ol">YOUR OWN</span><div class="obs cols"><label>Hull<input type="color" data-col="hull" value="${L.hull}"></label><label>Trim<input type="color" data-col="trim" value="${L.trim}"></label><label>Accent<input type="color" data-col="accent" value="${L.accent}"></label></div></div>`
-    + pick('plating', D.plating, 'HULL PLATING') + pick('interior', D.interior, 'INTERIOR') + pick('lights', Object.fromEntries(Object.keys(D.lights).map((k) => [k, k[0].toUpperCase() + k.slice(1)])), 'LIGHTS') + pick('emblem', D.emblems, 'EMBLEM');
+    + pick('plating', D.plating, 'HULL PLATING') + pick('interior', D.interior, 'INTERIOR') + pick('lights', Object.fromEntries(Object.keys(D.lights).map((k) => [k, k[0].toUpperCase() + k.slice(1)])), 'LIGHTS') + pick('emblem', D.emblems, 'EMBLEM')
+    // PROPAGANDA SCREENS: what every screen on the station shows, and the station's own lines. One screen can still be set apart
+    // on its own card.
+    + (() => {
+      const screens = [...st.parts.values()].filter((p) => p.type === 'billboard'), cur = screens.length && screens.every((p) => (p.show || 'slogans') === (screens[0].show || 'slogans')) ? screens[0].show || 'slogans' : null;
+      return `<div class="lv-row lv-scr"><span class="ol">PROPAGANDA SCREENS</span><div class="obs">${C.screens.programs.map(([k, l]) => `<button type="button" class="btn ob${cur === k ? ' on' : ''}" data-allshow="${k}">${l}</button>`).join('')}</div>`
+        + `<small class="hint">${screens.length ? `Sets all ${screens.length} screen${screens.length > 1 ? 's' : ''}. ${cur ? '' : 'They show different programmes now. '}A single screen can be set on its own card.` : 'No Propaganda Screen is built yet (COMMS). These are kept for when one is.'}</small>`
+        + `<span class="ol">YOUR OWN LINES</span><textarea id="lv-lines" rows="4" spellcheck="false" aria-label="Your own lines for the screens, one per line">${esc((st.screenLines || C.screens.own).join('\n'))}</textarea>`
+        + `<small class="hint">One message per line, up to ${C.screens.maxLines}, each up to ${C.screens.maxChars} characters. Screens set to YOUR OWN show them in turn; long lines are made smaller to fit.</small></div>`;
+    })();
   $('lv-name').onchange = (e) => setLivery({ name: e.target.value.trim() });
   for (const b of $('lv-body').querySelectorAll('[data-scheme]')) b.onclick = () => { const S = D.schemes[b.dataset.scheme]; setLivery({ scheme: b.dataset.scheme, hull: S.hull, trim: S.trim, accent: S.accent }); };
   for (const b of $('lv-body').querySelectorAll('[data-key]')) b.onclick = () => setLivery({ [b.dataset.key]: b.dataset.v });
   for (const i of $('lv-body').querySelectorAll('[data-col]')) i.onchange = () => setLivery({ scheme: 'own', [i.dataset.col]: i.value });
+  for (const b of $('lv-body').querySelectorAll('[data-allshow]')) b.onclick = () => { for (const p of st.parts.values()) if (p.type === 'billboard') st.setShow(p.id, b.dataset.allshow); st.screenDefault = b.dataset.allshow; audio.play('click'); drawLivery(); info(); };
+  $('lv-lines').onchange = (e) => { st.setScreenLines(e.target.value); audio.play('click'); drawLivery(); };
 }
 $('b-liv').onclick = () => livery(); $('lv-x').onclick = () => livery(false);
 
@@ -808,7 +829,7 @@ function simStats() {
 // Settings, help, the radio log, saving and credits, laid out the way Orbital Fury's pause menu is. (The tax and the accounts
 // that used to be here are in the Commander's channel, under ACCOUNTS.)
 const SET_KEY = 'sos.settings', PEOPLE_KEY = 'sos.people';
-const SET = { volume: 1, muted: false, quality: 'auto', fps: 'auto', people: 100, dots: true, calm: false, fly: 1, zoom: 1, advice: true };
+const SET = { volume: 1, muted: false, quality: 'auto', fps: 'auto', people: 100, dots: true, calm: false, fly: 1, zoom: 1, advice: true, debug: false, sun: 1, shade: 0.5, shadows: false, detail: 'normal' };
 try { Object.assign(SET, JSON.parse(localStorage.getItem(SET_KEY)) || {}); const p = +localStorage.getItem(PEOPLE_KEY); if (p && !localStorage.getItem(SET_KEY)) SET.people = p; } catch (e) { /* no storage here: the settings last for this visit */ }
 function applySet(key) {
   const all = !key, is = (k) => all || key === k;
@@ -820,6 +841,8 @@ function applySet(key) {
   if (is('fly')) view.flyK = SET.fly;
   if (is('zoom')) view.controls.zoomSpeed = 2.2 * SET.zoom;
   if (is('advice') && st) st._noAdvice = !SET.advice;
+  if (is('sun') || is('shade') || is('shadows')) view.setLight(+SET.sun || 1, Math.max(0, Math.min(1, +SET.shade)), !!SET.shadows);
+  if (is('detail')) view.lodK = { low: 0.5, normal: 1, high: 2.2 }[SET.detail] || 1;
   if (key) try { localStorage.setItem(SET_KEY, JSON.stringify(SET)); } catch (e) { /* no storage here */ }
 }
 function setPeople(v) { SET.people = Math.max(60, Math.min(160, +v || 100)); applySet('people'); const i = $('in-people'); if (i) { i.value = SET.people; i.nextElementSibling.textContent = `${SET.people}%`; } }
@@ -838,12 +861,17 @@ function buildSettings() {
   row('Drawing quality', 'Low draws fewer pixels: smoother on a phone or an old laptop. High is sharper on a fine screen.', select('quality', [['auto', 'Auto'], ['high', 'High'], ['low', 'Low']]));
   row('Frames a second', 'A limit saves battery and keeps a laptop cool.', select('fps', [['auto', 'As many as the screen shows'], ['60', '60'], ['30', '30']]));
   row('People size', '100% is true to scale: a person is 1.8 m and a deck unit is 9 m.', range('people', 60, 160, 10, (x) => `${x}%`, 'in-people'));
+  row('Inside detail', 'How much of the rooms is drawn. The fittings of a room far away, or one behind a closed hull, are left out: Low leaves out more and runs faster, High draws more of them from further off.', select('detail', [['normal', 'Normal'], ['high', 'High'], ['low', 'Low']]));
+  row('Sunlight', 'How strong the sun is on the station.', range('sun', 0.4, 1.6, 0.05, pct));
+  row('Shadow depth', 'How dark the side away from the sun goes: 0% is evenly lit, 100% near black, as in hard vacuum.', range('shade', 0, 1, 0.05, pct));
+  row('Cast shadows', 'Parts throw real shadows on each other in the sun. Looks best; costs some speed on a phone or an old laptop.', toggle('shadows'));
   row('Port dots', 'The little dots that show where a part can go (J).', toggle('dots'));
   row('Calm display', 'No blinking lights or flashing banners.', toggle('calm'));
   sec('CAMERA');
   row('Flying speed', 'How fast W A S D, Space and Shift move the camera.', range('fly', 0.4, 2.5, 0.1, pct));
   row('Zoom speed', 'How far one turn of the wheel, or one pinch, goes.', range('zoom', 0.4, 2, 0.1, pct));
   sec('THE STATION');
+  row('Debug info', 'A readout in the corner of what the game is doing, and a log of errors you can copy and send to us (key F3).', toggle('debug'));
   row('Advice on the radio', 'The Ministry and the factions say what the station needs when it matters, and once a week. Off: it is still listed under ACCOUNTS.', toggle('advice'));
 }
 buildSettings(); applySet();
@@ -857,7 +885,7 @@ function menuPage(p) {
   if (p === 'settings') buildSettings();
   if (p === 'main') { $('m-status').textContent = ui.started ? `${st.sandbox ? 'Free play' : C.tiers[st.tier].name} · week ${st.week()}, day ${st.dow()} · ${st.parts.size} parts · ${st.residents()} residents` : ''; $('m-saved').textContent = st.sandbox ? 'Free play is not saved' : lastSave ? `Saved ${Math.max(0, Math.round((performance.now() - lastSave) / 1000))} s ago` : 'Saves by itself'; $('m-ver').textContent = `Prototype ${C.version}`; }
   if (p === 'log') { const box = $('m-log'); box.innerHTML = radioLog.length ? radioLog.map((x) => `<div class="rl${x.cls}" style="--c:${x.col}"><b>${x.who}</b><time>${x.at}</time><span>${x.text}</span></div>`).join('') : '<p class="fine">Nothing has been said yet.</p>'; box.scrollTop = box.scrollHeight; }
-  if (p === 'save') saveText();
+  if (p === 'save') { ui.svArm = null; $('sv-code').value = ''; $('sv-msg').textContent = ''; saveText(); }
   if (p === 'credits') $('cr-ver').textContent = `Prototype ${C.version}.`;
 }
 function menu(on = !$('s-menu').classList.contains('on'), page = 'main') {
@@ -872,26 +900,50 @@ $('m-back').onclick = () => { audio.play('click'); if (menuFrom === 'title') men
 $('b-settings-t').onclick = () => { audio.unlock(); menu(true, 'settings'); };
 for (const b of document.querySelectorAll('#s-menu [data-go]')) b.onclick = () => { audio.play('click'); menuPage(b.dataset.go); };
 // Saving: by itself every few seconds; here, now; and as a code that can be carried to another device.
-const toCode = (o) => `SOS1:${btoa(unescape(encodeURIComponent(JSON.stringify(o))))}`;
-const fromCode = (t) => { const m = /SOS1:([A-Za-z0-9+/=\s]+)/.exec(t || ''); if (!m) return null; try { return JSON.parse(decodeURIComponent(escape(atob(m[1].replace(/\s+/g, ''))))); } catch (e) { return null; } };
+// SAVE: three slots, as in Orbital Fury, and save codes (js/saves.js). Overwriting, loading over a running station and deleting
+// each take a second click on the same button, which turns red and says what it will do.
 function saveText() {
-  const free = st.sandbox || !ui.started;
-  $('sv-status').textContent = !ui.started ? 'No station is running. A save code can still be loaded below.' : st.sandbox ? 'Free play is not saved: it is a sandbox.' : `The station saves itself every 15 seconds, and when you leave for the title screen. ${lastSave ? `Last saved ${Math.max(0, Math.round((performance.now() - lastSave) / 1000))} seconds ago.` : ''}`;
-  $('sv-now').disabled = free; $('sv-copy').disabled = free;
-  $('sv-code').value = free ? '' : toCode(st.save()); $('sv-msg').textContent = '';
+  const free = !ui.started || st.sandbox;
+  $('sv-status').textContent = !ui.started ? 'Load a station from a slot or a code.' : st.sandbox ? 'Free play is a sandbox: it is not saved to a slot, but it can be written out as a code.'
+    : `The station saves itself every 15 seconds${st.slot ? `, and to slot ${st.slot}` : ''}. ${lastSave ? `Last saved ${Math.max(0, Math.round((performance.now() - lastSave) / 1000))} seconds ago.` : ''}`;
+  const ol = $('sv-list'); ol.innerHTML = '';
+  const when = (at) => { try { return new Date(at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }); } catch (e) { return new Date(at).toLocaleString(); } };
+  getSlots().forEach((s, i) => {
+    const n = i + 1, li = document.createElement('li'), cur = ui.started && st.slot === n && !st.sandbox;
+    li.className = `sv-slot${s ? '' : ' empty'}${cur ? ' cur' : ''}`;
+    const m = s && s.sum;
+    li.innerHTML = `<div class="sv-b"><div class="sv-k">SLOT ${n}${cur ? ' <i>this station</i>' : ''}</div>` + (s ? `<div class="sv-t">${esc(m.name)}</div><div class="sv-l">${m.tier} · week ${m.week}, day ${m.day} · ${m.parts} parts · ${m.residents} residents · ${m.credits.toLocaleString('en-US')} CR</div><div class="sv-at">Saved ${when(s.at)}${m.v !== C.version ? ` · version ${m.v}` : ''}</div>` : '<div class="sv-t sv-e">Empty</div>') + '</div>';
+    const acts = document.createElement('div'); acts.className = 'sv-acts';
+    const btn = (key, label, armed, f, cls = '') => { const b = document.createElement('button'); b.type = 'button'; b.className = `btn ${cls}${ui.svArm === key ? ' danger' : ''}`; b.textContent = ui.svArm === key ? armed : label; b.onclick = () => { if (armed && ui.svArm !== key) { ui.svArm = key; audio.play('click'); saveText(); return; } ui.svArm = null; f(); }; acts.appendChild(b); };
+    if (ui.started && !st.sandbox) btn(`save${n}`, 'SAVE HERE', s && !cur ? 'OVERWRITE?' : null, () => { if (putSlot(n, st)) { writeSave(); audio.play('built'); $('sv-msg').textContent = `Saved to slot ${n}.`; } else $('sv-msg').textContent = 'Could not save: this browser’s storage is full or switched off.'; saveText(); }, 'primary');
+    if (s) btn(`load${n}`, 'LOAD', ui.started && !st.sandbox && !cur ? 'LOAD? THIS STATION IS SAVED FIRST' : null, () => loadData(s.data, n));
+    if (s) btn(`code${n}`, 'CODE', null, async () => { $('sv-code').value = await toCode(s.data); $('sv-msg').textContent = `The code for slot ${n} is in the box below.`; });
+    if (s) btn(`del${n}`, 'DELETE', 'DELETE? IT CANNOT BE UNDONE', () => { clearSlot(n); if (ui.started && st.slot === n) st.slot = 0; $('sv-msg').textContent = `Slot ${n} is empty.`; saveText(); }, 'sv-del');
+    li.appendChild(acts); ol.appendChild(li);
+  });
+  $('sv-make').disabled = !ui.started; $('sv-copy').disabled = !$('sv-code').value;
 }
-$('sv-now').onclick = () => { writeSave(); audio.play('built'); saveText(); $('sv-msg').textContent = 'Saved.'; };
+function loadData(data, slot = 0) {
+  const s = (() => { try { return Station.load(data); } catch (e) { return null; } })();
+  if (!s) { audio.play('deny'); $('sv-msg').textContent = `That station was saved by another version of the game (${(data && data.v) || 'unknown'}; this is ${C.version}), and cannot be loaded here.`; return false; }
+  if (ui.started && !st.sandbox) writeSave();
+  if (slot) s.slot = slot;
+  $('sv-in').value = ''; $('s-menu').classList.remove('on'); $('s-title').classList.remove('on'); ui.paused = false; $('b-pause').textContent = 'II'; $('b-pause').classList.remove('on');
+  start(s.mode, s); writeSave(); audio.play('built');
+  return true;
+}
+$('sv-make').onclick = async () => { $('sv-code').value = await toCode(st.save()); $('sv-copy').disabled = false; $('sv-msg').textContent = `This station's code: ${$('sv-code').value.length.toLocaleString('en-US')} characters.`; };
 $('sv-copy').onclick = async () => {
   const t = $('sv-code'); t.focus(); t.select();
   let ok = false; try { await navigator.clipboard.writeText(t.value); ok = true; } catch (e) { try { ok = document.execCommand('copy'); } catch (e2) { ok = false; } }
   $('sv-msg').textContent = ok ? `Copied: ${t.value.length.toLocaleString('en-US')} characters.` : 'Could not copy from here. The code is selected: copy it by hand.';
 };
-$('sv-load').onclick = () => {
-  const data = fromCode($('sv-in').value), s = data && (() => { try { return Station.load(data); } catch (e) { return null; } })();
-  if (!s) { audio.play('deny'); $('sv-msg').textContent = data ? `That code is from another version of the game (this is ${C.version}).` : 'That is not a save code. It starts with SOS1:'; return; }
-  $('sv-in').value = ''; $('s-menu').classList.remove('on'); $('s-title').classList.remove('on'); ui.paused = false; $('b-pause').textContent = 'II'; $('b-pause').classList.remove('on');
-  start(s.mode, s); writeSave();
+$('sv-load').onclick = async () => {
+  const r = await fromCode($('sv-in').value);
+  if (r.err) { audio.play('deny'); $('sv-msg').textContent = { empty: 'Paste a save code into the box first.', bad: 'That is not a whole save code. It starts SOS and ends with four check characters; a code cut short or changed is refused.', zip: 'This browser cannot unpack that code.' }[r.err]; return; }
+  loadData(r.data);
 };
+$('b-load-t').onclick = () => { audio.unlock(); menu(true, 'save'); };
 // ---------------------------------------------------------------- events from the simulation
 let bannerT = 0;
 function showBanner(title, sub, sec, bad = false) { const b = $('banner'); b.innerHTML = `${title}<small>${sub}</small>`; b.classList.toggle('bad', bad); b.classList.add('show'); bannerT = sec; }
@@ -1127,13 +1179,68 @@ fx();
 // ---------------------------------------------------------------- loop
 const STEP = 1 / 30;
 let last = performance.now(), acc = 0, hudT = 0, miniT = 0, saveT = 15;
+// ---------------------------------------------------------------- THE DEBUG READOUT (F3), as in Orbital Fury (its main.js, 0.62.3)
+// A corner readout of what the game is doing, and the last few errors, each with where it was thrown and what the station was
+// doing. They are kept in the browser's storage too, so a report can be copied after the fact, even after a reload. Shown by F3,
+// by Settings > Debug info, by ?debug in the address, or by itself once something has gone wrong this visit.
+const ERRLOG_KEY = 'sos.errlog', ERRLOG_MAX = 12, DEBUG_Q = new URLSearchParams(location.search).has('debug');
+let errLog = [], debugBroke = false, simFails = 0, fps = 0, fpsN = 0, fpsT = 0;
+try { errLog = JSON.parse(localStorage.getItem(ERRLOG_KEY) || '[]') || []; } catch (e) { errLog = []; }
+function stationLine() {
+  if (!ui.started || !st) return 'on the title screen';
+  return `${st.mode}  ${st.sandbox ? 'free play' : C.tiers[st.tier].name}  t ${st.t.toFixed(1)}  week ${st.week()} day ${st.dow()}  seed ${st.seed ?? '?'}  slot ${st.slot || '-'}`;
+}
+function logError(err, where) {
+  const msg = String((err && err.message) || err), stack = String((err && err.stack) || '').split('\n').slice(0, 9).join('\n'), last = errLog[errLog.length - 1];
+  if (last && last.msg === msg && last.where === where && last.v === C.version) { last.n = (last.n || 1) + 1; last.at = new Date().toISOString(); }
+  else { errLog.push({ at: new Date().toISOString(), v: C.version, where, msg, stack, game: (() => { try { return stationLine(); } catch (e) { return '?'; } })(), n: 1 }); if (errLog.length > ERRLOG_MAX) errLog.shift(); }
+  debugBroke = true;
+  if (!logError.at || performance.now() - logError.at > 2000) { logError.at = performance.now(); try { localStorage.setItem(ERRLOG_KEY, JSON.stringify(errLog)); } catch (e) { /* storage full or off: the log stays in memory */ } }
+}
+function simBroke(err) { simFails++; if (simFails <= 5) console.error('[sim] step failed', err); logError(err, 'sim'); }
+addEventListener('error', (e) => logError(e.error || e.message, 'page'));
+addEventListener('unhandledrejection', (e) => logError(e.reason, 'promise'));
+// The report a player sends: nothing personal in it. The version, the browser, the settings that change how it runs, what the
+// station was doing, and the errors.
+function debugReport() {
+  const L = [], r = view.renderer.info.render;
+  L.push(`Super Orbital Simulator ${C.version}  ${new Date().toISOString()}`, navigator.userAgent);
+  L.push(`screen ${innerWidth}x${innerHeight} @${devicePixelRatio}  quality ${SET.quality} fps-cap ${SET.fps} people ${SET.people}%`);
+  L.push(`fps ${fps.toFixed(0)}  draw calls ${r.calls}  triangles ${r.triangles}  ${stationLine()}`);
+  if (ui.started) L.push(`parts ${st.parts.size}  people ${st.agents.length}  ships ${st.ships.length}  morale ${st.morale.toFixed(1)}  unrest ${(st.unrest || 0).toFixed(1)}  credits ${Math.round(st.credits)}  power ${st.demand}/${st.supply}  requests ${st.requests.length}  paused ${ui.paused} speed ${ui.speed}  step faults ${simFails}`);
+  L.push('');
+  if (!errLog.length) L.push('no errors logged');
+  for (const e of errLog.slice().reverse()) { L.push(`[${e.at}] v${e.v} ${e.where} x${e.n || 1}: ${e.msg}`, `  ${e.game}`); if (e.stack) L.push(e.stack.split('\n').map((x) => '  ' + x.trim().replace(/\(?(?:file|https?):\/\/[^)\s]*\//g, '(')).join('\n')); }
+  return L.join('\n');
+}
+function debugPaint(now, dt) {
+  fpsN++; fpsT += dt; if (fpsT >= 0.5) { fps = fpsN / fpsT; fpsN = 0; fpsT = 0; }
+  const on = DEBUG_Q || SET.debug || debugBroke, d = $('debug');
+  d.classList.toggle('hidden', !on);
+  if (!on || now - (debugPaint.at || 0) < 0.25) return;
+  debugPaint.at = now;
+  const r = view.renderer.info.render, last = errLog[errLog.length - 1];
+  $('debug-warn').classList.toggle('hidden', !debugBroke);
+  $('debug-t').textContent = `v${C.version}  fps ${fps.toFixed(0)}  calls ${r.calls}  tris ${(r.triangles / 1000).toFixed(0)}k\n${stationLine()}`
+    + (ui.started ? `\nparts ${st.parts.size}  people ${st.agents.length}  ships ${st.ships.length} (${st.ships.filter((x) => x.state === 'hold').length} waiting)  requests ${st.requests.length}\nmorale ${st.morale.toFixed(1)}  unrest ${(st.unrest || 0).toFixed(1)}  power ${st.demand}/${st.supply}  CR ${Math.round(st.credits)}  ${ui.paused ? 'paused' : `x${ui.speed}`}  faults ${simFails}` : '')
+    + (last ? `\nlast error (${errLog.length} kept): ${last.where} x${last.n || 1}: ${last.msg}` : '');
+}
+$('debug-copy').onclick = async () => {
+  const txt = debugReport(), b = $('debug-copy');
+  let ok = false;
+  try { await navigator.clipboard.writeText(txt); ok = true; } catch (e) { /* no clipboard here: show the text to select */ }
+  if (!ok) { $('debug-t').textContent = txt; debugPaint.at = Infinity; $('debug').classList.add('sel'); }
+  b.textContent = ok ? 'COPIED' : 'SELECT AND COPY';
+  setTimeout(() => { b.textContent = 'COPY REPORT'; if (ok) debugPaint.at = 0; }, 2200);
+};
+window.__debugReport = debugReport;
 function frame(nowMs) {
   if (SET.fps !== 'auto' && nowMs - last < 1000 / +SET.fps - 2) { requestAnimationFrame(frame); return; }      // a limit on frames a second
   const now = nowMs / 1000, dt = Math.min(0.1, (nowMs - last) / 1000); last = nowMs;
   if (!ui.paused) {
     acc += dt * (ui.started ? ui.speed : 1);
     let n = 0;
-    while (acc >= STEP && n++ < 20) { st.step(STEP); acc -= STEP; }
+    try { while (acc >= STEP && n++ < 20) { st.step(STEP); acc -= STEP; } } catch (err) { simBroke(err); acc = 0; }
     if (n >= 20) acc = 0;
   }
   drain();
@@ -1143,9 +1250,12 @@ function frame(nowMs) {
     if (!a || ['w', 'a', 's', 'd', ' ', 'shift'].some((k) => held.has(k)) || !view.follow(a, dt)) { ui.follow = 0; info(); }
   }
   if (held.size && ui.started) view.fly((held.has('w') ? 1 : 0) - (held.has('s') ? 1 : 0), (held.has('d') ? 1 : 0) - (held.has('a') ? 1 : 0), (held.has(' ') ? 1 : 0) - (held.has('shift') ? 1 : 0), (held.has('e') ? 1 : 0) - (held.has('q') ? 1 : 0), dt);
-  view.sync(now, dt);
-  if (ui.tool && ui.portsDirty) { ui.portsDirty = false; view.showPorts(ui.tool, ui.rot, ui.hot, ui.px, ui.py); }
-  view.render(now);
+  try {
+    view.sync(now, dt);
+    if (ui.tool && ui.portsDirty) { ui.portsDirty = false; view.showPorts(ui.tool, ui.rot, ui.hot, ui.px, ui.py); }
+    view.render(now);
+  } catch (err) { logError(err, 'draw'); }
+  debugPaint(now, dt);
   typeTick(dt); cmTick(dt); bubbleTick(dt, now);
   if (ui.started) {
     if ((hudT -= dt) <= 0) { hudT = 0.25; hud(); if (ui.tool) ui.portsDirty = true; }

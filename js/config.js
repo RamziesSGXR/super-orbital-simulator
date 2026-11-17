@@ -22,7 +22,7 @@ const fill = (n, room) => Array(n).fill(room);
 const deg = (xs) => xs.map((x) => x * Math.PI / 180);
 
 export const C = {
-  version: '0.11.5',
+  version: '0.11.6',
 
   groups: [
     { id: 'structure', name: 'STRUCTURE' }, { id: 'platform', name: 'FIRE SUPPORT' }, { id: 'habitation', name: 'HABITATION' }, { id: 'docking', name: 'DOCKING' },

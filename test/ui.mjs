@@ -96,9 +96,10 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
   check('ships dock and haulers carry crates to cargo', mid.crates > 0, JSON.stringify(mid));
   check('no status markers or coloured lamps are drawn over the berths', await page.evaluate(() => !window.__view.bcn && !window.__view.bcnLine));
   check('a Propaganda Screen shows its programme on the front only, and a long line of your own fits inside the frame', await page.evaluate(async () => {
-    const P = await import('/js/parts.js'), s = window.__st, v = window.__view, h = s.parts.get(1);
-    const fp = s.freePorts().find((f) => s.canBuild('billboard', f.part, f.i).ok); if (!fp) return false;
-    const id = s.build('billboard', fp.part, fp.i).id, p = s.parts.get(id); p.state = 'active';
+    const P = await import('/js/parts.js'), C0 = (await import('/js/config.js')).C, s = window.__st, v = window.__view, h = s.parts.get(1);
+    const t0 = s.tier; s.tier = Math.max(t0, C0.parts.billboard.tier || 0);      // the screens unlock at Garrison; this run may not be there yet
+    const fp = s.freePorts().find((f) => s.canBuild('billboard', f.part, f.i).ok); if (!fp) { s.tier = t0; return false; }
+    const id = s.build('billboard', fp.part, fp.i).id, p = s.parts.get(id); s.tier = t0; p.state = 'active';
     s.setScreenLines('ALL HANDS: THE CAFETERIA ON DECK THREE IS NOW SERVING LIBERTY LOAF WITH EXTRA DEMOCRACY GRAVY'); s.setShow(id, 'own');
     v.sync(999, 0.05); v._screens(999);
     const o = v.partObjs.get(id); let mat = null; o.traverse((x) => { if (x.userData.role === 'screen') mat = x.material; });
@@ -133,6 +134,15 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
   await page.fill('#lv-name', 'Tharsis Watch'); await page.press('#lv-name', 'Enter'); await page.waitForTimeout(200);
   check('livery sets the name, colours, plating and emblem', await page.evaluate(() => { const L = window.__st.livery, v = window.__view; return L.name === 'Tharsis Watch' && L.scheme === 'sesf' && L.plating === 'plates' && L.emblem === 'star' && '#' + v.M.hull.color.getHexString() === '#2b2e33' && v.M.hull.map === v.plateTex.plates; }), await page.evaluate(() => JSON.stringify(window.__st.livery)));
   await page.screenshot({ path: 'test/shots/livery.png' });
+  check('the livery sets every Propaganda Screen\'s programme and your own lines, and a new screen starts on it', await page.evaluate(async () => {
+    const C0 = (await import('/js/config.js')).C, s = window.__st, t0 = s.tier; s.tier = Math.max(t0, C0.parts.billboard.tier || 0); const fp = s.freePorts().find((f) => s.canBuild('billboard', f.part, f.i).ok); if (!fp) { s.tier = t0; return false; }
+    const id = s.build('billboard', fp.part, fp.i).id; s.tier = t0; s.parts.get(id).state = 'active'; return true;
+  }) && await (async () => {
+    await page.click('#b-liv'); await page.click('#b-liv'); await page.waitForTimeout(150);
+    await page.click('#lv-body [data-allshow="recruit"]'); await page.waitForTimeout(100);
+    await page.fill('#lv-lines', 'DECK SIX BAR OPEN\nREPORT DISSENT'); await page.dispatchEvent('#lv-lines', 'change'); await page.waitForTimeout(100);
+    return page.evaluate(() => { const s = window.__st, bs = [...s.parts.values()].filter((p) => p.type === 'billboard'); const ok = bs.length && bs.every((p) => p.show === 'recruit') && s.screenLines.join('|') === 'DECK SIX BAR OPEN|REPORT DISSENT' && s.screenDefault === 'recruit'; for (const p of bs) s.demolish(p.id); return ok; });
+  })());
   // Scale, standing spots and rearranging.
   check('a person is drawn 1.8 m tall against a 9 m unit', await page.evaluate(() => Math.abs(window.__view.personK() * 0.33 - 0.2) < 0.005));
   check('people at rest stand on a planned spot, with a clear way to the door', await page.evaluate(() => {
@@ -299,7 +309,7 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
   }));
   check('rooms have a runner along their aisles', await page.evaluate(async () => { const R = await import('/js/rooms.js'); return R.roomPlan('quarters', 9, 7.2, 0, 0).items.some((i) => i[1] === 'hall'); }));
   check('a lift is a closed tube, and nobody inside one is drawn', await page.evaluate(async () => {
-    const P = await import('/js/parts.js'), s = window.__st, v = window.__view, now = performance.now() / 1000;
+    const P = await import('/js/parts.js'), C0 = (await import('/js/config.js')).C, s = window.__st, v = window.__view, now = performance.now() / 1000;
     // the tube is there to be seen, and the old open tower and its stair are gone (those were drawn as 'inner' rails and treads)
     const roles = {}; P.buildPart('core').traverse((o) => { if (o.isMesh) roles[o.userData.role] = o.geometry.attributes.position.count; });
     if (!roles.locker || !roles.steel) return false;
@@ -315,7 +325,7 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
     return rode > 0 && wrong === 0;
   }));
   check('an airlock with nothing to walk into beyond it is shut, and one that joins two parts is open', await page.evaluate(async () => {
-    const P = await import('/js/parts.js'), s = window.__st, v = window.__view;
+    const P = await import('/js/parts.js'), C0 = (await import('/js/config.js')).C, s = window.__st, v = window.__view;
     const want = () => { let n = 0; for (const p of s.parts.values()) { if (p.state !== 'active' || !P.WALK[p.type]) continue; s.def(p).ports.forEach((q, i) => { if (Math.abs(q[4]) > 0.7) return; const nb = p.used.has(i) ? p.kids.map((k) => s.parts.get(k)).find((k) => k && k.pport === i) || s.parts.get(p.parent) : null; if (!(nb && nb.state === 'active' && P.WALK[nb.type])) n++; }); } return n; };
     v._airlocks(); const n0 = v.alDoor.count, w0 = want();
     const free = s.freePorts().find((f) => { const p = s.parts.get(f.part); return p.state === 'active' && P.WALK[p.type] && Math.abs(f.dir[1]) < 0.7; });
@@ -327,7 +337,7 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
     return ok && v.alDoor.count === n0;
   }));
   check('every part with a lift has its light, and with nobody aboard it calls at every deck by itself', await page.evaluate(async () => {
-    const P = await import('/js/parts.js'), s = window.__st, v = window.__view; v.liftRider.clear(); v._lifts(0.016);
+    const P = await import('/js/parts.js'), C0 = (await import('/js/config.js')).C, s = window.__st, v = window.__view; v.liftRider.clear(); v._lifts(0.016);
     const shafts = [...s.parts.values()].filter((p) => p.state === 'active' && P.WALK[p.type] && P.WALK[p.type].k === 'shaft' && (P.SLOTS[p.type] || []).length);
     if (!shafts.length || !shafts.every((p) => v.lifts.has(p.id))) return false;
     const c = [...v.lifts.values()].find((x) => x.ys.length > 1); if (!c) return false;
@@ -484,7 +494,7 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
   check('it has Resume, Settings, Help, Radio Log, Save, Title Screen, Feedback and Credits', await page.evaluate(() => ['settings', 'help', 'log', 'save', 'credits'].every((p) => document.querySelector(`#s-menu [data-go="${p}"]`)) && !!document.getElementById('b-close') && !!document.getElementById('b-restart') && /discord/.test(document.querySelector('#s-menu a.fb').href)));
   await page.click('#s-menu [data-go="settings"]'); await page.waitForTimeout(200);
   const set0 = await page.evaluate(() => ({ rows: document.querySelectorAll('#set-body .set-row').length, secs: [...document.querySelectorAll('#set-body .set-sec')].map((x) => x.textContent), pr: window.__view.renderer.getPixelRatio() }));
-  check('SETTINGS: sound, display, camera and the station, each setting with what it does', set0.rows === 10 && set0.secs.join() === 'SOUND,DISPLAY,CAMERA,THE STATION' && await page.evaluate(() => [...document.querySelectorAll('#set-body .set-row small')].every((x) => x.textContent.length > 15)), JSON.stringify(set0));
+  check('SETTINGS: sound, display, camera and the station, each setting with what it does', set0.rows === 15 && set0.secs.join() === 'SOUND,DISPLAY,CAMERA,THE STATION' && await page.evaluate(() => [...document.querySelectorAll('#set-body .set-row small')].every((x) => x.textContent.length > 15)), JSON.stringify(set0));
   await page.selectOption('#set-body select[data-k="quality"]', 'low'); await page.click('#set-body .tog[data-k="calm"]'); await page.click('#set-body .tog[data-k="advice"]');
   await page.evaluate(() => { for (const [k, v] of [['volume', 0.4], ['fly', 2]]) { const r = document.querySelector(`#set-body input[data-k="${k}"]`); r.value = v; r.dispatchEvent(new Event('input')); } }); await page.waitForTimeout(200);
   check('the settings do what they say: quality, calm display, volume, flying speed, advice', await page.evaluate((pr) => { const v = window.__view; return v.renderer.getPixelRatio() < pr + 1e-6 && v.renderer.getPixelRatio() <= 0.76 && document.getElementById('app').classList.contains('calm') && Math.abs(v.flyK - 2) < 1e-6 && window.__st._noAdvice === true; }, set0.pr));
@@ -500,15 +510,42 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
   await page.click('#m-back'); await page.click('#s-menu [data-go="credits"]'); await page.waitForTimeout(100);
   check('CREDITS says whose it is and that it is unofficial', await page.evaluate(() => { const t = document.querySelector('.mpage[data-p="credits"]').innerText; return /Robert Troumbley/.test(t) && /Not affiliated/.test(t) && /three\.js/.test(t) && /Prototype \d/.test(t); }));
   await page.click('#m-back'); await page.click('#s-menu [data-go="save"]'); await page.waitForTimeout(200);
+  check('SAVE lists three slots, empty ones marked', await page.evaluate(() => document.querySelectorAll('#sv-list .sv-slot').length === 3));
+  await page.click('#sv-list li:nth-child(1) .btn.primary'); await page.waitForTimeout(300);
+  check('SAVE HERE puts the station in a slot it then keeps saving to', await page.evaluate(() => { const a = JSON.parse(localStorage.getItem('sos.slots') || '[]'); return a[0] && a[0].data && window.__st.slot === 1 && /Week/i.test(document.querySelector('#sv-list li:nth-child(1)').innerText); }));
+  await page.click('#sv-make'); await page.waitForTimeout(600);
   const code = await page.inputValue('#sv-code');
-  check('SAVE shows a save code for the station', /^SOS1:[A-Za-z0-9+/=]{200,}$/.test(code), `${code.length} characters`);
+  check('MAKE CODE gives a checked save code like Orbital Fury\'s', /^SOS[01]-[A-Za-z0-9_-]{100,}-[0-9A-Z]{4}$/.test(code), `${code.length} characters`);
   const snap = await page.evaluate(() => ({ parts: window.__st.parts.size, t: Math.round(window.__st.t), credits: Math.round(window.__st.credits) }));
-  await page.fill('#sv-in', 'not a code'); await page.click('#sv-load'); await page.waitForTimeout(100);
-  check('a wrong code is refused, and says why', /not a save code/.test(await page.textContent('#sv-msg')) && await page.isVisible('#s-menu'));
+  await page.fill('#sv-in', 'not a code'); await page.click('#sv-load'); await page.waitForTimeout(150);
+  check('a wrong code is refused, and says why', /not a whole save code/.test(await page.textContent('#sv-msg')) && await page.isVisible('#s-menu'));
+  await page.fill('#sv-in', code.slice(0, -1) + (code.endsWith('A') ? 'B' : 'A')); await page.click('#sv-load'); await page.waitForTimeout(150);
+  check('a code with one character changed is caught by its check', /not a whole save code/.test(await page.textContent('#sv-msg')));
   await page.fill('#sv-in', `  ${code}\n`); await page.click('#sv-load'); await page.waitForTimeout(900);
   check('loading the code brings the same station back, running', await page.evaluate((a) => { const s = window.__st; return !document.getElementById('s-menu').classList.contains('on') && !window.__ui.paused && s.parts.size === a.parts && Math.abs(s.t - a.t) < 5 && Math.abs(s.credits - a.credits) < 60; }, snap), JSON.stringify(snap));
   await page.keyboard.press('m'); await page.waitForTimeout(150); await page.click('#b-close'); await page.waitForTimeout(150);
   check('RESUME closes the menu and the station runs again', !(await page.isVisible('#s-menu')) && await page.evaluate(() => !window.__ui.paused));
+  await page.keyboard.press('F3'); await page.waitForTimeout(700);
+  check('F3 opens the debug readout (version, fps, station)', await page.isVisible('#debug') && /v\d+\.\d+.*fps/.test(await page.textContent('#debug-t')));
+  check('the debug report carries the station and any errors', await page.evaluate(() => /Super Orbital Simulator/.test(window.__debugReport()) && /parts/.test(window.__debugReport())));
+  await page.keyboard.press('F3'); await page.waitForTimeout(200);
+  check('F3 again closes it', !(await page.isVisible('#debug')), await page.evaluate(() => window.__debugReport().split('\n').filter((l) => /rror|at /.test(l)).slice(0, 6).join(' | ')));
+  check('the speed button goes down to half speed, and [ ] step it', await (async () => {
+    await page.keyboard.press('['); await page.keyboard.press('['); await page.keyboard.press('['); await page.waitForTimeout(100);
+    const half = await page.evaluate(() => window.__ui.speed === 0.5 && document.getElementById('b-speed').textContent === '½×');
+    await page.keyboard.press(']'); await page.waitForTimeout(100);
+    return half && await page.evaluate(() => window.__ui.speed === 1);
+  })());
+  check('with the hull closed and the camera off, the rooms\' fittings are not drawn; in the cutaway the near ones are', await page.evaluate(() => {
+    const v = window.__view, far = v.camera.position.clone(); v.setCutaway(false); v.camera.position.multiplyScalar(4); v._lod();
+    const hid = [...v.roomObjs.values()].every((r) => r.lv === 0);
+    v.camera.position.copy(far); v.setCutaway(true); v.sync(performance.now() / 1000, 0.016); v._lod();
+    const some = [...v.roomObjs.values()].some((r) => r.lv === 2); v.setCutaway(false); return hid && some;
+  }));
+  check('the light settings change the sun, the shade and cast shadows', await page.evaluate(() => {
+    const v = window.__view; v.setLight(1.5, 1, true); const a = v.sun.intensity > 3.5 && v.amb.intensity < 0.1 && v.renderer.shadowMap.enabled && v.sun.castShadow;
+    v.setLight(1, 0.5, false); return a && Math.abs(v.amb.intensity - 0.5) < 1e-6 && !v.renderer.shadowMap.enabled;
+  }));
   await page.keyboard.press('o'); await page.waitForTimeout(250); await page.click('#cm-tabs .dt.lgt'); await page.waitForTimeout(250);
   await page.evaluate(() => { const i = document.getElementById('in-tax'); i.value = 14; i.dispatchEvent(new Event('input')); }); await page.waitForTimeout(150);
   check('the tax is set on the ACCOUNTS page now, with what it brings in and what it costs in morale', await page.evaluate(() => window.__st.tax === 14 && /14%/.test(document.getElementById('bv-tax').textContent) && /CR a minute/.test(document.getElementById('bn-tax').textContent) && /morale/.test(document.getElementById('bn-tax').textContent)));
