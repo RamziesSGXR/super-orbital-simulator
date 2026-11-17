@@ -195,6 +195,7 @@ export const ROOMS = {
   barrack: ['bunks', 'kitRack', 'bunks', 'lockerRow', 'wet', 'bench', 'exercise', 'messTable'],
   mess: ['galley', 'messTable', 'messTable', 'drinks', 'messTable', 'plantPot', 'messTable', 'vending'],
   lounge: ['viewSofa', 'armchairs', 'plantPot', 'gameTable', 'bookshelf', 'viewSofa', 'drinks', 'exercise'],
+  gym: ['exercise', 'lockerRow', 'exercise', 'gameTable', 'bench', 'drinks', 'exercise', 'arcade', 'plantPot'],
   hydro: ['growRack', 'growBed', 'growRack', 'waterTank', 'seedBench', 'growRack', 'growBed'],
   workshop: ['workbench', 'lathe', 'partsBins', 'printer', 'weldBay', 'suitRack', 'workbench', 'lockerRow'],
   cargostore: ['palletRack', 'floorStack', 'palletRack', 'barrels', 'loader', 'palletRack', 'floorStack'],

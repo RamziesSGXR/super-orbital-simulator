@@ -94,11 +94,12 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
   await steps(page, 60);
   const mid = await page.evaluate(() => ({ crates: window.__st.stats.crates, res: window.__st.residents() }));
   check('ships dock and haulers carry crates to cargo', mid.crates > 0, JSON.stringify(mid));
+  check('no berth on this plain station is shut: every one has a clear way in', await page.evaluate(() => window.__view.shut.size === 0), await page.evaluate(() => JSON.stringify([...window.__view.shut].map(([id, by]) => `${window.__st.name(window.__st.parts.get(id))} by ${by}`))));
   // The fire support platform, the gravity standard and the livery.
   check('the ship gun is crewed and the top bar reads the platform ready', await page.evaluate(() => { const P = window.__st.platform(); return P.by.gun.n === 1 && P.by.gun.ready > 0.9 && /^\d+%$/.test(document.getElementById('r-rdy').textContent); }), await page.evaluate(() => JSON.stringify(window.__st.platform().sys.map((x) => [x.k, x.n, +x.ready.toFixed(2), x.why]))));
   check('a gun cannot go on a port that faces up', await page.evaluate(() => { const s = window.__st, re = [...s.parts.values()].find((p) => p.type === 'reactor'); return /planet/.test(s.canBuild('battery', re.id, 1).why); }));
   check('every deck is level, however a part is attached', await page.evaluate(() => {
-    const s = window.__st, c = [...s.parts.values()].find((p) => p.type === 'core'), ids = [s.build('tower', c.id, 3).id, s.build('hab', [...s.parts.values()].find((p) => p.type === 'reactor').id, 1).id];
+    const s = window.__st, c = [...s.parts.values()].find((p) => p.type === 'core'), v = window.__view, clearOf = (t, h) => [3, 4, 5, 2].find((i) => s.canBuild(t, h.id, i).ok && !v.berthWarn(t, s.placement(t, h, i, 0)).length) ?? 3, ids = [s.build('tower', c.id, clearOf('tower', c)).id, s.build('hab', [...s.parts.values()].find((p) => p.type === 'reactor').id, 1).id];      // on a side port where it does not stand across a berth's approach
     const up = (q) => 1 - 2 * (q[0] * q[0] + q[2] * q[2]);
     const ok = ids.every((id) => id && Math.abs(up(s.parts.get(id).quat) - 1) < 1e-6);
     for (const id of ids) if (id) { s.parts.get(id).state = 'active'; s.demolish(id); }
@@ -149,15 +150,15 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
   for (let i = 0; i < 3 && await page.evaluate(() => window.__st.parts.get(window.__ui.sel)?.type) !== 'hab'; i++) { await page.mouse.click(...await partXY(page, 'p.type === "hab"')); await page.waitForTimeout(300); }
   check('clicking a part selects it, with EDIT INSIDE', await page.evaluate(() => window.__st.parts.get(window.__ui.sel)?.type) === 'hab' && await page.isVisible('#a-edit'), await page.evaluate(() => `${window.__st.parts.get(window.__ui.sel)?.type} ${window.__ui.tool} ${window.__ui.edit}`));
   await page.keyboard.press('i'); await page.waitForTimeout(500);
-  check('I opens the part: a room palette and its rooms', await page.evaluate(() => window.__view.edit) && (await page.$$('#cmd .rb')).length === 27 && (await page.$$('#info .chip[data-i]')).length === 3);
-  const habId = await page.evaluate(() => window.__view.edit), cr0 = await page.evaluate(() => window.__st.credits);
+  check('I opens the part: a room palette and its rooms', await page.evaluate(() => window.__view.edit) && (await page.$$('#cmd .rb')).length === 28 && (await page.$$('#info .chip[data-i]')).length === 3);
+  const habId = await page.evaluate(() => window.__view.edit), cr0 = await page.evaluate(() => window.__st.totals.build);      // what has been spent on building (the credits themselves move with trade)
   await page.click('.rb[data-r="mess"]');
   const t1 = await tileXY(page, 1);
   await page.mouse.move(...t1); await page.waitForTimeout(150);
   check('hovering a room shows what it would become', /Mess Hall/.test(await page.textContent('#tip')));
   await page.mouse.click(...t1); await page.waitForTimeout(200);
   const rooms = await page.evaluate((id) => window.__st.parts.get(id).rooms.join(), habId);
-  check('clicking a room builds it, and it costs', rooms === 'quarters,mess,quarters' && await page.evaluate(() => window.__st.credits) < cr0 - 25, rooms);
+  check('clicking a room builds it, and it costs', rooms === 'quarters,mess,quarters' && await page.evaluate(() => window.__st.totals.build) <= cr0 - 30, rooms);
   check('bay rooms are refused outside a hangar', await page.evaluate(() => document.querySelector('.rb[data-r="shuttlebay"]').classList.contains('na') || document.querySelector('.rb[data-r="shuttlebay"]').classList.contains('locked')));
   await page.screenshot({ path: 'test/shots/edit-inside.png' });
   await page.keyboard.press('Escape'); await page.keyboard.press('Escape');
@@ -165,7 +166,31 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
 
   // The Commander's channel.
   await page.keyboard.press('o'); await page.waitForTimeout(300);
-  check('O opens the Commander\'s channel with nine divisions', await page.isVisible('#cmdr') && (await page.$$('#cm-tabs .dt')).length === 9);
+  check('O opens the Commander\'s channel with nine divisions', await page.isVisible('#cmdr') && (await page.$$('#cm-tabs .dt:not(.lgt)')).length === 9);
+  // The accounts: the first page of the channel, the hover on the top bar, the click through, and what the station is asked for.
+  check('the channel opens on the ACCOUNTS: credits in and out line by line, the stores, power, people, morale and the score', await page.evaluate(() => {
+    const t = document.getElementById('lg').innerText, L = window.__st.ledger();
+    return document.querySelector('#cm-tabs .dt.lgt.on') && ['lg-credits', 'lg-stores', 'lg-power', 'lg-people', 'lg-morale', 'lg-cap'].every((id) => document.getElementById(id))
+      && /COMING IN/.test(t) && /GOING OUT/.test(t) && /Colonist tax/.test(t) && L.credits.outs.length > 0 && L.credits.outs.every((x) => t.includes(x.label)) && /Coffee/.test(t) && /MADE BY/.test(t);
+  }));
+  await page.keyboard.press('o'); await page.waitForTimeout(150);
+  await page.hover('.ri:has(#r-cr)'); await page.waitForTimeout(300);
+  check('hovering the credits says where they come from and where they go', await page.evaluate(() => { const t = document.getElementById('tip'); return !t.classList.contains('hidden') && /CREDITS/.test(t.innerText) && /COMING IN/.test(t.innerText) && /GOING OUT/.test(t.innerText) && /Click for the full accounts/.test(t.innerText); }));
+  const tips = {};
+  for (const [id, word] of [['r-pw', 'MADE BY'], ['r-pop', 'STAFF ON DUTY'], ['r-mo', 'MORALE'], ['r-cap', 'CAPABILITY'], ['r-rdy', 'THE PLATFORM'], ['r-sh', 'Berths']]) { await page.hover(`.ri:has(#${id})`); await page.waitForTimeout(150); tips[id] = (await page.evaluate(() => document.getElementById('tip').innerText)).includes(word); }
+  check('and so does every other readout on the top bar: power, people, morale, capability, readiness, ships', Object.values(tips).every(Boolean), JSON.stringify(tips));
+  await page.click('.ri:has(#r-pw)'); await page.waitForTimeout(300);
+  check('clicking a readout opens the accounts at that section, and the hover goes away', await page.isVisible('#cmdr') && await page.evaluate(() => { const m = document.getElementById('lg-power').getBoundingClientRect(), c = document.getElementById('cmdr').getBoundingClientRect(); return document.getElementById('tip').classList.contains('hidden') && m.top >= c.top - 2 && m.top < c.bottom; }));
+  check('the ACCOUNTS tab carries what the station gains or loses a minute; the top bar still shows no profit figure', /^[+−]\d+$/.test((await page.textContent('#dt-ledger')).trim()) && !(await page.$('#r-net')), await page.textContent('#dt-ledger'));
+  // Morale: where it has been, what makes it up, and ways to raise it that can be ordered on the spot.
+  await page.evaluate(() => { window.__st.setTax(16); }); await page.waitForFunction(() => document.querySelector('#lg-morale [data-do="tax"]'), null, { timeout: 20000 }).catch(() => {});
+  const mor = await page.evaluate(() => { const el = document.getElementById('lg-morale'), b = el.querySelector('[data-do="tax"]'); return { text: el.innerText, chart: !!el.querySelector('svg.mlog polyline'), tax: !!b, n: el.querySelectorAll('[data-do]').length }; });
+  check('the accounts track morale: a chart of where it has been, what makes it up, and ways to raise it', mor.chart && /WHAT MAKES IT UP/.test(mor.text) && /WAYS TO RAISE IT/.test(mor.text) && /Colonist tax/.test(mor.text) && mor.tax && mor.n >= 2, JSON.stringify({ chart: mor.chart, n: mor.n, tax: mor.tax }) + mor.text.slice(0, 700));
+  await page.evaluate(() => { document.querySelector('#lg-morale [data-do="tax"]').scrollIntoView({ block: 'center' }); }); await page.click('#lg-morale [data-do="tax"]'); await page.waitForFunction(() => window.__st.tax === 10 && !document.querySelector('#lg-morale [data-do="tax"]'), null, { timeout: 20000 }).catch(() => {});
+  check('DO IT gives the order there and then (the tax comes down to 10%)', await page.evaluate(() => window.__st.tax === 10 && !document.querySelector('#lg-morale [data-do="tax"]')));
+  check('the morale readout says which way it is heading', /^\d+( [▲▼])?$/.test(await page.textContent('#r-mo')), await page.textContent('#r-mo'));
+  await page.mouse.move(700, 300);
+  await page.click('#cm-tabs .dt[data-k="supply"]'); await page.waitForTimeout(100);
   await page.click('#cm-tabs .dt[data-k="maintenance"]'); await page.waitForTimeout(100);
   await page.click('.ob[data-v="preventive"]'); await page.waitForFunction(() => /PATRIOTIC MAINTENANCE/.test(document.getElementById('c-list').textContent), null, { timeout: 15000 }).catch(() => {});
   check('a standing order is given and acknowledged on the radio', await page.evaluate(() => window.__st.div.maintenance.order.plan) === 'preventive' && /CH 4 · PATRIOTIC MAINTENANCE/.test(await page.textContent('#c-list')));
@@ -175,7 +200,8 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
   check('Supply\'s page lists the stores', /Coffee/.test(await page.textContent('#cm-stores')) && /Rations/.test(await page.textContent('#cm-stores')));
   await page.click('#cm-tabs .dt[data-k="maintenance"]'); await page.waitForTimeout(200);
   await page.waitForTimeout(1200);
-  check('the division reports in its own voice', /Engineers on staff/.test(await page.textContent('#cm-rep')));
+  await page.waitForFunction(() => /Engineers on staff/.test(document.getElementById('cm-rep').textContent), null, { timeout: 15000 }).catch(() => {});
+  check('the division reports in its own voice', /Engineers on staff/.test(await page.textContent('#cm-rep')), await page.textContent('#cm-rep'));
   await page.screenshot({ path: 'test/shots/commander.png' });
   // Factions: a mood, what they want, and their people by name.
   check('a division page shows its faction: mood, wants and named crew', await page.isVisible('#cm-fac .fac') && /Wants/.test(await page.textContent('#cm-fac')) && (await page.$$('#cm-fac .pp')).length > 0);
@@ -187,12 +213,12 @@ const steps = (page, sec) => page.evaluate((n) => { for (let i = 0; i < n; i++) 
 
   // The upgrade path.
   await page.keyboard.press('u'); await page.waitForFunction(() => document.querySelectorAll('#up-list .tier').length === 4, null, { timeout: 15000 }).catch(() => {});
-  check('U shows the upgrade path, Outpost to Citadel', (await page.$$('#up-list .tier')).length === 4 && await page.isVisible('#up-list .tier.now') && (await page.$$('#up-list .tier.next .req')).length === 4);
+  check('U shows the upgrade path, Outpost to Citadel', (await page.$$('#up-list .tier')).length === 4 && await page.isVisible('#up-list .tier.now') && (await page.$$('#up-list .tier.next .req')).length === 4, await page.evaluate(() => JSON.stringify({ open: !document.getElementById('upg').classList.contains('hidden'), tiers: document.querySelectorAll('#up-list .tier').length, req: document.querySelectorAll('#up-list .tier.next .req').length, focus: document.activeElement && document.activeElement.tagName + '#' + document.activeElement.id, tier: window.__st.tier })));
   await page.screenshot({ path: 'test/shots/upgrades.png' });
   await page.keyboard.press('u');
   for (let i = 0; i < 14 && await page.evaluate(() => window.__st.tier) < 1; i++) await steps(page, 60);
   await page.waitForTimeout(400);
-  check('Garrison status is granted and grows the build zone', await page.evaluate(() => window.__st.tier >= 1 && window.__st.radius === 40), await page.evaluate(() => JSON.stringify(window.__st.next()?.items.map((i) => `${i.label} ${i.have}/${i.need}`))));
+  check('Garrison status is granted and grows the build zone', await page.evaluate(() => window.__st.tier >= 1 && window.__st.radius === 40), await page.evaluate(() => JSON.stringify(window.__st.next()?.items.map((i) => `${i.label} ${i.have}/${i.need}`)) + ' ' + JSON.stringify(window.__st.asks().map((a) => `${a.text} ${a.why}`)) + ` morale ${Math.round(window.__st.morale)} t ${Math.round(window.__st.t)} beds ${window.__st.beds()} ships ${window.__st.stats.ships}/${window.__st.stats.lost}`));
   // What reaches the commander lands on the desk, with its choices.
   const ask = await page.evaluate(() => {
     const s = window.__st; s.credits += 500; s.requests.length = 0;

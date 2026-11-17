@@ -8,6 +8,7 @@ import { RNG } from './rng.js';
 import { v, q } from './math3.js';
 import { installPlatform } from './platform.js';
 import { installStory } from './story.js';
+import { installLedger } from './ledger.js';
 
 const NAMES = ['Honest Work', 'Steady Progress', 'Fair Weather', 'Good Neighbors', 'Quiet Resolve', 'Open Skies', 'Sturdy Ballots',
   'Shared Prosperity', 'Cheerful Compliance', 'Sensible Shoes', 'Unanimous Consent', 'Bright Mornings', 'Fair Play', 'Civic Duty',
@@ -361,6 +362,23 @@ export class Station {
   }
   taxPerMin() { return this.residents() * this.tax * C.econ.taxPerPct; }
   setTax(x) { this.tax = Math.max(0, Math.min(30, Math.round(x))); }
+  // A LIBERTY DAY: a day of flags, speeches and an open bar, paid for in credits. Morale goes up at once and wears off over a few
+  // days. One a week at most.
+  canCelebrate() {
+    const F = C.morale.festival, wait = (this.cheerT ?? -1e9) + F.every * C.time.daySec - this.t;
+    if (!this.residents()) return { ok: false, why: 'Nobody lives aboard yet' };
+    if (wait > 0) return { ok: false, why: `The next can be held in ${Math.ceil(wait / C.time.daySec)} days` };
+    if (!this.sandbox && this.credits < F.cost) return { ok: false, why: `It costs ${F.cost} CR` };
+    return { ok: true, why: '' };
+  }
+  celebrate() {
+    const chk = this.canCelebrate(); if (!chk.ok) return chk;
+    const F = C.morale.festival;
+    if (!this.sandbox) this._money(-F.cost, 'festival');
+    this.cheer = F.gain; this.cheerT = this.t;
+    this.say('truth', `Liberty Day is declared. Flags on every deck, speeches at noon, and the bar is open. Morale +${F.gain}, for a few days.`, { gold: true });
+    return chk;
+  }
   setAllot(k, x) { this.div[k].allot = Math.max(0, Math.min(C.allotMax, Math.round(x))); this._refresh(); }
   setOrder(k, o, val) { this.div[k].order[o] = val; this._refresh(); this.events.push({ type: 'order', from: k, text: this.ack(k, o, val) }); }
   broadcastBoost() {
@@ -376,9 +394,11 @@ export class Station {
       base: M.base, tax, leisure: Math.max(-10, Math.min(M.leisureMax, this.leisure)), power: -M.power * (1 - this.eff),
       unrest: -this.unrest, faults: -M.faulty * faulty, medical: this.staff.medic ? (care === 'free' ? 4 : -2) : 0,
       broadcast: this.broadcastBoost(), shifts: sh ? -5 : 0, broke: this.credits < 0 ? -15 : 0, rations: this.short.rations ? -10 : 0, magazines: this.magNear ? -M.magazine : 0,
+      rationing: this.residents() && !this.short.rations ? M.ration[this.div.supply.order.rations || 'normal'][0] : 0, festival: this.cheer || 0,
     };
   }
-  _money(x, cat) {
+  // `line`: which line of the accounts it belongs on, where a category has several (trade: crates, docking, repairs, fines).
+  _money(x, cat, line = cat) {
     if (this.sandbox && cat === 'build') return;
     this.credits += x;
     this.totals[cat] = (this.totals[cat] || 0) + x;
@@ -386,6 +406,9 @@ export class Station {
     const s = Math.floor(this.t), b = this.buckets[s % 60];
     if (b.s !== s) { b.s = s; b.v = 0; }
     b.v += x;
+    const f = ((this._flow ||= {})[line] ||= Array.from({ length: 60 }, () => ({ s: -1, v: 0 })))[s % 60];      // the last minute, line by line (ledger.js)
+    if (f.s !== s) { f.s = s; f.v = 0; }
+    f.v += x;
   }
   netPerMin() { const s = Math.floor(this.t); let x = 0; for (const b of this.buckets) if (b.s > s - 60 && b.s <= s) x += b.v; return x * 60 / Math.min(60, Math.max(1, this.t)); }
   say(from, text, extra = {}) { this.events.push({ type: 'comms', from, text, ...extra }); }
@@ -566,10 +589,12 @@ export class Station {
     const p = this.moraleParts(), target = Math.max(0, Math.min(100, Object.values(p).reduce((s, x) => s + x, 0)));
     this.morale += Math.max(-1.5 * dt, Math.min(1.5 * dt, target - this.morale));
     this.unrest = Math.max(0, this.unrest - dt * C.morale.contraband / C.morale.unrestDecaySec);
+    if (this.cheer) this.cheer = Math.max(0, this.cheer - dt * C.morale.festival.gain / (C.morale.festival.days * C.time.daySec));      // a Liberty Day wears off
     this._factions(dt);
     this._requests(dt);
     this._story(dt);
     this._platform(dt);
+    this._advise(dt);
     this._tiers();
     if ((this.timers.talk -= dt) <= 0) {
       this.timers.talk = 70 + this.rng.range(0, 40);
@@ -751,7 +776,7 @@ export class Station {
       if (s) s.reserved = Math.max(0, s.reserved - 1);
     } else if (what === 'drop') {
       a.carry = false; a.task = null;
-      this._money(C.econ.crateFee + this.refineN * C.parts.refinery.refine, 'trade'); this.stats.crates++; this.crateTimes.push(this.t);
+      this._money(C.econ.crateFee + this.refineN * C.parts.refinery.refine, 'trade', 'crates'); this.stats.crates++; this.crateTimes.push(this.t);
       this.stock[a.cargo || 'rations'] = (this.stock[a.cargo || 'rations'] || 0) + 1; this.weekIn++;
       if (++a.n % 25 === 0) this.note(a, `Carried a ${a.n}th crate to the stores.`);
       this.events.push({ type: 'crate', part: a.at });
@@ -826,7 +851,7 @@ export class Station {
         else if (s.kind === 'warship') {
           const hands = this.agents.filter((a) => a.task === 'drydock' && a.ship === s.id && a.eva).length;
           s.repair += dt / S.repairSec * (0.25 + 0.75 * Math.min(1, hands / 2));
-          if (s.repair >= 1) { this._money(S.repairFee, 'trade'); this.stats.repairs++; this.say('captain', `${s.name}: repairs complete. Your yard did fine work, Commander. Transferring ${S.repairFee} CR. Back to the front.`); }
+          if (s.repair >= 1) { this._money(S.repairFee, 'trade', 'repairs'); this.stats.repairs++; this.say('captain', `${s.name}: repairs complete. Your yard did fine work, Commander. Transferring ${S.repairFee} CR. Back to the front.`); }
         }
       } else if (s.state === 'depart' && s.t >= S.departSec) this.ships.splice(this.ships.indexOf(s), 1);
     }
@@ -844,7 +869,7 @@ export class Station {
     const p = this.parts.get(s.dock);
     if (!p) { this._depart(s, true); return; }
     s.state = 'docked'; s.t = 0; s.lastDock = p.id; s.dockedAt = this.t;
-    this._money(C.econ.dockFee + this.fuelN * C.parts.tanks.fuel, 'trade');
+    this._money(C.econ.dockFee + this.fuelN * C.parts.tanks.fuel, 'trade', 'docking');
     if (s.kind === 'shuttle') {
       const beds = this.freeBeds(), n = Math.min(C.ships.colonists, beds.length);
       for (let i = 0; i < n; i++) { const a = this._spawn('resident', p.id, beds[i].id); a.wait = i * 0.5; a.task = 'back'; }
@@ -863,7 +888,7 @@ export class Station {
     if (s.smuggler) {
       const caught = post && (every || this.rng.chance(0.5));
       if (caught) {
-        this.stats.caught++; this._money(C.econ.fine, 'trade');
+        this.stats.caught++; this._money(C.econ.fine, 'trade', 'fines');
         this.say('security', `Unapproved goods seized from ${s.name}. A ${C.econ.fine} CR fine has been collected. Democracy is safe.`, { gold: true });
         const off = this.agents.find((a) => a.role === 'officer' && !a.task);
         if (off) { this._go(off, (x) => x.id === p.id, 'inspect'); this.note(off, `Seized unapproved goods from ${s.name}.`); }
@@ -899,6 +924,7 @@ export class Station {
   ack(k, o, val) {
     const lines = {
       shift: { normal: 'Back to normal shifts, Commander.', double: 'Double shifts it is. The haulers won\'t thank you.' },
+      rations: { normal: 'Standard rations for all hands.', double: 'Double rations. The mess will be a happier place, while the lockers last.', short: 'Short rations from today. Nobody will thank us for it.' },
       plan: { reactive: 'Understood. We fix what breaks.', preventive: 'Preventive maintenance schedule in effect.' },
       checks: { spot: 'Spot checks only. Faster, and riskier.', every: 'Every ship will be inspected. No exceptions.' },
       care: { free: 'Free care for all citizens. Democracy heals.', fees: 'Fees in effect. Payment before treatment.' },
@@ -912,3 +938,4 @@ export class Station {
 
 installStory(Station);
 installPlatform(Station);
+installLedger(Station);

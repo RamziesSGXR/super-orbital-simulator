@@ -104,7 +104,7 @@ export function installStory(Station) {
     // Take `n` of a supply from the stores. False (and nothing taken) when there is not enough.
     take(type, n) { if (this.sandbox) return true; if ((this.stock[type] || 0) < n) return false; this.stock[type] -= n; return true; },
     weeklyNeed(type) {
-      if (type === 'rations') return this.residents() * C.supply.rationPerResident;
+      if (type === 'rations') return this.residents() * C.supply.rationPerResident * C.morale.ration[this.div.supply.order.rations || 'normal'][1];
       const k = SUPPLY_OF[type];
       return k ? this.div[k].allot + (type === 'shells' && this.platformN ? 5 : 0) : 0;
     },
@@ -140,6 +140,8 @@ export function installStory(Station) {
       const shorts = Object.entries(this.short).filter(([, x]) => x).map(([k]) => k === 'rations' ? 'rations' : C.supplies[C.div[k].uses].name.toLowerCase());
       if (!this.sandbox) this.say('ministry', `Week ${this.week() - 1} report. Capability ${capNow} (${gain >= 0 ? '+' : ''}${gain}). ${this.weekIn} crates into the stores. ${shorts.length ? `Short of: ${shorts.join(', ')}.` : 'No shortages.'}`, { gold: gain > 0 && !shorts.length });
       this.lastWeek = { in: this.weekIn, cap: capNow }; this.weekIn = 0;
+      // and the one thing most worth doing next, so growing is never a guess
+      if (!this.sandbox) { const ask = this.asks().find((x) => !x.urgent); if (ask) this.say(ask.from === 'colonists' ? 'colonists' : ask.from, `Asked of you this week. ${ask.text} ${ask.why}`); }
       this.events.push({ type: 'week', week: this.week() });
       if (!this.sandbox) this._allotAsk();
     },

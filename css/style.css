@@ -486,3 +486,28 @@ h1 { text-shadow: none; letter-spacing: 0.1em; } .eyebrow, .panel .ph, .desk .ph
 @media (max-width: 900px) { .views { min-width: 168px; } }
 @media (max-height: 520px) { .views { min-width: 150px; } }
 @media (max-width: 600px) and (min-height: 521px) { .views { grid-template-columns: 1fr; min-width: 0; } }
+
+/* ---- the accounts: where everything comes from and goes (the Commander's first page, and the hover on the top bar) */
+.ri.acc { cursor: pointer; } .ri.acc:hover b { text-decoration: underline dotted; text-underline-offset: 3px; }
+.dt.lgt { margin-bottom: 6px; }
+.lg { display: grid; gap: 10px; font-size: 11.5px; text-align: left; }
+.lg section { padding: 7px 9px 8px; border-left: 2px solid var(--am-d); background: rgba(0, 0, 0, 0.25); }
+.lg .lh { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; font-family: var(--hd); font-size: 12px; letter-spacing: 0.08em; color: #fff; font-weight: 700; margin-bottom: 4px; }
+.lg .lh i { font-style: normal; font-family: inherit; font-size: 10.5px; letter-spacing: 0.04em; font-weight: 400; color: var(--g-dim); white-space: nowrap; }
+.lg .lsub { margin: 6px 0 2px; font-size: 9.5px; letter-spacing: 0.16em; color: var(--g-dim); }
+.lg .lr { display: flex; justify-content: space-between; gap: 12px; padding: 1.5px 0; border-bottom: 1px dotted rgba(255, 255, 255, 0.07); }
+.lg .lr span { min-width: 0; } .lg .lr small { display: block; font-size: 10px; color: var(--g-dim); } .lg .lr em { font-style: normal; color: #fff; }
+.lg .lr b { font-weight: 400; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.lg .up { color: #7dff9b; } .lg .down { color: var(--red); } .lg .warn { color: var(--amber); } .lg .dim { color: var(--g-dim); }
+.lg .lnet { margin-top: 6px; padding: 4px 7px; background: rgba(255, 255, 255, 0.05); color: #fff; border-left: 2px solid currentColor; } .lg .lnet.down { color: var(--red); } .lg .lnet.up { color: #7dff9b; }
+.lg p { margin: 5px 0 0; font-size: 10.5px; line-height: 1.4; color: var(--g-dim); }
+.ask { display: grid; gap: 1px; padding: 5px 0 5px 8px; border-left: 2px solid var(--cy-d); margin-top: 5px; }
+.ask.urgent { border-left-color: var(--red); } .ask i { font-style: normal; font-size: 9.5px; letter-spacing: 0.14em; color: var(--g-dim); }
+.ask b { font-weight: 400; color: #fff; } .ask.urgent b { color: #ffb4a0; } .ask span { color: var(--g); font-size: 11px; } .ask.more { color: var(--g-dim); border-left-color: transparent; }
+.tip.wide { max-width: 330px; width: 330px; padding: 8px 10px; } .tip .tipl { gap: 0; } .tip .tipl .lh { font-size: 11.5px; }
+.ia.asked b.down { color: #ffb4a0; }
+.lk2 { appearance: none; font: inherit; font-size: 9.5px; letter-spacing: 0.12em; color: var(--cy); background: none; border: 1px solid var(--cy-d); padding: 0 5px; margin-left: 4px; cursor: pointer; } .lk2:hover { color: #fff; border-color: var(--cy); }
+.lg .way { align-items: center; } .lg .way span { flex: 1; } .lg .way .btn { min-height: 22px; padding: 0 8px; font-size: 10px; letter-spacing: 0.08em; } .lg .way i { width: 0; }
+.mlog { display: block; width: 100%; height: 46px; margin: 4px 0 2px; background: rgba(255, 255, 255, 0.04); }
+.mlog polyline { fill: none; stroke: var(--cy); stroke-width: 1.6; vector-effect: non-scaling-stroke; } .mlog .l1 { stroke: var(--amber); stroke-width: 1; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; } .mlog .l2 { stroke: var(--red); stroke-width: 1; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
+.mkey { display: flex; justify-content: space-between; font-size: 10px; color: var(--g-dim); }

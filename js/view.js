@@ -17,6 +17,33 @@ const UP = new THREE.Vector3(0, 1, 0), XAXIS = new THREE.Vector3(1, 0, 0);
 // own box (BOXES, by type), and the order the eight holding places fill in, so two ships waiting are never side by side.
 const SHIP_LANE = { shuttle: [0.75, 0.9], freighter: [0.75, 0.9], warship: [1.0, 1.7] }, SHIP_R = { shuttle: 1.9, freighter: 2.6, warship: 5 }, BOXES = new Map(), HOLD_ORDER = [0, 4, 2, 6, 1, 5, 3, 7];
 const SHIP_BOX = { shuttle: [1.9, 0.75, 1.4], freighter: [3.1, 0.8, 1.4], warship: [7.1, 1.6, 2.1] };      // half a docked ship: along it, up, across
+// THE SHAPE OF A PART, as flying things see it: not one box round the whole of it (a ring would be a solid disc, and a gun's long
+// barrel would fill the space beside it) but a set of small boxes that follow the hull. The hull's surface is sampled every half
+// unit or so, the samples are sorted into cells, and each cell that holds any becomes a box drawn tight round them. Worked out once
+// for each kind of part. Returns the box round everything, with the small boxes ([x0, y0, z0, x1, y1, z1], the part's own frame) on it.
+const HULLISH = new Set(['hull', 'trim', 'dark', 'panel', 'glass', 'pod', 'decal', 'glow']), CELL = 1.3;
+function shapeOf(type) {
+  let b = BOXES.get(type); if (b) return b;
+  const g = buildPart(type), cells = new Map(), A = new THREE.Vector3(), B = new THREE.Vector3(), Cc = new THREE.Vector3(), P = new THREE.Vector3();
+  const put = (p) => { const k = `${Math.floor(p.x / CELL)},${Math.floor(p.y / CELL)},${Math.floor(p.z / CELL)}`; let c = cells.get(k); if (!c) cells.set(k, c = [p.x, p.y, p.z, p.x, p.y, p.z]); else { if (p.x < c[0]) c[0] = p.x; if (p.y < c[1]) c[1] = p.y; if (p.z < c[2]) c[2] = p.z; if (p.x > c[3]) c[3] = p.x; if (p.y > c[4]) c[4] = p.y; if (p.z > c[5]) c[5] = p.z; } };
+  g.updateMatrixWorld(true);
+  g.traverse((o) => {
+    if (!o.isMesh || !HULLISH.has(o.userData.role)) return;
+    const pos = o.geometry.attributes.position, idx = o.geometry.index, nT = (idx ? idx.count : pos.count) / 3;
+    for (let t = 0; t < nT; t++) {
+      const ia = idx ? idx.getX(t * 3) : t * 3, ib = idx ? idx.getX(t * 3 + 1) : t * 3 + 1, ic = idx ? idx.getX(t * 3 + 2) : t * 3 + 2;
+      A.fromBufferAttribute(pos, ia).applyMatrix4(o.matrixWorld); B.fromBufferAttribute(pos, ib).applyMatrix4(o.matrixWorld); Cc.fromBufferAttribute(pos, ic).applyMatrix4(o.matrixWorld);
+      const n = Math.min(24, Math.max(1, Math.ceil(Math.max(A.distanceTo(B), B.distanceTo(Cc), Cc.distanceTo(A)) / 0.55)));
+      for (let i = 0; i <= n; i++) for (let j = 0; j <= n - i; j++) put(P.copy(A).multiplyScalar(i / n).addScaledVector(B, j / n).addScaledVector(Cc, (n - i - j) / n));
+    }
+  });
+  b = new THREE.Box3().setFromObject(g);
+  g.traverse((x) => { if (x.geometry) x.geometry.dispose(); });
+  b.boxes = [...cells.values()].map((c) => [c[0] - 0.06, c[1] - 0.06, c[2] - 0.06, c[3] + 0.06, c[4] + 0.06, c[5] + 0.06]);
+  if (!b.boxes.length) b.boxes = [[b.min.x, b.min.y, b.min.z, b.max.x, b.max.y, b.max.z]];
+  BOXES.set(type, b);
+  return b;
+}
 // A heading as a rotation that keeps the ship level: nose along `look`, deck up (no roll), whichever way it is going.
 const _lx = new THREE.Vector3(), _ly = new THREE.Vector3(), _lz = new THREE.Vector3(), _lm = new THREE.Matrix4();
 function level(look, q) {
@@ -515,10 +542,9 @@ export class View {
     this._obSig = sig; this.obs = [];
     const lo = new THREE.Vector3(Infinity, Infinity, Infinity), hi = new THREE.Vector3(-Infinity, -Infinity, -Infinity);
     for (const p of st.parts.values()) {
-      let b = BOXES.get(p.type);
-      if (!b) { const g = buildPart(p.type); b = new THREE.Box3().setFromObject(g); g.traverse((x) => { if (x.geometry) x.geometry.dispose(); }); BOXES.set(p.type, b); }
+      const b = shapeOf(p.type);
       const q = new THREE.Quaternion(...p.quat), pos = new THREE.Vector3(...p.pos), c = b.getCenter(new THREE.Vector3()).applyQuaternion(q).add(pos), r = b.getSize(new THREE.Vector3()).length() / 2;
-      this.obs.push({ id: p.id, pos, q, qi: q.clone().invert(), min: b.min, max: b.max, c, r });
+      this.obs.push({ id: p.id, pos, q, qi: q.clone().invert(), boxes: b.boxes, c, r });
       lo.min(c.clone().subScalar(r)); hi.max(c.clone().addScalar(r));
     }
     // The room a docked ship takes up at every open-air berth counts as hull too (for every ship but the one whose berth it is).
@@ -526,7 +552,7 @@ export class View {
     for (const p of docks) {
       const kind = st.def(p).ships[0], B = this._berthAt(p, kind);
       if (B.inside) continue;
-      const h = SHIP_BOX[kind], o = { id: -p.id, of: p.id, ship: true, off: true, pos: B.pos, q: level(B.nose, new THREE.Quaternion()), min: new THREE.Vector3(-h[0], -h[1], -h[2]), max: new THREE.Vector3(h[0], h[1], h[2]), c: B.pos, r: Math.hypot(...h) };
+      const h = SHIP_BOX[kind], o = { id: -p.id, of: p.id, ship: true, off: true, pos: B.pos, q: level(B.nose, new THREE.Quaternion()), boxes: [[-h[0], -h[1], -h[2], h[0], h[1], h[2]]], c: B.pos, r: Math.hypot(...h) };
       o.qi = o.q.clone().invert(); this.obs.push(o); vols.set(p.id, o);
       lo.min(o.c.clone().subScalar(o.r)); hi.max(o.c.clone().addScalar(o.r));
     }
@@ -548,8 +574,8 @@ export class View {
   // Would building this close a berth? The names of the berths (its own included) that would have no clear way in.
   berthWarn(type, pl) {
     const st = this.st, d = C.parts[type]; this._obstacles();
-    let b = BOXES.get(type); if (!b) { const g = buildPart(type); b = new THREE.Box3().setFromObject(g); g.traverse((x) => { if (x.geometry) x.geometry.dispose(); }); BOXES.set(type, b); }
-    const q = new THREE.Quaternion(...pl.quat), pos = new THREE.Vector3(...pl.pos), ghost = { id: 1e9, pos, q, qi: q.clone().invert(), min: b.min, max: b.max, c: b.getCenter(new THREE.Vector3()).applyQuaternion(q).add(pos), r: b.getSize(new THREE.Vector3()).length() / 2 };
+    const b = shapeOf(type);
+    const q = new THREE.Quaternion(...pl.quat), pos = new THREE.Vector3(...pl.pos), ghost = { id: 1e9, pos, q, qi: q.clone().invert(), boxes: b.boxes, c: b.getCenter(new THREE.Vector3()).applyQuaternion(q).add(pos), r: b.getSize(new THREE.Vector3()).length() / 2 };
     const out = [];
     this.obs.push(ghost);
     for (const p of st.parts.values()) { const pd = st.def(p); if (!pd.berth || this.shut.has(p.id)) continue; if (ghost.c.distanceTo(new THREE.Vector3(...st.center(p))) > ghost.r + 30) continue; const kind = pd.ships[0]; if (!this._wayOut(this._berthAt(p, kind), kind, this.envR + 7).clear) out.push(st.name(p)); }
@@ -563,15 +589,18 @@ export class View {
     let best = Infinity; const l = this._v3, n = out;
     for (const o of this.obs) {
       if (o.id === skip || o.of === skip || o.off) continue;
-      const far = P.distanceTo(o.c) - o.r; if (far > best) continue;
+      if (P.distanceTo(o.c) - o.r > best) continue;
       l.copy(P).sub(o.pos).applyQuaternion(o.qi);
-      const cx = Math.max(o.min.x, Math.min(o.max.x, l.x)), cy = Math.max(o.min.y, Math.min(o.max.y, l.y)), cz = Math.max(o.min.z, Math.min(o.max.z, l.z));
-      let dx = l.x - cx, dy = l.y - cy, dz = l.z - cz, d = Math.hypot(dx, dy, dz);
-      if (d < 1e-6) {      // inside the box: the shortest way out is through the nearest face
-        const f = [[l.x - o.min.x, -1, 0, 0], [o.max.x - l.x, 1, 0, 0], [l.y - o.min.y, 0, -1, 0], [o.max.y - l.y, 0, 1, 0], [l.z - o.min.z, 0, 0, -1], [o.max.z - l.z, 0, 0, 1]].reduce((a, b) => (b[0] < a[0] ? b : a));
-        d = -f[0]; dx = f[1]; dy = f[2]; dz = f[3];
-      } else { dx /= d; dy /= d; dz /= d; }
-      if (d < best) { best = d; this._near = o; if (n) n.set(dx, dy, dz).applyQuaternion(o.q); }
+      for (const b of o.boxes) {      // the small boxes that follow this part's hull
+        const cx = Math.max(b[0], Math.min(b[3], l.x)), cy = Math.max(b[1], Math.min(b[4], l.y)), cz = Math.max(b[2], Math.min(b[5], l.z));
+        let dx = l.x - cx, dy = l.y - cy, dz = l.z - cz, d = Math.hypot(dx, dy, dz);
+        if (d >= best) continue;
+        if (d < 1e-6) {      // inside the box: the shortest way out is through the nearest face
+          const f = [[l.x - b[0], -1, 0, 0], [b[3] - l.x, 1, 0, 0], [l.y - b[1], 0, -1, 0], [b[4] - l.y, 0, 1, 0], [l.z - b[2], 0, 0, -1], [b[5] - l.z, 0, 0, 1]].reduce((a, c) => (c[0] < a[0] ? c : a));
+          d = -f[0]; dx = f[1]; dy = f[2]; dz = f[3];
+        } else { dx /= d; dy /= d; dz /= d; }
+        if (d < best) { best = d; this._near = o; if (n) n.set(dx, dy, dz).applyQuaternion(o.q); }
+      }
     }
     if (ships) for (const [x, r] of ships) { const d = P.distanceTo(x) - r; if (d < best) { best = d; if (n) { n.copy(P).sub(x); if (n.lengthSq() < 1e-8) n.set(0, 1, 0); n.normalize(); } } }
     return best;

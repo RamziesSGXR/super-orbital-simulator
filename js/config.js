@@ -22,7 +22,7 @@ const fill = (n, room) => Array(n).fill(room);
 const deg = (xs) => xs.map((x) => x * Math.PI / 180);
 
 export const C = {
-  version: '0.11.1',
+  version: '0.11.2',
 
   groups: [
     { id: 'structure', name: 'STRUCTURE' }, { id: 'platform', name: 'FIRE SUPPORT' }, { id: 'habitation', name: 'HABITATION' }, { id: 'docking', name: 'DOCKING' },
@@ -151,6 +151,7 @@ export const C = {
     bunks:      { name: 'Bunk Room', short: 'BUNK', tier: 1, cost: 30, up: 1, beds: 4, leisure: -1, col: '#7a5a3a', about: 'Beds for 4, cramped. Morale −1.' },
     mess:       { name: 'Mess Hall', short: 'MESS', tier: 0, cost: 30, up: 1, leisure: 2, col: '#9a7a3a', about: 'Hot meals. Morale +2.' },
     lounge:     { name: 'Observation Lounge', short: 'VIEW', tier: 0, cost: 40, up: 1, leisure: 2, col: '#4a7a8a', about: 'A view of the war. Morale +2.' },
+    gym:        { name: 'Recreation Deck', short: 'REC', tier: 0, cost: 40, up: 1, leisure: 2, col: '#5a8a6a', about: 'Weights, games and somewhere to sit. Morale +2.' },
     hydro:      { name: 'Hydroponics', short: 'HYDRO', tier: 0, cost: 40, up: 0, leisure: 1, food: 1, col: '#3a8a4a', about: 'Grows food: upkeep −1, morale +1.' },
     workshop:   { name: 'Workshop', short: 'SHOP', tier: 0, cost: 40, up: 1, homes: { engineer: 2 }, col: '#a08a2a', about: 'Places for 2 engineers.' },
     cargostore: { name: 'Cargo Store', short: 'CRGO', tier: 0, cost: 30, up: 1, cargo: true, homes: { hauler: 1 }, col: '#a06a2a', about: 'Haulers bring crates here. Places for 1 hauler.' },
@@ -174,12 +175,13 @@ export const C = {
     fab:        { name: 'Fabricator', short: 'FAB', tier: 2, cost: 90, up: 2, homes: { gunner: 1 }, col: '#6a6a3a', about: 'Prints and packs drop crates. A place for 1 packer.' },
     fighterbay: { name: 'Fighter Bay', short: 'FTR', tier: 2, cost: 120, up: 3, bay: true, defence: 5, col: '#6a4a4a', about: 'A flight of patrol fighters. Defence +5.' },
   },
-  roomOrder: ['quarters', 'bunks', 'mess', 'lounge', 'hydro', 'workshop', 'cargostore', 'ops', 'market', 'bar', 'medbay', 'secoffice', 'truth', 'brass', 'lab', 'guncrew', 'magazine', 'barrack', 'armoury', 'dronerack', 'eaglepad', 'ordnance', 'pelicanpad', 'fab', 'shuttlebay', 'fighterbay', 'empty'],
+  roomOrder: ['quarters', 'bunks', 'mess', 'lounge', 'gym', 'hydro', 'workshop', 'cargostore', 'ops', 'market', 'bar', 'medbay', 'secoffice', 'truth', 'brass', 'lab', 'guncrew', 'magazine', 'barrack', 'armoury', 'dronerack', 'eaglepad', 'ordnance', 'pelicanpad', 'fab', 'shuttlebay', 'fighterbay', 'empty'],
 
   // The divisions you fund and give standing orders to, from the Commander's comms panel.
   div: {
     supply:      { name: 'Ministry of Supply', short: 'SUPPLY', staff: 'hauler', uses: 'coffee', per: 2, allot: 10, col: '#4db8ff',
-      orders: { shift: [['normal', 'Normal shifts'], ['double', 'Double shifts: haulers 40% faster, morale −5']] } },
+      orders: { shift: [['normal', 'Normal shifts'], ['double', 'Double shifts: haulers 40% faster, morale −5']],
+        rations: [['normal', 'Standard rations'], ['double', 'Double rations: morale +6, rations go twice as fast'], ['short', 'Short rations: half the rations, morale −8']] } },
     maintenance: { name: 'Department of Patriotic Maintenance', short: 'MAINT', staff: 'engineer', uses: 'parts', per: 3, allot: 6, col: '#ffc340',
       orders: { plan: [['reactive', 'Fix what breaks'], ['preventive', 'Preventive: half the faults, upkeep +20%']] } },
     security:    { name: 'Democracy Officers', short: 'SECURITY', staff: 'officer', uses: 'ammo', per: 3, allot: 6, col: '#ff5a4a',
@@ -273,7 +275,8 @@ export const C = {
   ships: { freighterSec: 38, shuttleSec: 42, warshipSec: 95, shuttleMorale: 35, colonists: 4, approachSec: 14, departSec: 11,
     waitSec: 60, queueMax: 3, smuggler: 0.15, repairSec: 30, repairFee: 150, rate: { low: 0.6, normal: 1, high: 1.5 } },
   econ: { crateFee: 8, dockFee: 6, fine: 80, taxPerPct: 0.6 },
-  morale: { magazine: 4, base: 70, taxFree: 10, taxPenalty: 2.5, taxBonus: 1, power: 25, leaveBelow: 30, leaveSec: 10, leisureMax: 25, contraband: 10, unrestDecaySec: 60, faulty: 3 },
+  // ration: what the rations order does to morale and to how fast rations go. festival: a Liberty Day, a one-off lift that fades.
+  morale: { ration: { normal: [0, 1], double: [6, 2], short: [-8, 0.5] }, festival: { cost: 150, gain: 12, days: 3, every: 7 }, magazine: 4, base: 70, taxFree: 10, taxPenalty: 2.5, taxBonus: 1, power: 25, leaveBelow: 30, leaveSec: 10, leisureMax: 25, contraband: 10, unrestDecaySec: 60, faulty: 3 },
   faults: { meanSec: 480 },
   securityReach: 16,
 

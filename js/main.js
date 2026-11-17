@@ -27,7 +27,7 @@ const CHAT = {
   scientist: ['Fascinating.', 'That reading cannot be right.', 'Do not touch that.', 'The planet is doing something.', 'I will need a bigger dish.'],
   resident: ['Long queue at the mess again.', 'Lovely view of the war today.', 'Have you paid your Liberty Contribution?', 'They moved the bar again.', 'I heard a rumour about the coffee.', 'My bunk hums.'],
 };
-const ORDER_NAMES = { shift: 'SHIFTS', plan: 'MAINTENANCE PLAN', checks: 'SHIP INSPECTIONS', care: 'MEDICAL CARE', mix: 'TRAFFIC MIX', rate: 'TRAFFIC VOLUME', broadcast: 'BROADCAST' };
+const ORDER_NAMES = { rations: 'RATIONS', shift: 'SHIFTS', plan: 'MAINTENANCE PLAN', checks: 'SHIP INSPECTIONS', care: 'MEDICAL CARE', mix: 'TRAFFIC MIX', rate: 'TRAFFIC VOLUME', broadcast: 'BROADCAST' };
 // Radio channels: who is talking, on which channel, in which colour, and how they sign off.
 const CH = {
   ministry:    { n: 1, name: 'MINISTRY OF ORBITAL AFFAIRS', col: '#ffe600', off: ['For Super Earth.', 'Liberty prevails.', 'Ministry out.'] },
@@ -45,7 +45,7 @@ const CH = {
 };
 const audio = new Audio();
 const ui = { started: false, tool: null, rot: 0, hot: null, sel: null, paused: false, speed: 1, view: 'hull', cut: false, open: false, follow: 0, group: 'structure',
-  edit: null, room: null, slot: null, px: null, py: null, portsDirty: false, dots: true, clean: false, div: 'supply', comms: true, person: 0 };
+  edit: null, room: null, slot: null, px: null, py: null, portsDirty: false, dots: true, clean: false, div: 'ledger', comms: true, person: 0 };
 
 // ---------------------------------------------------------------- the title backdrop: an example station, turning slowly
 function demoStation() {
@@ -350,6 +350,8 @@ function portTip(p, x, y, ok) {
     if (!ui.bw || ui.bw.key !== key) { let names = []; try { names = view.berthWarn(ui.tool, st.placement(ui.tool, st.parts.get(p.part), p.i, ui.rot)); } catch (e) { names = []; } ui.bw = { key, names }; }
     if (ui.bw.names.length) shut = `<br><span class="down">No clear way in for ships: this would shut ${ui.bw.names.join(', ')}</span>`;
   }
+  // and what its upkeep would do to the accounts, if that would put the station in the red
+  if (chk.ok && !st.sandbox) { const n = st.ledger().credits.net - st.costOf(ui.tool).up; if (n < -0.5) shut += `<br><span class="warn">With its upkeep the station would lose ${Math.round(-n)} CR a minute</span>`; }
   $('tip').innerHTML = `<b>${C.parts[ui.tool].name}</b> on ${st.name(st.parts.get(p.part))}<br>${chk.ok ? ok + shut : `<span class="down">${chk.why}</span>`}`;
   showTip(x, y);
 }
@@ -357,7 +359,7 @@ function showTip(x, y) {
   const tip = $('tip'); tip.classList.remove('hidden');
   tip.style.left = `${Math.min(innerWidth - tip.offsetWidth - 8, x + 16)}px`; tip.style.top = `${Math.max(48, y - tip.offsetHeight - 12)}px`;
 }
-function hideTip() { $('tip').classList.add('hidden'); }
+function hideTip() { $('tip').classList.add('hidden'); $('tip').classList.remove('wide'); }
 let toastT = 0;
 function toast(text) { const t = $('toast'); t.textContent = text; t.classList.add('show'); toastT = 2.6; }
 
@@ -492,6 +494,13 @@ $('b-cmdr').onclick = () => cmdr(); $('cm-x').onclick = () => cmdr(false);
 let cmType = null;
 function drawCmdr() {
   const tabs = $('cm-tabs'); tabs.innerHTML = '';
+  {      // the accounts come first: where everything comes from and goes, and what the station is asked for next
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = `dt lgt${ui.div === 'ledger' ? ' on' : ''}`; b.style.setProperty('--c', '#f5d547'); b.dataset.k = 'ledger';
+    b.innerHTML = '<span class="led"></span>ACCOUNTS<small id="dt-ledger"></small>';
+    b.onclick = () => { ui.div = 'ledger'; audio.play('click'); drawCmdr(); };
+    tabs.appendChild(b);
+  }
   for (const k of C.divOrder) {
     const d = C.div[k], b = document.createElement('button');
     b.type = 'button'; b.className = `dt${k === ui.div ? ' on' : ''}`; b.style.setProperty('--c', d.col); b.dataset.k = k;
@@ -499,6 +508,7 @@ function drawCmdr() {
     b.onclick = () => { ui.div = k; audio.play('click'); drawCmdr(); };
     tabs.appendChild(b);
   }
+  if (ui.div === 'ledger') { $('cm-main').innerHTML = `<div class="dh" style="--c:#f5d547"><b>THE STATION'S ACCOUNTS</b><span class="sig">▂▄▆█</span></div><div class="lg" id="lg"></div>`; cmType = null; facSig = ''; cmdrText(); return; }
   const k = ui.div, d = C.div[k], ch = CH[k], div = st.div[k];
   let h = `<div class="dh" style="--c:${d.col}"><b>CH ${ch.n} · ${d.name.toUpperCase()}</b><span class="sig">▂▄▆█</span></div><div class="rep" id="cm-rep"></div><div id="cm-fac"></div>`;
   if (d.uses) h += `<div class="brow"><span class="bl">WEEKLY ALLOTMENT · ${C.supplies[d.uses].name.toUpperCase()}</span><span class="bv" id="cm-bv"></span>`
@@ -506,7 +516,7 @@ function drawCmdr() {
   if (k === 'supply') h += '<div class="stores" id="cm-stores"></div>';
   if (k === 'gunnery') h += '<div class="plat" id="cm-plat"></div>';
   for (const [o, opts] of Object.entries(d.orders)) {
-    h += `<div class="ord"><span class="ol">${ORDER_NAMES[o] || o.toUpperCase()}</span><div class="obs">${opts.map(([v, l]) => `<button type="button" class="btn ob${div.order[o] === v ? ' on' : ''}" data-o="${o}" data-v="${v}">${l}</button>`).join('')}</div></div>`;
+    h += `<div class="ord"><span class="ol">${ORDER_NAMES[o] || o.toUpperCase()}</span><div class="obs">${opts.map(([v, l]) => `<button type="button" class="btn ob${(div.order[o] ?? opts[0][0]) === v ? ' on' : ''}" data-o="${o}" data-v="${v}">${l}</button>`).join('')}</div></div>`;
   }
   $('cm-main').innerHTML = h; facSig = '';
   if ($('cm-budget')) $('cm-budget').oninput = (e) => { st.setAllot(k, +e.target.value); cmdrText(); };
@@ -548,6 +558,8 @@ function cmdrText() {
     const d = C.div[k], s = $(`dt-${k}`); if (!s) continue;
     s.textContent = d.staff ? `${st.staff[d.staff]}` : k === 'truth' ? (st.div.truth.order.broadcast === 'silence' ? 'off' : 'on') : st.div.traffic.order.rate;
   }
+  if ($('dt-ledger')) { const n = st.sandbox ? 0 : st.ledger().credits.net; $('dt-ledger').textContent = st.sandbox ? '' : `${n >= 0 ? '+' : '−'}${Math.abs(Math.round(n))}`; $('dt-ledger').style.color = n < -0.5 ? 'var(--red)' : ''; }
+  if (ui.div === 'ledger') { const box = $('lg'); if (box) { const html = ledgerPage(); if (html !== box._html) { box._html = html; box.innerHTML = html; } } return; }
   const k = ui.div, d = C.div[k], div = st.div[k];
   if ($('cm-bv')) {
     const r = d.staff, sup = C.supplies[d.uses], can = Math.floor(div.allot / d.per);
@@ -562,6 +574,110 @@ function cmdrText() {
       + `<em>Calls from the ground answered: ${st.stats.calls || 0}. Missed: ${st.stats.missed || 0}. Shells in the stores: ${st.sandbox ? '∞' : Math.floor(st.stock.shells)}.</em>`;
   }
   if (!cmType) { const r = $('cm-rep'); if (r) r.textContent = st.report(k); }
+}
+// ---------------------------------------------------------------- THE ACCOUNTS: where everything comes from and goes
+const sgn = (x, d = 0) => `${x >= 0 ? '+' : '−'}${Math.abs(x).toFixed(d).replace(/\.0$/, '')}`;
+const lrow = (label, val, cls = '', note = '') => `<div class="lr"><span>${label}${note ? `<small>${note}</small>` : ''}</span><b class="${cls}">${val}</b></div>`;
+const money = (x) => lrow(x.label, `${sgn(x.v, Math.abs(x.v) < 10 ? 1 : 0)}`, x.v > 0.04 ? 'up' : x.v < -0.04 ? 'down' : 'dim', x.note || '');
+const days = (d) => (d === Infinity ? '—' : d < 1 ? 'under a day' : `${Math.round(d)} day${Math.round(d) === 1 ? '' : 's'}`);
+const WHO = (k) => (CH[k] ? CH[k].name : k.toUpperCase());
+// One section of the accounts. `full`: every line (the Commander's page); otherwise the few that matter most (the hover).
+function ledgerSec(sec, L, full) {
+  const c = L.credits, cut = (xs, n) => (full ? xs : xs.slice(0, n));
+  if (sec === 'credits') {
+    if (st.sandbox) return '<b class="lh">CREDITS</b><p>Free play: credits are without limit.</p>';
+    return `<b class="lh">CREDITS · ${Math.round(c.now).toLocaleString('en-US')} CR<i class="${c.net >= 0 ? 'up' : 'down'}">${sgn(c.net)} a minute</i></b>`
+      + `<div class="lsub">COMING IN, a minute</div>${cut(c.ins, 4).map(money).join('')}${lrow('<em>In</em>', sgn(c.income), 'up')}`
+      + `<div class="lsub">GOING OUT, a minute${full ? ' · upkeep, biggest first' : ''}</div>${cut(c.outs, 4).map(money).join('')}${!full && c.outs.length > 4 ? lrow(`and ${c.outs.length - 4} more lines`, '', 'dim') : ''}${lrow('<em>Out</em>', sgn(c.spend), 'down')}`
+      + `<div class="lnet ${c.net >= 0 ? 'up' : 'down'}">${c.net >= 0 ? `Gaining ${Math.round(c.net)} CR a minute.` : `Losing ${Math.round(-c.net)} CR a minute. ${c.now <= 0 ? 'The station is in debt: morale −15 until it is not.' : `At this rate the credits run out in ${days(c.runway)}.`}`}</div>`
+      + (c.idle.n ? `<p class="warn">${c.idle.n} part${c.idle.n > 1 ? 's stand' : ' stands'} empty or broken and still cost${c.idle.n > 1 ? '' : 's'} ${Math.round(c.idle.v)} CR a minute.</p>` : '')
+      + (full ? `<p>Spent on building so far: ${Math.round(c.built).toLocaleString('en-US')} CR. Earned from trade so far: ${Math.round(c.traded).toLocaleString('en-US')} CR. Trade lines show the last minute; the rest are what the station pays and earns right now.</p>` : '');
+  }
+  if (sec === 'power') {
+    const p = L.power;
+    return `<b class="lh">POWER · ${p.demand} used of ${p.supply} made<i class="${p.eff < 1 ? 'down' : 'up'}">${p.eff < 1 ? `running at ${Math.round(p.eff * 100)}%` : `${p.supply - p.demand} spare`}</i></b>`
+      + `<div class="lsub">MADE BY</div>${cut(p.make, 4).map((x) => lrow(x.label, sgn(x.v), x.v ? 'up' : 'down')).join('') || lrow('Nothing', '0', 'down')}`
+      + `<div class="lsub">USED BY</div>${cut(p.use, 5).map((x) => lrow(x.label, sgn(x.v), 'down')).join('')}${!full && p.use.length > 5 ? lrow(`and ${p.use.length - 5} more`, '', 'dim') : ''}`
+      + (p.eff < 1 ? '<p class="warn">Short of power, everything works slower and morale falls. Build a Solar Array or a Reactor Core.</p>' : '');
+  }
+  if (sec === 'people') {
+    const p = L.people;
+    return `<b class="lh">PEOPLE · ${p.residents} residents in ${p.beds} beds<i class="${p.free ? 'up' : 'dim'}">${p.free} free</i></b><p>${p.leaving ? '<span class="down">Morale is so low that residents are leaving.</span> ' : ''}${p.why}</p>`
+      + `<div class="lsub">STAFF ON DUTY, of the places built for them</div>${p.staff.filter((x) => full || x.places).map((x) => lrow(WHO(x.k), `${x.on} / ${x.places}`, x.places && !x.on ? 'down' : x.on < x.places ? 'warn' : 'up')).join('')}`
+      + (full ? '<p>Staff are kept by weekly supplies, not credits: each division\'s page sets how many it keeps on duty.</p>' : '');
+  }
+  if (sec === 'morale') {
+    const m = L.morale, S = C.ships.shuttleMorale, lv = C.morale.leaveBelow;
+    // where it has been: four readings a day, with the two lines that matter drawn across
+    let chart = '';
+    if (m.log.length > 1) {
+      const W = 300, H = 46, n = m.log.length, X = (i) => (i / (n - 1) * W).toFixed(1), Y = (v) => (H - Math.max(0, Math.min(100, v)) / 100 * H).toFixed(1);
+      chart = `<svg class="mlog" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-label="Morale over the last ${Math.round(n / 4)} days"><line x1="0" x2="${W}" y1="${Y(S)}" y2="${Y(S)}" class="l1"/><line x1="0" x2="${W}" y1="${Y(lv)}" y2="${Y(lv)}" class="l2"/><polyline points="${m.log.map((v, i) => `${X(i)},${Y(v)}`).join(' ')}"/></svg>`
+        + `<div class="mkey"><span>${Math.round(n / 4)} day${Math.round(n / 4) === 1 ? '' : 's'} ago: ${m.log[0]}</span><span>lowest ${Math.min(...m.log)} · highest ${Math.max(...m.log)}</span><span>now ${Math.round(m.now)}</span></div>`;
+    }
+    const ways = (full ? m.ways : m.ways.slice(0, 3)).map((w) => `<div class="lr way"><span>${w.label}<small>${w.cost}</small></span><b class="up">+${Math.round(w.gain)}</b>${full ? (w.do ? `<button type="button" class="btn" data-do="${w.do}">DO IT</button>` : '<i></i>') : ''}</div>`).join('');
+    return `<b class="lh">MORALE · ${Math.round(m.now)}<i class="${m.target >= m.now - 0.5 ? 'up' : 'down'}">${Math.abs(m.target - m.now) < 1.5 ? 'steady' : `${m.target > m.now ? 'rising' : 'falling'} towards ${Math.round(m.target)}`}</i></b>${full ? chart : ''}`
+      + `<div class="lsub">WHAT MAKES IT UP</div>${m.lines.map((x) => lrow(x.label, sgn(x.v), x.v >= 0 ? 'up' : 'down')).join('')}`
+      + (ways ? `<div class="lsub">WAYS TO RAISE IT${full ? '' : ' · the quickest'}</div>${ways}` : '')
+      + `<p>Below ${S} colonists stop coming. Below ${lv} residents leave.${full ? ' Morale moves towards its total a little at a time, so a change takes a day or so to show.' : ''}</p>`;
+  }
+  if (sec === 'stores') {
+    const s = L.stores;
+    if (st.sandbox) return '<b class="lh">THE STORES</b><p>Free play: the stores never run out.</p>';
+    return `<b class="lh">THE STORES · ${Math.round(s.need)} crates needed a week<i class="${s.lastWeek >= s.need ? 'up' : 'warn'}">${s.weekIn} in so far, ${s.lastWeek} last week</i></b>`
+      + `<div class="lsub">IN THE STORES · USED A WEEK · LASTS</div>${s.supplies.filter((x) => full || x.need > 0).map((x) => lrow(x.label, `${x.have} · ${Math.round(x.need)} · ${x.need > 0 ? days(x.days) : '—'}`, x.short || (x.need > 0 && x.days < 1) ? 'down' : x.need > 0 && x.days < 3 ? 'warn' : '', x.by)).join('')}`
+      + `<p>${s.berths ? `${s.berths} berth${s.berths > 1 ? 's' : ''} for freighters and ${s.haulers} hauler${s.haulers === 1 ? '' : 's'} on duty bring it in. Freighters carry more of whatever is short.` : '<span class="down">No berth for freighters: nothing can come in.</span>'}</p>`;
+  }
+  if (sec === 'cap') {
+    const k = L.cap;
+    return `<b class="lh">CAPABILITY · ${k.now.toLocaleString('en-US')}<i>the score</i></b>${cut(k.lines, 5).map((x) => lrow(x.label, sgn(x.v), 'up')).join('')}${lrow('The factions\' mood', `× ${k.mood.toFixed(2)}`, k.mood >= 1 ? 'up' : 'down')}`
+      + (full ? '<p>What the station adds to the war effort. It opens the upgrade path.</p>' : '');
+  }
+  if (sec === 'ready') {
+    const P = st.platform();
+    return `<b class="lh">THE PLATFORM · ${Math.round(P.ready * 100)}% ready</b>${P.sys.filter((x) => x.open).map((x) => lrow(x.name, x.n ? `${Math.round(x.ready * 100)}%` : 'not built', x.n ? (x.ready > 0.8 ? 'up' : x.ready > 0.4 ? 'warn' : 'down') : 'dim', x.n && !x.why ? '' : x.why)).join('')}`
+      + `<p>Calls from the ground answered: ${st.stats.calls || 0}. Missed: ${st.stats.missed || 0}.</p>`;
+  }
+  if (sec === 'ships') {
+    const by = (k) => st.ships.filter((x) => x.state === k).length, shut = st._shut ? st._shut.size : 0;
+    return `<b class="lh">SHIPS · ${st.stats.ships} served<i class="${st.stats.lost ? 'down' : 'dim'}">${st.stats.lost} lost</i></b>${lrow('Berths: freighters · shuttles · warships', `${st.berths('freighter').length} · ${st.berths('shuttle').length} · ${st.berths('warship').length}`)}${lrow('Waiting · coming in · docked', `${by('hold')} · ${by('approach')} · ${by('docked')}`)}${lrow('Crates unloaded a minute', st.cratesPerMin().toFixed(1))}`
+      + (shut ? `<p class="warn">${shut} berth${shut > 1 ? 's are' : ' is'} shut: no clear way in for ships.</p>` : '') + '<p>A ship that waits too long for a berth leaves, and its trade is lost.</p>';
+  }
+  return '';
+}
+function asksHtml(max) {
+  const A = st.asks(); if (!A.length) return '';
+  return A.slice(0, max).map((a) => `<div class="ask${a.urgent ? ' urgent' : ''}"><i>${WHO(a.from)}</i><b>${a.text}</b><span>${a.why}</span></div>`).join('') + (A.length > max ? `<div class="ask more">and ${A.length - max} more</div>` : '');
+}
+function ledgerPage() {
+  const L = st.ledger(), asks = asksHtml(6);
+  return (asks ? `<section id="lg-asks"><b class="lh">ASKED OF YOU<i>most pressing first</i></b>${asks}</section>` : '')
+    + ['credits', 'stores', 'power', 'people', 'morale', 'cap'].map((k) => `<section id="lg-${k}">${ledgerSec(k, L, true)}</section>`).join('');
+}
+// A way to raise morale that is an order: given on the spot. (On pointer down, because the page redraws itself as numbers change.)
+const WAYS = {
+  tax: () => st.setTax(C.morale.taxFree), festival: () => st.celebrate(), rations2: () => st.setOrder('supply', 'rations', 'double'), rations1: () => st.setOrder('supply', 'rations', 'normal'),
+  shift: () => st.setOrder('supply', 'shift', 'normal'), care: () => st.setOrder('medical', 'care', 'free'), patriotic: () => st.setOrder('truth', 'broadcast', 'patriotic'),
+};
+$('cm-main').addEventListener('pointerdown', (e) => {
+  const b = e.target.closest('[data-do]'); if (!b || !WAYS[b.dataset.do]) return;
+  e.preventDefault(); const r = WAYS[b.dataset.do]();
+  if (r && r.ok === false) { audio.play('deny'); toast(r.why); } else audio.play('click');
+  cmdrText();
+});
+// Hover a readout on the top bar: where it comes from and where it goes. Click it: the full accounts.
+const RI = { 'r-cap': 'cap', 'r-cr': 'credits', 'r-pw': 'power', 'r-pop': 'people', 'r-mo': 'morale', 'r-rdy': 'ready', 'r-sh': 'ships' };
+function riTip() { $('tip').innerHTML = `<div class="lg tipl">${ledgerSec(ui.riTip, st.ledger(), false)}<p class="dim">Click for the full accounts.</p></div>`; }
+function openLedger(sec) {
+  ui.div = sec === 'ready' ? 'gunnery' : sec === 'ships' ? 'traffic' : 'ledger';
+  audio.play('click'); closeFloats('cmdr'); $('cmdr').classList.remove('hidden'); drawCmdr();
+  const el = $(`lg-${sec}`); if (el) el.scrollIntoView({ block: 'start' });
+}
+for (const [id, sec] of Object.entries(RI)) {
+  const el = $(id).closest('.ri'); el.removeAttribute('title'); el.classList.add('acc');
+  el.onmouseenter = el.onmousemove = (e) => { if (e.pointerType === 'touch') return; ui.riTip = sec; $('tip').classList.add('wide'); riTip(); showTip(Math.max(0, e.clientX - 40), 0); };
+  el.onmouseleave = () => { ui.riTip = null; hideTip(); };
+  el.onclick = () => { ui.riTip = null; hideTip(); openLedger(sec); };
 }
 function cmTick(dt) {
   if (!cmType) return;
@@ -726,13 +842,14 @@ function drain() {
 // ---------------------------------------------------------------- HUD
 function hud() {
   $('r-cr').textContent = st.sandbox ? '∞' : Math.round(st.credits).toLocaleString('en-US');
+  if (ui.riTip) riTip();
   $('r-cap').textContent = st.capability().toLocaleString('en-US');
   $('cm-badge').textContent = st.requests.length || '';
   $('wk').textContent = `WEEK ${st.week()} · DAY ${st.dow()}`; $('w-fill').style.width = `${(st.weekPart() * 100).toFixed(1)}%`;
   drawDesk();
   $('r-pw').textContent = `${st.demand}/${st.supply}`; $('r-pw').style.color = st.eff < 1 ? 'var(--red)' : '';
   $('r-pop').textContent = `${st.residents()}/${st.beds()}`;
-  const mo = Math.round(st.morale); $('r-mo').textContent = mo; $('r-mo').style.color = mo >= 55 ? '' : mo >= 35 ? 'var(--amber)' : 'var(--red)';
+  const mo = Math.round(st.morale), mt = Object.values(st.moraleParts()).reduce((s, x) => s + x, 0); $('r-mo').textContent = `${mo}${mt > st.morale + 2 ? ' ▲' : mt < st.morale - 2 ? ' ▼' : ''}`; $('r-mo').style.color = mo >= 55 ? '' : mo >= 35 ? 'var(--amber)' : 'var(--red)';
   $('r-sh').textContent = `${st.stats.ships} · ${st.stats.lost}`;
   const rdy = Math.round(st.platform().ready * 100); $('r-rdy').textContent = `${rdy}%`; $('r-rdy').style.color = !st.platformN ? 'var(--red)' : rdy >= 60 ? '' : 'var(--amber)';
   const n = st.next();
@@ -771,7 +888,7 @@ function info(peek) {
   if (pk && pk.part) {
     const t = pk.part, d = C.parts[t], locked = !st.partOpen(t), s = roomSums(d.rooms || []);
     setInfo(`<div class="in">${d.name.toUpperCase()}${locked ? ` <span class="lk">${C.tiers[d.tier].name}</span>` : ''}</div><div class="ia">${d.about}</div>`
-      + `<div class="st">${stat('COST', `${d.cost} CR`, st.credits < d.cost && !st.sandbox ? 'bad' : '')}${stat('POWER', pw(d))}${stat('UPKEEP', `${d.up}/min`)}${SLOTS[t] ? stat('ROOMS', SLOTS[t].length) : ''}${sumStats(s)}${d.crates ? stat('CRATES', d.crates) : ''}</div>`
+      + `<div class="st">${stat('COST', `${d.cost} CR`, st.credits < d.cost && !st.sandbox ? 'bad' : '')}${stat('POWER', pw(d))}${stat('UPKEEP', `${d.up}/min`)}${st.sandbox ? '' : (() => { const n = st.ledger().credits.net - st.costOf(t).up; return stat('NET AFTER', `${n >= 0 ? '+' : '−'}${Math.abs(Math.round(n))}/min`, n < -0.5 ? 'bad' : 'ok'); })()}${SLOTS[t] ? stat('ROOMS', SLOTS[t].length) : ''}${sumStats(s)}${d.crates ? stat('CRATES', d.crates) : ''}</div>`
       + (ui.tool ? `<div class="ia">Click near a port to attach it (little blue dots near the pointer). <b>R</b> turns it (${ui.rot * 45}°). Right-click or Esc puts it down.</div>` : ''));
     return;
   }
@@ -806,10 +923,10 @@ function info(peek) {
   }
   const n = st.next();
   setInfo(`<div class="in">${st.sandbox ? 'FREE PLAY' : `STATION OVERVIEW · ${C.tiers[st.tier].name}`}</div>`
-    + `<div class="ia">${st.requests.length ? `<b>${st.requests.length} on your desk.</b> ` : ''}Pick a part on the left and click near a port. Select a part to set its rooms. The factions do the rest: their moods are below.</div>`
+    + (() => { const a = st.asks()[0]; return `<div class="ia${a ? ' asked' : ''}">${st.requests.length ? `<b>${st.requests.length} on your desk.</b> ` : ''}${a ? `<b class="${a.urgent ? 'down' : ''}">${a.text}</b> ${a.why} <button type="button" class="lk2" id="a-accts">ACCOUNTS</button>` : 'Pick a part on the left and click near a port. Select a part to set its rooms. The factions do the rest: their moods are below.'}</div>`; })()
     + (st.goal && !st.goal.done ? `<ul class="ms">${st.goalItems().map((i) => `<li class="${i.ok ? 'ok' : ''}">${i.label} ${Math.min(i.have, i.need)}/${i.need}</li>`).join('')}<li class="nx">Bring the station back: every item above.</li></ul>` : '')
     + `<div class="st moods">${Object.keys(C.factions).filter((k) => st.roomOpen(C.factions[k].room)).map((k) => stat(C.factions[k].who.toUpperCase(), Math.round(st.sat[k]), st.sat[k] < C.faction.low ? 'bad' : st.sat[k] >= 65 ? 'ok' : 'warn')).join('')}</div>`
-    + (st.sandbox || !n || (st.goal && !st.goal.done) ? '' : `<ul class="ms">${n.items.map((i) => `<li class="${i.ok ? 'ok' : ''}">${i.label} ${Math.min(i.have, i.need)}/${i.need}</li>`).join('')}<li class="nx">Next: ${n.name}. The full path is under UPGRADES (U).</li></ul>`));
+    + (st.sandbox || !n || (st.goal && !st.goal.done) ? '' : `<ul class="ms">${n.items.map((i) => `<li class="${i.ok ? 'ok' : ''}">${i.label} ${Math.min(i.have, i.need)}/${i.need}</li>`).join('')}<li class="nx">Next: ${n.name}. The full path is under UPGRADES (U).</li></ul>`), () => { const b = $('a-accts'); if (b) b.onclick = () => openLedger('asks'); });
 }
 // One person: who they are, who they work for, and what they are doing right now.
 function personInfo(a) {
